@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert } from 'react-native';
 import axios from 'axios';
+import Config from 'react-native-config';
 
 // Definir o tipo da equipe
 interface Equipe {
@@ -15,7 +16,7 @@ const ListaEquipesScreen = ({ navigation }: any) => {
    // Função para buscar as equipes do backend
    const fetchEquipes = async () => {
     try {
-      const response = await axios.get('http://10.0.2.2:5000/equipes'); // Ajuste a URL se necessário
+      const response = await axios.get(`${Config.API_URL}/equipes`); // Ajuste a URL se necessário
       setEquipes(response.data);
     } catch (error) {
       console.error('Erro ao buscar equipes:', error);
@@ -33,8 +34,8 @@ const ListaEquipesScreen = ({ navigation }: any) => {
   const renderEquipe = ({ item }: { item: Equipe }) => (
     <View style={styles.equipeItem}>
       <View>
-        <Text style={styles.equipeNome}>Equipe: {item.nomeequipe}</Text>
-        <Text style={styles.equipeNome1}>Membro 1: {item.nome1}</Text>
+        <Text style={styles.equipeNome}>{item.nomeequipe}</Text>
+        <Text style={styles.equipeNome1}>{item.nome1}</Text>
         <Text style={styles.equipeId}>ID: {item.id}</Text>
       </View>
       <TouchableOpacity

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import axios from 'axios';
+import Config from 'react-native-config';
 
 const AddEquipeScreen = ({ navigation }: any) => {
   const [form, setForm] = useState({
@@ -18,7 +19,7 @@ const AddEquipeScreen = ({ navigation }: any) => {
 
   const salvarEquipe = async () => {
     try {
-      const response = await axios.post('http://10.0.2.2:5000/equipes', form); // Ajuste a URL se necessário
+      const response = await axios.post(`${Config.API_URL}/equipes`, form); // Ajuste a URL se necessário
       Alert.alert('Sucesso', 'Equipe adicionada com sucesso!');
       navigation.goBack(); // Volta para a lista de equipes
     } catch (error) {

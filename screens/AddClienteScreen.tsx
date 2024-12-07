@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity } from 'react-native';
 import axios from 'axios';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import Config from 'react-native-config';
 
 type RootStackParamList = {
   AddCliente: undefined; // Tela AddCliente não requer parâmetros
@@ -67,7 +68,7 @@ const AddClienteScreen = ({ navigation }: any) => {
   
     try {
       console.log('Enviando dados:', form);
-      const response = await axios.post('http://10.0.2.2:5000/clientes', form);
+      const response = await axios.post(`${Config.API_URL}/clientes`, form);
       Alert.alert('Sucesso', 'Cliente salvo com sucesso!');
       navigation.goBack();
     } catch (error) {

@@ -1,16 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  FlatList, 
-  ActivityIndicator, 
-  Alert,
-  TextInput 
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
+import Config from 'react-native-config';
 
 // Definir o tipo do cliente
 interface Cliente {
@@ -29,7 +21,7 @@ const ListaClientesScreen = ({ navigation }: any) => {
   const fetchClientes = useCallback(async () => {
     setLoading(true); // Ativa o indicador de carregamento
     try {
-      const response = await axios.get('http://10.0.2.2:5000/clientes'); // Ajuste a URL se necessário
+      const response = await axios.get(`${Config.API_URL}/clientes`); // Ajuste a URL se necessário
       setClientes(response.data);
     } catch (error) {
       console.error('Erro ao buscar clientes:', error);

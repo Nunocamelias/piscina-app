@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import axios from 'axios';
+import Config from 'react-native-config';
 
 const EditEquipeScreen = ({ route, navigation }: any) => {
   const { equipeId } = route.params;
@@ -12,7 +13,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     const fetchEquipe = async () => {
       try {
-        const response = await axios.get(`http://10.0.2.2:5000/equipes/${equipeId}`);
+        const response = await axios.get(`${Config.API_URL}/equipes/${equipeId}`);
         setForm(response.data);
         setLoading(false);
       } catch (error) {
@@ -27,7 +28,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
 
   const salvarEquipe = async () => {
     try {
-      await axios.put(`http://10.0.2.2:5000/equipes/${equipeId}`, form);
+      await axios.put(`${Config.API_URL}/equipes/${equipeId}`, form);
       Alert.alert('Sucesso', 'Equipe atualizada com sucesso!');
   
       navigation.navigate('ListaEquipes'); // Retorna à lista e dispara o listener de 'focus'.
@@ -37,17 +38,33 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
     }
   };
   
-  const apagarEquipe = async () => {
-    try {
-      await axios.delete(`http://10.0.2.2:5000/equipes/${equipeId}`);
-      Alert.alert('Sucesso', 'Equipe apagada com sucesso!');
-  
-      navigation.navigate('ListaEquipes'); // Retorna à lista e dispara o listener de 'focus'.
-    } catch (error) {
-      console.error('Erro ao apagar equipe:', error);
-      Alert.alert('Erro', 'Não foi possível apagar a equipe.');
-    }
+  const apagarEquipe = () => {
+    Alert.alert(
+      "Confirmar Exclusão",
+      "Tem certeza de que deseja apagar esta equipe?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await axios.delete(`http://10.0.2.2:5000/equipes/${equipeId}`);
+              Alert.alert("Sucesso", "Equipe apagada com sucesso!");
+              navigation.goBack();
+            } catch (error) {
+              console.error("Erro ao apagar equipe:", error);
+              Alert.alert("Erro", "Não foi possível apagar a equipe.");
+            }
+          },
+        },
+      ]
+    );
   };
+  
   
 
   const handleChange = (field: string, value: string | boolean) => {

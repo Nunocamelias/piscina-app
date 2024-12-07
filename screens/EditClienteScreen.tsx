@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity } from 'react-native';
 import axios from 'axios';
+import Config from 'react-native-config';
 
 const EditClienteScreen = ({ route, navigation }: any) => {
   const { clienteId } = route.params;
@@ -12,7 +13,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     const fetchCliente = async () => {
       try {
-        const response = await axios.get(`http://10.0.2.2:5000/clientes/${clienteId}`);
+        const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`);
         setForm(response.data);
         setLoading(false);
       } catch (error) {
@@ -39,7 +40,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
 
   const salvarCliente = async () => {
     try {
-      await axios.put(`http://10.0.2.2:5000/clientes/${clienteId}`, form);
+      await axios.put(`${Config.API_URL}/clientes/${clienteId}`, form);
       Alert.alert('Sucesso', 'Cliente atualizado com sucesso!');
       navigation.goBack(); // Retorna para a lista de clientes
     } catch (error) {
@@ -59,7 +60,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await axios.delete(`http://10.0.2.2:5000/clientes/${clienteId}`);
+              await axios.delete(`${Config.API_URL}/clientes/${clienteId}`);
               Alert.alert('Sucesso', 'Cliente apagado com sucesso!');
               navigation.goBack(); // Retorna para a lista de clientes
             } catch (error) {

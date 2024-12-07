@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
+
 const EquipesScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
