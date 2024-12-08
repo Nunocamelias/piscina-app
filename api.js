@@ -5,21 +5,26 @@ const { Pool } = require('pg');
 const moment = require('moment'); // Certifique-se de que o moment.js está instalado: npm install moment
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+
+// Middlewares
+app.use(cors());
+app.use(bodyParser.json());
+
+// Rota de teste
+app.get('/', (req, res) => {
+  res.send('Servidor funcionando!');
+});
 
 // Configuração do PostgreSQL
 const pool = new Pool({
-  user: 'piscina_app_user',
-  host: 'dpg-csjc1mm8ii6s73d2i0i0-a.oregon-postgres.render.com',
-  database: 'piscina_app',
-  password: 'onGdUEYONb0S32wbf7SS9W5Zf0lSd5J6',
-  port: 5432,
+  user: process.env.DB_USER || 'piscina_app_user',
+  host: process.env.DB_HOST || 'dpg-csjc1mm8ii6s73d2i0i0-a.oregon-postgres.render.com',
+  database: process.env.DB_DATABASE || 'piscina_app',
+  password: process.env.DB_PASSWORD || 'onGdUEYONb0S32wbf7SS9W5Zf0lSd5J6',
+  port: process.env.DB_PORT || 5432,
   ssl: { rejectUnauthorized: false },
 });
-
-// Middlewares
-app.use(bodyParser.json());
-app.use(cors());
 
 // Endpoint POST para adicionar cliente
 app.post('/clientes', async (req, res) => {
