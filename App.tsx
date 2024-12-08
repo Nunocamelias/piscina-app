@@ -12,6 +12,7 @@ import ListaEquipesScreen from './screens/ListaEquipesScreen';
 import EditEquipeScreen from './screens/EditEquipeScreen';
 
 
+
 type RootStackParamList = {
   Home: undefined;
   Clientes: undefined;
