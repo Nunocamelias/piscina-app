@@ -36,21 +36,19 @@ const ListaClientesScreen = ({ navigation }: any) => {
     useCallback(() => {
       fetchClientes();
     }, [fetchClientes])
-  );;
-  
-    // Atualiza os clientes filtrados conforme a busca
+  );
+  // Atualiza os clientes filtrados conforme a busca
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredClientes(clientes); // Sem filtro, exibe todos os clientes
     } else {
       const query = searchQuery.toLowerCase();
       const filtered = clientes.filter((cliente) =>
-        cliente.nome.toLowerCase().includes(query) || 
-        cliente.morada.toLowerCase().includes(query)
-      );
+      cliente.nome.toLowerCase().includes(query) ||
+      cliente.morada.toLowerCase().includes(query));
       setFilteredClientes(filtered);
     }
-  }, [searchQuery, clientes]); 
+  }, [searchQuery, clientes]);
 
   const renderCliente = ({ item }: { item: Cliente }) => (
     <View style={styles.clienteItem}>
@@ -70,7 +68,6 @@ const ListaClientesScreen = ({ navigation }: any) => {
       </TouchableOpacity>
     </View>
   );
-  
 
   return (
     <View style={styles.container}>
@@ -133,7 +130,7 @@ const styles = StyleSheet.create({
   clienteNome: {
     fontSize: 18,
     fontWeight: '500',
-    color: '#000',   
+    color: '#000',
   },
   clienteMorada: {
     fontSize: 14, // Tamanho menor que o nome

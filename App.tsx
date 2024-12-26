@@ -10,6 +10,15 @@ import EquipesScreen from './screens/EquipesScreen';
 import AddEquipeScreen from './screens/AddEquipeScreen';
 import ListaEquipesScreen from './screens/ListaEquipesScreen';
 import EditEquipeScreen from './screens/EditEquipeScreen';
+import ListasManutencoesScreen from './screens/ListasManutencoesScreen';
+import DiasDaSemanaScreen from './screens/DiasDaSemanaScreen';
+import PiscinasPorDiaScreen from './screens/PiscinasPorDiaScreen';
+import LoginScreen from './screens/LoginScreen';
+import AdminHomeScreen from './screens/AdminHomeScreen';
+import EquipeHomeScreen from './screens/EquipeHomeScreen';
+import EquipesListaManutencoesScreen from './screens/EquipesListaManutencoesScreen';
+import EquipesDiasDaSemanaScreen from './screens/EquipesDiasDaSemanaScreen';
+import EquipesPiscinasPorDiaScreen from './screens/EquipesPiscinasPorDiaScreen';
 
 
 
@@ -23,6 +32,15 @@ type RootStackParamList = {
   AddEquipe: undefined;
   ListaEquipes: undefined;
   EditEquipe: { equipeId: number };
+  ListasManutencoes: undefined;
+  DiasDaSemana: { equipeId: number; equipeNome: string }; // Inclui equipeNome para consistência
+  PiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string };
+  Login: undefined;
+  AdminHome: undefined;
+  EquipeHome: { equipeId: number; equipeNome: string };
+  EquipesListaManutencoes: { equipeId: number; equipeNome: string }; // Adiciona os parâmetros
+  EquipesDiasDaSemana: { equipeId: number; equipeNome: string }; // Adiciona os parâmetros
+  EquipesPiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -30,7 +48,11 @@ const Stack = createStackNavigator<RootStackParamList>();
 const App = (): React.JSX.Element => {
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator initialRouteName="Login">
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ title: 'Login', headerShown: false }}/>
         <Stack.Screen
           name="Home"
           component={HomeScreen}
@@ -76,6 +98,38 @@ const App = (): React.JSX.Element => {
           component={EditEquipeScreen}
           options={{ title: 'Detalhes da Equipe' }}
         />
+        <Stack.Screen 
+          name="ListasManutencoes" 
+          component={ListasManutencoesScreen} 
+          options={{ title: 'Listas de Manutenções' }} />
+        <Stack.Screen 
+          name="DiasDaSemana" 
+          component={DiasDaSemanaScreen} 
+          options={{ title: 'Dias da Semana' }} />
+        <Stack.Screen 
+          name="PiscinasPorDia" 
+          component={PiscinasPorDiaScreen} 
+          options={{ title: 'Piscinas por Dia' }} />
+        <Stack.Screen
+          name="AdminHome"
+          component={AdminHomeScreen}
+          options={{ title: 'Administração' }}/>
+        <Stack.Screen
+          name="EquipeHome"
+          component={EquipeHomeScreen}
+          options={{ title: 'Equipe' }}/>
+        <Stack.Screen
+          name="EquipesListaManutencoes"
+          component={EquipesListaManutencoesScreen}
+          options={{ title: 'Equipes - Lista de Manutenções' }}/>
+        <Stack.Screen
+          name="EquipesDiasDaSemana"
+          component={EquipesDiasDaSemanaScreen}
+          options={{ title: 'Dias da Semana' }}/>
+        <Stack.Screen 
+          name="EquipesPiscinasPorDia" 
+          component={EquipesPiscinasPorDiaScreen} 
+          options={{ title: 'Piscinas por Dia' }}/>
       </Stack.Navigator>
     </NavigationContainer>
   );

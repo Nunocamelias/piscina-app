@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import Config from 'react-native-config';
 
@@ -102,6 +103,23 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         editable={isEditable}
         onChangeText={(value) => handleChange('morada', value)}
       />
+      <View style={styles.row}>
+      <TextInput
+        style={[styles.input, styles.localidadeInput, !isEditable && styles.readOnly]}
+        placeholder="Localidade"
+        value={form.localidade}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('localidade', value)}
+      />
+      <TextInput
+        style={[styles.input, styles.codigoPostalInput, !isEditable && styles.readOnly]}
+        placeholder="Código Postal (0000-000)"
+        keyboardType="numeric"
+        value={form.codigo_postal}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('codigo_postal', value)}
+  />
+</View>
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Google Maps"
@@ -131,8 +149,9 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         editable={isEditable}
         onChangeText={(value) => handleChange('info_acesso', value)}
       />
+      <View style={styles.row}>
       <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
+        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
         placeholder="Comprimento (m)"
         keyboardType="numeric"
         value={form.comprimento}
@@ -140,15 +159,18 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         onChangeText={(value) => handleChange('comprimento', value)}
       />
       <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
+        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
         placeholder="Largura (m)"
         keyboardType="numeric"
         value={form.largura}
         editable={isEditable}
         onChangeText={(value) => handleChange('largura', value)}
       />
+      </View>
+
+      <View style={styles.row}>
       <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
+        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
         placeholder="Profundidade Média (m)"
         keyboardType="numeric"
         value={form.profundidade_media}
@@ -156,18 +178,20 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         onChangeText={(value) => handleChange('profundidade_media', value)}
       />
       <TextInput
-      style={[styles.input, styles.readOnly]} // Sempre não editável
-      placeholder="Volume (m³ - calculado automaticamente)"
-      value={form.volume} // Volume calculado automaticamente
-      editable={false}
-    />
-    <View style={styles.switchContainer}>
-      <Text>Tanque de Compensação</Text>
-      <Switch
-        value={form.tanque_compensacao}
-        onValueChange={(value) => handleChange('tanque_compensacao', value)}
-        disabled={!isEditable}
-      />
+        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
+        placeholder="Volume m³ (calculado automaticamente)"
+        value={form.volume}
+        editable={false} // O volume é calculado automaticamente
+  />
+</View>
+
+      <View style={styles.switchContainer}>
+        <Text>Tanque de Compensação</Text>
+        <Switch
+          value={form.tanque_compensacao}
+          onValueChange={(value) => handleChange('tanque_compensacao', value)}
+          disabled={!isEditable}
+        />
       </View>
       <View style={styles.switchContainer}>
         <Text>Cobertura</Text>
@@ -189,7 +213,9 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         <Text>Equipamentos Especiais</Text>
         <Switch
           value={form.equipamentos_especiais}
-          onValueChange={(value) => handleChange('equipamentos_especiais', value)}
+          onValueChange={(value) =>
+            handleChange('equipamentos_especiais', value)
+          }
           disabled={!isEditable}
         />
       </View>
@@ -200,26 +226,72 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         editable={isEditable}
         onChangeText={(value) => handleChange('ultima_substituicao', value)}
       />
-      <View style={styles.buttonContainer}>
-  <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
-    <Text style={styles.buttonText}>Voltar</Text>
-  </TouchableOpacity>
-  {isEditable ? (
-    <TouchableOpacity style={styles.button} onPress={salvarCliente}>
-      <Text style={styles.buttonText}>Salvar</Text>
-    </TouchableOpacity>
-  ) : (
-    <TouchableOpacity style={styles.button} onPress={() => setIsEditable(true)}>
-      <Text style={styles.buttonText}>Editar Cliente</Text>
-    </TouchableOpacity>
-  )}
-  <TouchableOpacity style={styles.button} onPress={apagarCliente}>
-    <Text style={styles.buttonText}>Apagar Cliente</Text>
-  </TouchableOpacity>
+      <TextInput
+        style={[styles.input, !isEditable && styles.readOnly]}
+        placeholder="Valor da Manutenção (€)"
+        keyboardType="numeric"
+        value={form.valor_manutencao}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('valor_manutencao', value)}
+      />
+      {/* Novo Campo: Periodicidade */}
+      <Text style={styles.label}>Periodicidade da Manutenção</Text>
+<View style={styles.input}>
+  <Picker
+    selectedValue={form.periodicidade}
+    onValueChange={(value) => handleChange('periodicidade', value)}
+    enabled={isEditable} // Habilita ou desabilita com base na edição
+    style={styles.picker} // Estilo para melhorar a aparência
+  >
+    <Picker.Item label="1 vez por semana" value="1" />
+    <Picker.Item label="2 vezes por semana" value="2" />
+    <Picker.Item label="3 vezes por semana" value="3" />
+    <Picker.Item label="4 vezes por semana" value="4" />
+    <Picker.Item label="5 vezes por semana" value="5" />
+    <Picker.Item label="6 vezes por semana" value="6" />
+    <Picker.Item label="Semana sim, semana não" value="quinzenal" />
+  </Picker>
 </View>
+      {/* Novo Campo: Condicionantes */}
+      <Text style={styles.label}>Condicionantes de Dias</Text>
+      <View style={styles.checkboxContainer}>
+      {['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'].map((dia: string) => (
+  <View key={dia} style={styles.checkboxItem}>
+    <Switch
+      value={form.condicionantes.includes(dia)}
+      onValueChange={() => {
+        const updated = form.condicionantes.includes(dia)
+          ? form.condicionantes.filter((item: string) => item !== dia)
+          : [...form.condicionantes, dia];
+        handleChange('condicionantes', updated);
+      }}
+      disabled={!isEditable}
+    />
+    <Text>{dia}</Text>
+  </View>
+))}
 
+      </View>
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+          <Text style={styles.buttonText}>Voltar</Text>
+        </TouchableOpacity>
+        {isEditable ? (
+          <TouchableOpacity style={styles.button} onPress={salvarCliente}>
+            <Text style={styles.buttonText}>Salvar</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.button} onPress={() => setIsEditable(true)}>
+            <Text style={styles.buttonText}>Editar Cliente</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.button} onPress={apagarCliente}>
+          <Text style={styles.buttonText}>Apagar Cliente</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
+  
 };
 
 const styles = StyleSheet.create({
@@ -242,6 +314,20 @@ const styles = StyleSheet.create({
       borderWidth: 1,
       borderColor: '#CCC',
     },
+    label: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      marginVertical: 10,
+    },
+    checkboxContainer: {
+      marginVertical: 10,
+      paddingHorizontal: 10,
+    },
+    checkboxItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 5,
+    },        
     readOnly: {
       backgroundColor: '#EEE',
     },
@@ -250,6 +336,37 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
       marginBottom: 15,
       color: '#333',
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 0, // Espaçamento entre as linhas
+    },
+    halfInput: {
+      flex: 1, // Cada campo ocupa metade da largura
+      marginRight: 10, // Espaço entre os campos
+    },
+    localidadeInput: {
+      flex: 2, // Ocupa 2/3 da linha
+      marginRight: 10, // Espaço entre os campos
+    },
+    codigoPostalInput: {
+      flex: 1, // Ocupa 1/3 da linha
+    },
+    picker: {
+      backgroundColor: '#FFF',
+      borderWidth: 1,
+      borderColor: '#CCC',
+      borderRadius: 5,
+      height: 53,
+      paddingHorizontal: 10,
+      justifyContent: 'center',
+      marginTop: -10, // Espaço acima do picker
+      marginBottom: -10, // Espaço abaixo do picker
+    },
+  pickerItem: {
+      fontSize: 16,
+      color: '#000',
     },
     switchContainer: {
       flexDirection: 'row',
@@ -262,8 +379,8 @@ const styles = StyleSheet.create({
         justifyContent: 'space-evenly', // Distribui os botões uniformemente
         marginTop: 20,
         flexWrap: 'wrap', // Permite que os botões sejam quebrados para a próxima linha, se necessário
-      },
-      button: {
+    },
+    button: {
         backgroundColor: '#ADD8E6', // Azul claro para os botões
         paddingVertical: 10,
         paddingHorizontal: 20,
@@ -273,7 +390,7 @@ const styles = StyleSheet.create({
         margin: 5, // Espaçamento ao redor de cada botão
         flex: 1, // Faz com que os botões tenham tamanhos proporcionais
         maxWidth: '30%', // Limita a largura máxima de cada botão
-      },
+    },
     buttonText: {
       color: '#000', // Preto para o texto
       fontWeight: 'bold',

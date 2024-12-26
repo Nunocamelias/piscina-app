@@ -30,7 +30,6 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
     try {
       await axios.put(`${Config.API_URL}/equipes/${equipeId}`, form);
       Alert.alert('Sucesso', 'Equipe atualizada com sucesso!');
-  
       navigation.navigate('ListaEquipes'); // Retorna à lista e dispara o listener de 'focus'.
     } catch (error) {
       console.error('Erro ao atualizar equipe:', error);
@@ -64,11 +63,9 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       ]
     );
   };
-  
-  
 
   const handleChange = (field: string, value: string | boolean) => {
-    setForm({ ...form, [field]: value });
+  setForm({ ...form, [field]: value });
   };
 
   if (loading || !form) {
