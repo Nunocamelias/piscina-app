@@ -2,61 +2,112 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import moment from 'moment';
 
 const EditEquipeScreen = ({ route, navigation }: any) => {
   const { equipeId } = route.params;
-  const [form, setForm] = useState<any>(null);
   const [isEditable, setIsEditable] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    nomeequipe: '',
+    nome1: '',
+    nome2: '',
+    matricula: '',
+    telefone: '',
+    proximaInspecao: '',
+    validadeSeguro: '', // Campos adicionados
+  });
 
   // Fetch equipe data
   useEffect(() => {
     const fetchEquipe = async () => {
       try {
-        const response = await axios.get(`${Config.API_URL}/equipes/${equipeId}`);
+        const empresaid = await AsyncStorage.getItem('empresaid'); // Recupera o empresaid
+        if (!empresaid) {
+          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+          navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
+          return;
+        }
+
+        const response = await axios.get(`${Config.API_URL}/equipes/${equipeId}`, {
+          params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
+        });
         setForm(response.data);
         setLoading(false);
       } catch (error) {
         console.error('Erro ao buscar equipe:', error);
         Alert.alert('Erro', 'Não foi possível carregar os detalhes da equipe.');
-        navigation.goBack();
+        navigation.goBack(); // Volta para a tela anterior em caso de erro
       }
     };
 
     fetchEquipe();
-  }, [equipeId]);
+  }, [equipeId, navigation]);
+
+  const getColorForDate = (date: string) => {
+      if (!date) return '#FFF'; // Branco por padrão
+  
+      const today = moment();
+      const targetDate = moment(date);
+  
+      const diffDays = targetDate.diff(today, 'days');
+  
+      if (diffDays <= 3) return '#FF6347'; // Vermelho
+      if (diffDays <= 15) return '#FFA500'; // Laranja
+      if (diffDays <= 30) return '#FFD700'; // Amarelo
+      return '#FFF'; // Branco (fora do período de alerta)
+    };
 
   const salvarEquipe = async () => {
     try {
-      await axios.put(`${Config.API_URL}/equipes/${equipeId}`, form);
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (!empresaid) {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        navigation.navigate('Login');
+        return;
+      }
+  
+      const updatedForm = { ...form, empresaid: parseInt(empresaid, 10) };
+  
+      await axios.put(`${Config.API_URL}/equipes/${equipeId}`, updatedForm);
+  
       Alert.alert('Sucesso', 'Equipe atualizada com sucesso!');
-      navigation.navigate('ListaEquipes'); // Retorna à lista e dispara o listener de 'focus'.
+      navigation.goBack();
     } catch (error) {
       console.error('Erro ao atualizar equipe:', error);
       Alert.alert('Erro', 'Não foi possível atualizar a equipe.');
     }
   };
   
-  const apagarEquipe = () => {
+
+  const apagarEquipe = async () => {
     Alert.alert(
-      "Confirmar Exclusão",
-      "Tem certeza de que deseja apagar esta equipe?",
+      'Confirmação',
+      'Tem certeza de que deseja apagar esta equipe?',
       [
+        { text: 'Cancelar', style: 'cancel' },
         {
-          text: "Cancelar",
-          style: "cancel",
-        },
-        {
-          text: "Apagar",
-          style: "destructive",
+          text: 'Apagar',
+          style: 'destructive',
           onPress: async () => {
             try {
-              await axios.delete(`http://10.0.2.2:5000/equipes/${equipeId}`);
-              Alert.alert("Sucesso", "Equipe apagada com sucesso!");
+              const empresaid = await AsyncStorage.getItem('empresaid');
+              if (!empresaid) {
+                Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+                navigation.navigate('Login');
+                return;
+              }
+
+              await axios.delete(`${Config.API_URL}/equipes/${equipeId}`, {
+                params: { empresaid: parseInt(empresaid, 10) }, // Inclui o empresaid como parâmetro
+              });
+
+              Alert.alert('Sucesso', 'Equipe apagada com sucesso!');
               navigation.goBack();
             } catch (error) {
-              console.error("Erro ao apagar equipe:", error);
-              Alert.alert("Erro", "Não foi possível apagar a equipe.");
+              console.error('Erro ao apagar equipe:', error);
+              Alert.alert('Erro', 'Não foi possível apagar a equipe.');
             }
           },
         },
@@ -65,7 +116,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
   };
 
   const handleChange = (field: string, value: string | boolean) => {
-  setForm({ ...form, [field]: value });
+    setForm({ ...form, [field]: value });
   };
 
   if (loading || !form) {
@@ -115,13 +166,28 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         editable={isEditable}
         onChangeText={(value) => handleChange('telefone', value)}
       />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Próxima Inspeção (AAAA-MM-DD)"
-        value={form.proxima_inspecao}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('proxima_inspecao', value)}
-      />
+     <TextInput
+  style={[
+    styles.input,
+    { backgroundColor: getColorForDate(form.proximaInspecao) }, // Aplica cor
+  ]}
+  placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
+  value={form.proximaInspecao}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('proximaInspecao', value)}
+/>
+
+<TextInput
+  style={[
+    styles.input,
+    { backgroundColor: getColorForDate(form.validadeSeguro) }, // Aplica cor
+  ]}
+  placeholder="Validade do Seguro (AAAA-MM-DD)"
+  value={form.validadeSeguro}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('validadeSeguro', value)}
+/>
+
       <View style={styles.buttonContainer}>
   <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
     <Text style={styles.buttonText}>Voltar</Text>

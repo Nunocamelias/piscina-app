@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Modal, Button } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Props = {
   navigation: any;
@@ -19,62 +20,100 @@ type Cliente = {
 };
 
 const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
-  const { equipeId, equipeNome, diaSemana, readOnly } = route.params; // Adicionado `readOnly`
+  const { equipeId, equipeNome, diaSemana, readOnly } = route.params;
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesDisponiveis, setClientesDisponiveis] = useState<Cliente[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+
+  // Função para buscar o empresaid do AsyncStorage
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      try {
+        console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
+        const empresaid = await AsyncStorage.getItem('empresaid');
+
+        if (empresaid) {
+          console.log('[DEBUG] Empresaid encontrado:', empresaid);
+          setUserEmpresaid(parseInt(empresaid, 10));
+        } else {
+          console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta.');
+          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        }
+      } catch (error) {
+        console.error('[DEBUG] Erro ao carregar empresaid:', error);
+        Alert.alert('Erro', 'Não foi possível carregar o empresaid.');
+      }
+    };
+
+    fetchEmpresaid();
+  }, []);
 
   // Função para buscar clientes associados
   const fetchClientes = async () => {
+    if (!userEmpresaid) return;
+
     try {
+      console.log('[DEBUG] Buscando clientes associados para equipe:', equipeId, 'e dia:', diaSemana);
       const response = await axios.get(`${Config.API_URL}/clientes-por-dia`, {
-        params: { equipeId, diaSemana },
+        params: { equipeId, diaSemana, empresaid: userEmpresaid },
       });
+      console.log('[DEBUG] Clientes associados recebidos:', response.data);
       setClientes(response.data);
     } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
+      console.error('[DEBUG] Erro ao buscar clientes associados:', error);
       Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
     }
   };
 
   // Função para buscar clientes disponíveis
   const fetchClientesDisponiveis = async () => {
+    if (!userEmpresaid) return;
+
     try {
+      console.log('[DEBUG] Buscando clientes disponíveis para dia:', diaSemana);
       const response = await axios.get(`${Config.API_URL}/clientes-disponiveis`, {
-        params: { diaSemana },
+        params: { diaSemana, empresaid: userEmpresaid },
       });
+      console.log('[DEBUG] Clientes disponíveis recebidos:', response.data);
       setClientesDisponiveis(response.data);
     } catch (error) {
-      console.error('Erro ao buscar clientes disponíveis:', error);
+      console.error('[DEBUG] Erro ao buscar clientes disponíveis:', error);
       Alert.alert('Erro', 'Não foi possível carregar os clientes disponíveis.');
     }
   };
 
   useEffect(() => {
-    fetchClientes();
-    if (!readOnly) fetchClientesDisponiveis(); // Apenas busca disponíveis se não for somente leitura
-  }, [equipeId, diaSemana]);
+    if (userEmpresaid) {
+      fetchClientes();
+      if (!readOnly) fetchClientesDisponiveis();
+    }
+  }, [userEmpresaid, equipeId, diaSemana]);
 
   const associarCliente = async (clienteId: number) => {
-    if (readOnly) return; // Desabilita ação para modo somente leitura
+    if (readOnly) return;
+
     try {
+      console.log('[DEBUG] Associando cliente:', clienteId, 'com equipe:', equipeId, 'e dia:', diaSemana);
       await axios.post(`${Config.API_URL}/associados`, {
         equipeId,
         diaSemana,
         clienteId,
+        empresaid: userEmpresaid,
       });
       Alert.alert('Sucesso', 'Cliente associado com sucesso!');
       fetchClientes();
       fetchClientesDisponiveis();
       setModalVisible(false);
     } catch (error) {
-      console.error('Erro ao associar cliente:', error);
+      console.error('[DEBUG] Erro ao associar cliente:', error);
       Alert.alert('Erro', 'Não foi possível associar o cliente.');
     }
   };
 
   const desassociarCliente = async (clienteId: number) => {
-    if (readOnly) return; // Desabilita ação para modo somente leitura
+    if (readOnly) return;
+
     Alert.alert(
       'Confirmação',
       'Tem certeza de que deseja desassociar este cliente?',
@@ -87,14 +126,15 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
           text: 'Sim',
           onPress: async () => {
             try {
+              console.log('[DEBUG] Desassociando cliente:', clienteId);
               await axios.delete(`${Config.API_URL}/desassociar-cliente`, {
-                data: { clienteId, equipeId, diaSemana },
+                data: { clienteId, equipeId, diaSemana, empresaid: userEmpresaid },
               });
               Alert.alert('Sucesso', 'Cliente desassociado com sucesso!');
               fetchClientes();
               fetchClientesDisponiveis();
             } catch (error) {
-              console.error('Erro ao desassociar cliente:', error);
+              console.error('[DEBUG] Erro ao desassociar cliente:', error);
               Alert.alert('Erro', 'Não foi possível desassociar o cliente.');
             }
           },

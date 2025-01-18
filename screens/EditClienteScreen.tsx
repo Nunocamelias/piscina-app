@@ -3,6 +3,7 @@ import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, T
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import Config from 'react-native-config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditClienteScreen = ({ route, navigation }: any) => {
   const { clienteId } = route.params;
@@ -14,18 +15,28 @@ const EditClienteScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     const fetchCliente = async () => {
       try {
-        const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`);
+        const empresaid = await AsyncStorage.getItem('empresaid'); // Recupera o empresaid
+        if (!empresaid) {
+          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+          navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
+          return;
+        }
+  
+        const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`, {
+          params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
+        });
         setForm(response.data);
         setLoading(false);
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);
         Alert.alert('Erro', 'Não foi possível carregar os detalhes do cliente.');
-        navigation.goBack();
+        navigation.goBack(); // Volta para a tela anterior em caso de erro
       }
     };
-
+  
     fetchCliente();
-  }, [clienteId]);
+  }, [clienteId, navigation]); // Adicione `navigation` às dependências para evitar avisos
+  
 
   // Atualiza o volume ao alterar os campos
   useEffect(() => {
@@ -41,15 +52,33 @@ const EditClienteScreen = ({ route, navigation }: any) => {
 
   const salvarCliente = async () => {
     try {
-      await axios.put(`${Config.API_URL}/clientes/${clienteId}`, form);
+      // Recupera o empresaid do AsyncStorage
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (!empresaid) {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        navigation.navigate('Login'); // Redireciona para a tela de login
+        return;
+      }
+  
+      // Inclui o empresaid no formulário antes de enviar
+      const updatedForm = { ...form, empresaid: parseInt(empresaid, 10) };
+  
+      // Faz a requisição para atualizar o cliente
+      const response = await axios.put(`${Config.API_URL}/clientes/${clienteId}`, updatedForm);
+  
       Alert.alert('Sucesso', 'Cliente atualizado com sucesso!');
       navigation.goBack(); // Retorna para a lista de clientes
     } catch (error) {
-      console.error('Erro ao atualizar cliente:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar o cliente.');
+      if (axios.isAxiosError(error)) {
+        console.error('Erro ao atualizar cliente (Axios):', error.response?.data || error.message);
+        Alert.alert('Erro', error.response?.data?.error || 'Não foi possível atualizar o cliente.');
+      } else {
+        console.error('Erro desconhecido ao atualizar cliente:', error);
+        Alert.alert('Erro', 'Ocorreu um erro inesperado. Tente novamente.');
+      }
     }
   };
-
+  
   const apagarCliente = async () => {
     Alert.alert(
       'Confirmação',
@@ -61,7 +90,18 @@ const EditClienteScreen = ({ route, navigation }: any) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await axios.delete(`${Config.API_URL}/clientes/${clienteId}`);
+              const empresaid = await AsyncStorage.getItem('empresaid');
+              if (!empresaid) {
+                Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+                navigation.navigate('Login');
+                return;
+              }
+  
+              console.log('Apagando cliente com empresaid:', empresaid);
+  
+              await axios.delete(`${Config.API_URL}/clientes/${clienteId}`, {
+                params: { empresaid: parseInt(empresaid, 10) }, // Envia o empresaid no query string
+              });
               Alert.alert('Sucesso', 'Cliente apagado com sucesso!');
               navigation.goBack(); // Retorna para a lista de clientes
             } catch (error) {
@@ -73,7 +113,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
       ]
     );
   };
-
+  
   const handleChange = (field: string, value: string | boolean) => {
     setForm({ ...form, [field]: value });
   };
@@ -118,8 +158,8 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         value={form.codigo_postal}
         editable={isEditable}
         onChangeText={(value) => handleChange('codigo_postal', value)}
-  />
-</View>
+      />
+      </View>
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Google Maps"
@@ -182,9 +222,8 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         placeholder="Volume m³ (calculado automaticamente)"
         value={form.volume}
         editable={false} // O volume é calculado automaticamente
-  />
-</View>
-
+      />
+      </View>
       <View style={styles.switchContainer}>
         <Text>Tanque de Compensação</Text>
         <Switch

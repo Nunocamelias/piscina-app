@@ -3,33 +3,81 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, 
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import Config from 'react-native-config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 // Definir o tipo do cliente
 interface Cliente {
+  empresaid: number;
   id: number;
   nome: string;
-  morada: string,
+  morada: string;
+  
 }
 
 const ListaClientesScreen = ({ navigation }: any) => {
-    const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]); // Dados filtrados
   const [searchQuery, setSearchQuery] = useState(''); // Estado para a busca
   const [loading, setLoading] = useState(true);
+  const [userEmpresaid, setUserEmpresaid] = useState<number | undefined>(undefined); // Estado para armazenar o empresaid
 
+  // Função para buscar o empresaid do token JWT
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      try {
+        console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
+        const empresaid = await AsyncStorage.getItem('empresaid');
+  
+        if (empresaid) {
+          console.log('[DEBUG] Empresaid encontrado:', empresaid);
+          setUserEmpresaid(parseInt(empresaid, 10));
+        } else {
+          console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta após confirmação.');
+          Alert.alert(
+            'Erro',
+            'Empresaid não encontrado. Faça login novamente.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  console.log('[DEBUG] Redirecionando para a tela de login...');
+                  navigation.navigate('Login');
+                },
+              },
+            ]
+          );
+        }
+      } catch (error) {
+        console.error('[DEBUG] Erro ao carregar empresaid:', error);
+        Alert.alert('Erro', 'Ocorreu um problema ao recuperar o empresaid.');
+      }
+    };
+  
+    fetchEmpresaid();
+  }, [navigation]);
+  
+  
   // Função para buscar clientes
   const fetchClientes = useCallback(async () => {
-    setLoading(true); // Ativa o indicador de carregamento
-    try {
-      const response = await axios.get(`${Config.API_URL}/clientes`); // Ajuste a URL se necessário
+    if (!userEmpresaid) {
+      return; // Evita chamar o backend sem empresaid
+    }  
+    setLoading(true);
+    try {      
+      const response = await axios.get(`${Config.API_URL}/clientes`, {
+        params: { empresaid: userEmpresaid },
+      });  
+      
       setClientes(response.data);
-    } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
+    } catch (error) {     
       Alert.alert('Erro', 'Não foi possível carregar a lista de clientes.');
     } finally {
-      setLoading(false); // Desativa o indicador de carregamento
+      setLoading(false);
     }
-  }, []);
+  }, [userEmpresaid]);
+  
+  
 
   // Atualiza os clientes ao carregar a tela
   useFocusEffect(
@@ -37,6 +85,7 @@ const ListaClientesScreen = ({ navigation }: any) => {
       fetchClientes();
     }, [fetchClientes])
   );
+
   // Atualiza os clientes filtrados conforme a busca
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -44,8 +93,9 @@ const ListaClientesScreen = ({ navigation }: any) => {
     } else {
       const query = searchQuery.toLowerCase();
       const filtered = clientes.filter((cliente) =>
-      cliente.nome.toLowerCase().includes(query) ||
-      cliente.morada.toLowerCase().includes(query));
+        cliente.nome.toLowerCase().includes(query) ||
+        cliente.morada.toLowerCase().includes(query)
+      );
       setFilteredClientes(filtered);
     }
   }, [searchQuery, clientes]);
@@ -61,6 +111,7 @@ const ListaClientesScreen = ({ navigation }: any) => {
         onPress={() =>
           navigation.navigate('EditCliente', {
             clienteId: item.id,
+            empresaid: userEmpresaid,
           })
         }
       >
@@ -93,6 +144,7 @@ const ListaClientesScreen = ({ navigation }: any) => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

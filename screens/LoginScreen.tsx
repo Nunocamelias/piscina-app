@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity } from 'react-native';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 
@@ -11,24 +11,27 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
   const handleLogin = async () => {
     try {
       console.log('Iniciando login com:', { email, senha });
-  
+
       const response = await axios.post(`${Config.API_URL}/login`, { email, senha });
       console.log('Resposta completa do servidor:', response.data);
-  
+
       const { token, user } = response.data;
-  
-      // Verifique os campos do usuário
+
+      if (!user.empresaid) {
+        throw new Error('Empresaid não encontrado no servidor.');
+      }
+
       console.log('Usuário desestruturado:', user);
-  
-      // Salva o token no AsyncStorage
+
       await AsyncStorage.setItem('authToken', token);
-      console.log('Token armazenado com sucesso:', token);
-  
+      await AsyncStorage.setItem('empresaid', user.empresaid.toString());
+      console.log('Token e empresaid armazenados com sucesso:', { token, empresaid: user.empresaid });
+
       const userType = user.tipo_usuario;
-      const equipeId = user.equipeId; // Corrija para "equipeId" com "I" maiúsculo, se necessário
-  
+      const equipeId = user.equipeId;
+
       console.log('Tipo de usuário:', userType, 'equipeId:', equipeId);
-  
+
       if (userType === 'admin') {
         console.log('Usuário identificado como admin. Redirecionando para Home.');
         navigation.navigate('Home');
@@ -49,16 +52,18 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       }
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('Erro ao fazer login (Axios):', error.response?.data || error.message);
-        Alert.alert('Erro', 'Credenciais inválidas.');
-      } else {
-        console.error('Erro desconhecido ao fazer login:', error);
+        const axiosError = error as AxiosError<{ error: string }>;
+        console.error('Erro ao fazer login (Axios):', axiosError.response?.data || axiosError.message);
+        Alert.alert('Erro', axiosError.response?.data?.error || 'Credenciais inválidas.');
+      } else if (error instanceof Error) {
+        console.error('Erro desconhecido ao fazer login:', error.message);
         Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
+      } else {
+        console.error('Erro inesperado:', error);
+        Alert.alert('Erro', 'Erro inesperado. Tente novamente.');
       }
     }
   };
-  
-  
 
   return (
     <View style={styles.container}>
@@ -126,6 +131,3 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
-
-
-

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import type { StackNavigationProp } from '@react-navigation/stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+import type { StackNavigationProp } from '@react-navigation/stack';
 
 type RootStackParamList = {
   AddCliente: undefined; // Tela AddCliente não requer parâmetros
@@ -19,7 +20,7 @@ type Props = {
 };
 
 type FormState = {
-  empresaid: number;
+  empresaid: number | null;
   nome: string;
   morada: string;
   localidade: string; // Novo campo
@@ -42,9 +43,10 @@ type FormState = {
   condicionantes: string[];
 };
 
+  
 const AddClienteScreen = ({ navigation }: Props) => {
   const [form, setForm] = useState<FormState>({
-    empresaid: 1,
+    empresaid: null, // Inicialmente nulo até buscar do AsyncStorage
     nome: '',
     morada: '',
     localidade: '', // Inicializado vazio
@@ -66,6 +68,44 @@ const AddClienteScreen = ({ navigation }: Props) => {
     periodicidade: '1',
     condicionantes: [],
   });
+
+  // Recupera o empresaid do AsyncStorage
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      try {
+        const empresaid = await AsyncStorage.getItem('empresaid');
+        if (empresaid) {
+          setForm((prevForm) => ({
+            ...prevForm,
+            empresaid: parseInt(empresaid, 10),
+          }));
+        } else {
+          Alert.alert(
+            'Erro',
+            'Empresaid não encontrado. Faça login novamente.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Redireciona para o login com o tipo correto
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' as keyof RootStackParamList }],
+                  });
+                },
+              },
+            ]
+          );
+        }
+      } catch (error) {
+        console.error('Erro ao recuperar empresaid:', error);
+        Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
+      }
+    };
+  
+    fetchEmpresaid();
+  }, [navigation]);
+  
   
 
   

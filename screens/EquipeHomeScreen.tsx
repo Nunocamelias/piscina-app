@@ -38,38 +38,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: '#D3D3D3', // Cinza claro
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20,
-    color: '#000',
+    color: '#000', // Preto
   },
   subtitle: {
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 20,
-    color: '#555',
+    color: '#555', // Cinza médio para contraste
   },
   button: {
-    backgroundColor: '#007BFF',
+    backgroundColor: '#ADD8E6', // Azul claro esbatido
     padding: 15,
-    borderRadius: 10,
+    borderRadius: 25, // Cantos arredondados para manter consistência
     marginBottom: 10,
     width: '80%',
     alignItems: 'center',
+    borderWidth: 2, // Linha de contorno suave
+    borderColor: '#A9A9A9', // Cinza escuro para contraste
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: '#000', // Preto para texto
+    fontWeight: '600',
     fontSize: 16,
   },
 });
 
 export default EquipeHomeScreen;
-
-
-
-

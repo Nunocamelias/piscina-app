@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
 import axios from 'axios';
-import type { StackNavigationProp } from '@react-navigation/stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+import type { StackNavigationProp } from '@react-navigation/stack';
 
 type RootStackParamList = {
-  DiasDaSemana: { equipeId: number; equipeNome: string }; // Navega para Dias da Semana com dados da equipe
+  DiasDaSemana: { equipeId: number; equipeNome: string }; // Navega para DiasDaSemana com dados da equipe
+  Login: undefined; // Tela de Login
 };
 
 type ListasManutencoesScreenNavigationProp = StackNavigationProp<
@@ -19,20 +21,52 @@ type Props = {
 
 const ListasManutencoesScreen = ({ navigation }: Props) => {
   const [equipes, setEquipes] = useState([]);
+  const [userEmpresaid, setUserEmpresaid] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      try {
+        const empresaid = await AsyncStorage.getItem('empresaid');
+        if (empresaid) {
+          setUserEmpresaid(parseInt(empresaid, 10));
+        } else {
+          Alert.alert(
+            'Erro',
+            'Empresaid não encontrado. Faça login novamente.',
+            [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+          );
+        }
+      } catch (error) {
+        console.error('Erro ao carregar empresaid:', error);
+        Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
+      }
+    };
+
+    fetchEmpresaid();
+  }, [navigation]);
 
   useEffect(() => {
     const fetchEquipes = async () => {
+      if (!userEmpresaid) {
+        console.log('[DEBUG] Tentativa de buscar equipes sem empresaid.');
+        return;
+      }
+
       try {
-        const response = await axios.get(`${Config.API_URL}/equipes`);
+        console.log('[DEBUG] Buscando equipes com empresaid:', userEmpresaid);
+        const response = await axios.get(`${Config.API_URL}/equipes`, {
+          params: { empresaid: userEmpresaid },
+        });
+        console.log('[DEBUG] Equipes recebidas:', response.data);
         setEquipes(response.data);
       } catch (error) {
-        console.error('Erro ao buscar equipes:', error);
+        console.error('[DEBUG] Erro ao buscar equipes:', error);
         Alert.alert('Erro', 'Não foi possível carregar as equipes.');
       }
     };
 
     fetchEquipes();
-  }, []);
+  }, [userEmpresaid]);
 
   const renderEquipeItem = ({
     item,
@@ -44,31 +78,35 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
       telefone?: string;
       matricula?: string;
       proxima_inspecao?: string;
+      validade_seguro?: string;
       nomeequipe: string;
     };
   }) => {
-    // Função para formatar a data
     const formatDate = (dateString: string | undefined) => {
       return dateString ? new Date(dateString).toISOString().split('T')[0] : 'Não definida';
     };
-  
+
     return (
       <TouchableOpacity
         style={styles.equipeButton}
-        onPress={() => navigation.navigate('DiasDaSemana', { equipeId: item.id, equipeNome: item.nomeequipe })}
+        onPress={() =>
+          navigation.navigate('DiasDaSemana', {
+            equipeId: item.id,
+            equipeNome: item.nomeequipe,
+          })
+        }
       >
         <Text style={styles.equipeButtonText}>
           {`Nome da Equipe: ${item.nomeequipe}\n` +
             `Técnicos: ${item.nome1}${item.nome2 ? ' & ' + item.nome2 : ''}\n` +
             `Telefone: ${item.telefone || 'Não informado'}\n` +
             `Matrícula: ${item.matricula || 'Não informada'}\n` +
-            `Próxima inspeção: ${formatDate(item.proxima_inspecao)}`}
+            `Próxima inspeção: ${formatDate(item.proxima_inspecao)}\n` +
+            `Validade do Seguro: ${formatDate(item.validade_seguro)}`}
         </Text>
       </TouchableOpacity>
     );
   };
-  
-  
 
   return (
     <View style={styles.container}>

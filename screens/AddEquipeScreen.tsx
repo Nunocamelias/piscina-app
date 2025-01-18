@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import moment from 'moment';
 
 const AddEquipeScreen = ({ navigation }: any) => {
   const [form, setForm] = useState({
@@ -11,21 +13,65 @@ const AddEquipeScreen = ({ navigation }: any) => {
     matricula: '',
     telefone: '',
     proximaInspecao: '',
+    validadeSeguro: '', // Novo campo
   });
+
+  const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      try {
+        const empresaid = await AsyncStorage.getItem('empresaid');
+        if (empresaid) {
+          setUserEmpresaid(parseInt(empresaid, 10));
+        } else {
+          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+          navigation.navigate('Login');
+        }
+      } catch (error) {
+        console.error('Erro ao recuperar empresaid:', error);
+        Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
+        navigation.navigate('Login');
+      }
+    };
+
+    fetchEmpresaid();
+  }, [navigation]);
 
   const handleChange = (field: string, value: string) => {
     setForm({ ...form, [field]: value });
   };
 
   const salvarEquipe = async () => {
+    if (!userEmpresaid) {
+      Alert.alert('Erro', 'Empresaid não definido. Faça login novamente.');
+      return;
+    }
+
     try {
-      const response = await axios.post(`${Config.API_URL}/equipes`, form); // Ajuste a URL se necessário
+      const payload = { ...form, empresaid: userEmpresaid };
+      console.log('Enviando dados ao backend:', payload);
+      const response = await axios.post(`${Config.API_URL}/equipes`, payload);
       Alert.alert('Sucesso', 'Equipe adicionada com sucesso!');
       navigation.goBack(); // Volta para a lista de equipes
     } catch (error) {
       console.error('Erro ao salvar equipe:', error);
       Alert.alert('Erro', 'Não foi possível salvar a equipe.');
     }
+  };
+
+  const getColorForDate = (date: string) => {
+    if (!date) return '#FFF'; // Branco por padrão
+
+    const today = moment();
+    const targetDate = moment(date);
+
+    const diffDays = targetDate.diff(today, 'days');
+
+    if (diffDays <= 3) return '#FF6347'; // Vermelho
+    if (diffDays <= 15) return '#FFA500'; // Laranja
+    if (diffDays <= 30) return '#FFD700'; // Amarelo
+    return '#FFF'; // Branco (fora do período de alerta)
   };
 
   return (
@@ -63,10 +109,22 @@ const AddEquipeScreen = ({ navigation }: any) => {
         onChangeText={(value) => handleChange('telefone', value)}
       />
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          { backgroundColor: getColorForDate(form.proximaInspecao) }, // Aplica cor com base na lógica
+        ]}
         placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
         value={form.proximaInspecao}
         onChangeText={(value) => handleChange('proximaInspecao', value)}
+      />
+      <TextInput
+        style={[
+          styles.input,
+          { backgroundColor: getColorForDate(form.validadeSeguro) }, // Aplica cor com base na lógica
+        ]}
+        placeholder="Validade do Seguro (AAAA-MM-DD)"
+        value={form.validadeSeguro}
+        onChangeText={(value) => handleChange('validadeSeguro', value)}
       />
       <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
         <Text style={styles.buttonText}>Salvar Equipe</Text>
