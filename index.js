@@ -6,5 +6,3 @@ import App from './App'; // Certifique-se de que o arquivo App.js está na raiz 
 import { name as appName } from './app.json';
 
 AppRegistry.registerComponent(appName, () => App);
-
-

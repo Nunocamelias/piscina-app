@@ -4,17 +4,18 @@ import Config from 'react-native-config';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 
 type Parametro = {
   id: number;
   parametro: string;
-  valor_minimo: number;
-  valor_maximo: number;
-  valor_alvo: number;
+  valor_minimo: string;
+  valor_maximo: string;
+  valor_alvo: string;
   valor_ultimo?: number;
-  valor_atual?: number;
+  valor_atual?: string;
   produto_aumentar: string;
   produto_diminuir: string;
   dosagem_aumentar: number;
@@ -24,7 +25,7 @@ type Parametro = {
   volume_calculo: number;
   resultado?: { resultado: string; quantidade?: number; produto?: string };
   bloqueado?: boolean;
-  status?: 'aplicado' | 'sem estoque' | 'nao necessario';
+  status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel';
   notificacaoEnviada?: boolean;
 };
 
@@ -68,6 +69,10 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   const [manutencaoAtual, setManutencaoAtual] = useState<{ id: number | null; status?: string } | null>(null);
   const [notificacoes, setNotificacoes] = useState<any[]>([]); // Ajuste o tipo conforme necessário
   const [empresaid, setEmpresaid] = useState<number | null>(null);
+  const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+  const [isEmpresaidLoaded, setIsEmpresaidLoaded] = useState(false);
+
+
   
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
 
@@ -95,129 +100,189 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   
     fetchEmpresaid();
   }, []);
-
   
   useEffect(() => {
-    const fetchDadosManutencao = async () => {
-      if (!clienteId || !diaSemana || !empresaid) {
-        console.warn("Cliente ID, Dia da Semana ou Empresaid não definidos.");
-        return;
-      }
-  
-      try {
-        console.log("Buscando dados do cliente...");
-        const clienteResponse = await fetch(
-          `${Config.API_URL}/clientes/${clienteId}?empresaid=${empresaid}`
-        );
-        const clienteData = await clienteResponse.json();
-        if (!clienteResponse.ok || !clienteData) {
-          throw new Error("Erro ao buscar dados do cliente.");
-        }
-        setCliente(clienteData);
-        console.log("Dados do cliente carregados:", clienteData);
-  
-        console.log("Buscando dados de manutenção...");
-        const manutencaoResponse = await fetch(
-          `${Config.API_URL}/manutencao-atual?clienteId=${clienteId}&diaSemana=${diaSemana}&empresaid=${empresaid}`
-        );
-        const manutencaoData = await manutencaoResponse.json();
-        if (!manutencaoResponse.ok) {
-          throw new Error(manutencaoData?.error || "Erro ao buscar dados da manutenção.");
-        }
-  
-        setManutencaoAtual(manutencaoData.manutencao || null);
-        console.log("Dados da manutenção carregados:", manutencaoData.manutencao);
-  
-        // Carregar parâmetros químicos e filtrar desativados
-        if (manutencaoData.manutencao?.id && Array.isArray(manutencaoData.parametros)) {
-          const parametrosAtivos = manutencaoData.parametros.filter(
-            (parametro: any) => parametro.status === "pendente" && parametro.bloqueado === false
-          );
-  
-          const parametrosAtualizados = parametrosAtivos.map((parametro: any) => ({
-            ...parametro,
-            bloqueado:
-              parametro.status === "aplicado" ||
-              parametro.status === "sem estoque" ||
-              parametro.status === "nao necessario",
-            resultado: parametro.resultado || null,
-          }));
-  
-          setParametrosQuimicos(parametrosAtualizados);
-          console.log("Parâmetros químicos ativos carregados:", parametrosAtualizados);
-        } else {
-          console.warn("Nenhum parâmetro químico encontrado para esta manutenção.");
-          setParametrosQuimicos([]);
-        }
-      } catch (error) {
-        console.error(
-          "Erro ao processar os parâmetros químicos:",
-          error instanceof Error ? error.message : String(error)
-        );
-        Alert.alert(
-          "Erro",
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar os dados. Verifique a conexão e tente novamente."
-        );
-      }
-    };
-  
-    fetchDadosManutencao();
-  }, [clienteId, diaSemana, empresaid]);
-  
-  
-
-  const registrarStatusParametro = async (
-    parametro: Parametro,
-    status: 'aplicado' | 'sem estoque' | 'nao necessario',
-    motivo: string = ''
-  ): Promise<void> => {
-    if (!manutencaoAtual?.id || !empresaid) {
-      Alert.alert("Erro", "ID da manutenção atual ou Empresaid não encontrado.");
-      return;
+    if (userEmpresaid) {
+      fetchParametros(); // Só carrega s parâmetros quando o empresaid estiver disponível
     }
+  }, [userEmpresaid]);
+  
+  const fetchParametros = async () => {
+    if (!userEmpresaid) return;
   
     try {
-      const response = await fetch(`${Config.API_URL}/manutencoes_parametros`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          manutencao_id: manutencaoAtual.id,
-          parametro: parametro.parametro,
-          valor_atual: parametro.valor_atual,
-          produto_usado: parametro.resultado?.produto || null,
-          quantidade_usada: parametro.resultado?.quantidade || 0,
-          status,
-          motivo,
-          empresaid: empresaid, // Adicionado empresaid no corpo da requisição
-        }),
+      const response = await axios.get(`${Config.API_URL}/parametros-quimicos`, {
+        params: { empresaid: userEmpresaid, ativo: true }, // Apenas parâmetros ativos
       });
   
-      if (response.ok) {
-        Alert.alert("Sucesso", "Status registrado com sucesso.");
-  
-        setParametrosQuimicos((prev) =>
-          prev.map((p) =>
-            p.parametro === parametro.parametro
-              ? {
-                  ...p,
-                  status,
-                  bloqueado: true, // Bloqueia o parâmetro após a validação
-                  valor_atual: p.valor_atual, // Garante que o valor atual não seja alterado
-                }
-              : p
-          ) as Parametro[]
-        );
+      if (response.status === 200) {
+        setParametrosQuimicos(response.data);
+        console.log('[DEBUG] Parâmetros químicos carregados:', response.data);
       } else {
-        console.error("Erro ao registrar status.");
-        Alert.alert("Erro", "Erro ao registrar status do produto.");
+        console.error('[DEBUG] Erro ao buscar parâmetros químicos. Status:', response.status);
+        Alert.alert('Erro', 'Não foi possível carregar os parâmetros químicos.');
       }
     } catch (error) {
-      console.error("Erro de conexão ao registrar status:", error);
-      Alert.alert("Erro", "Erro de conexão com o servidor.");
+      console.error('[DEBUG] Erro ao buscar parâmetros químicos:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os parâmetros.');
     }
   };
+  
+  //  FUNÇÃO DE CARREGAMENTO DA MANUTENÇÃO (Coloque antes do useFocusEffect)
+const fetchDadosManutencao = async () => {
+  if (!clienteId || !diaSemana || !empresaid) {
+    console.warn("Cliente ID, Dia da Semana ou Empresaid não definidos.");
+    return;
+  }
+
+  try {
+    console.log("Buscando dados do cliente...");
+    const clienteResponse = await fetch(
+      `${Config.API_URL}/clientes/${clienteId}?empresaid=${empresaid}`
+    );
+    const clienteData = await clienteResponse.json();
+    if (!clienteResponse.ok || !clienteData) {
+      throw new Error("Erro ao buscar dados do cliente.");
+    }
+    setCliente(clienteData);
+    console.log("Dados do cliente carregados:", clienteData);
+
+    console.log("Buscando dados de manutenção...");
+    const manutencaoResponse = await fetch(
+      `${Config.API_URL}/manutencao-atual?clienteId=${clienteId}&diaSemana=${diaSemana}&empresaid=${empresaid}`
+    );
+    const manutencaoData = await manutencaoResponse.json();
+    if (!manutencaoResponse.ok) {
+      throw new Error(manutencaoData?.error || "Erro ao buscar dados da manutenção.");
+    }
+
+    setManutencaoAtual(manutencaoData.manutencao || null);
+    console.log("Dados da manutenção carregados:", manutencaoData.manutencao);
+
+    // Carregar parâmetros químicos e filtrar desativados
+    if (manutencaoData.manutencao?.id && Array.isArray(manutencaoData.parametros)) {
+      const parametrosAtivos = manutencaoData.parametros.filter(
+        (parametro: any) => parametro.status === "pendente" && parametro.bloqueado === false
+      );
+
+      const parametrosAtualizados = manutencaoData.parametros.map((parametro: any) => ({
+        ...parametro,
+        bloqueado:
+          parametro.status === "aplicado" ||
+          parametro.status === "sem estoque" ||
+          parametro.status === "nao necessario" ||
+          parametro.status === "nao ajustavel",
+        resultado: parametro.status === "nao ajustavel"
+          ? { resultado: "Foi solicitada assistência à administração com sucesso", quantidade: 0, produto: null }
+          : parametro.resultado || null, // ✅ Mantém a mensagem correta se for "nao ajustavel"
+      }));
+      
+
+      setParametrosQuimicos(parametrosAtualizados);
+      console.log("Parâmetros químicos ativos carregados:", parametrosAtualizados);
+    } else {
+      console.warn("Nenhum parâmetro químico encontrado para esta manutenção.");
+      setParametrosQuimicos([]);
+    }
+  } catch (error) {
+    console.error(
+      "Erro ao processar os parâmetros químicos:",
+      error instanceof Error ? error.message : String(error)
+    );
+    Alert.alert(
+      "Erro",
+      error instanceof Error
+        ? error.message
+        : "Não foi possível carregar os dados. Verifique a conexão e tente novamente."
+    );
+  }
+};
+
+// ADICIONE  o useFocusEffect **DEPOIS** DA DECLARAÇÃO DA FUNÇÃO
+useFocusEffect(
+  useCallback(() => {
+    console.log("🔄 Recarregando os parâmetros químicos ao voltar para a tela...");
+
+    // Aguarda até que clienteId, diaSemana e empresaid estejam definidos
+    if (!clienteId || !diaSemana || !empresaid) {
+      console.warn("⚠️ Cliente ID, Dia da Semana ou Empresaid ainda não estão disponíveis. Aguardando...");
+      return;
+    }
+
+    fetchDadosManutencao();
+  }, [clienteId, diaSemana, empresaid]) // 🔄 O useFocusEffect será chamado sempre que essas variáveis mudarem
+);
+
+
+  
+
+const registrarStatusParametro = async (
+  parametro: Parametro,
+  status: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel',
+  motivo: string = ''
+): Promise<void> => {
+  if (!manutencaoAtual?.id || !empresaid) {
+    Alert.alert("Erro", "ID da manutenção atual ou Empresaid não encontrado.");
+    return;
+  }
+
+  // 🔍 Verifica se o status está correto antes de enviar
+  console.log("🔄 Enviando status para o backend:", {
+    manutencao_id: manutencaoAtual.id,
+    parametro: parametro.parametro,
+    valor_atual: parametro.valor_atual,
+    produto_usado: parametro.resultado?.produto || null,
+    quantidade_usada: parametro.resultado?.quantidade || 0,
+    status,
+    motivo,
+    empresaid,
+  });
+
+  try {
+    const response = await fetch(`${Config.API_URL}/manutencoes_parametros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        manutencao_id: manutencaoAtual.id,
+        parametro: parametro.parametro,
+        valor_atual: parametro.valor_atual,
+        produto_usado: parametro.resultado?.produto || null,
+        quantidade_usada: parametro.resultado?.quantidade || 0,
+        status, // ✅ Garante que "nao ajustavel" será enviado corretamente
+        motivo,
+        empresaid,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData?.error || "Erro ao registrar status do parâmetro.");
+    }
+
+    // ✅ Se deu certo, exibir sucesso e bloquear o parâmetro
+    Alert.alert("Sucesso", "Status registrado com sucesso.");
+    
+    setParametrosQuimicos((prev) =>
+      prev.map((p) =>
+        p.parametro === parametro.parametro
+          ? {
+              ...p,
+              status,
+              bloqueado: true, // ✅ Agora bloqueia corretamente
+              valor_atual: p.valor_atual, // ✅ Mantém o valor_atual ao voltar à tela
+            }
+          : p
+      )
+    );
+
+    console.log(`✅ Status "${status}" registrado com sucesso para o parâmetro ${parametro.parametro}`);
+  } catch (error) {
+    console.error("Erro de conexão ao registrar status:", error);
+    Alert.alert("Erro", error instanceof Error ? error.message : "Erro de conexão com o servidor.");
+  }
+};
+
+
   
 
   const [cliente, setCliente] = useState<{
@@ -240,84 +305,106 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   ];
   
   
-  const calcularProduto = (
-    parametro: Parametro,
-    volumePiscina: number
-  ): { resultado: string; quantidade: number; produto?: string } => {
-    if (!parametro || !parametro.parametro) {
-      return { resultado: "Parâmetro inválido ou não configurado.", quantidade: 0 };
-    }
-  
-    const {
-      valor_atual,
-      valor_minimo,
-      valor_maximo,
-      valor_alvo,
-      produto_aumentar,
-      produto_diminuir,
-      dosagem_aumentar,
-      dosagem_diminuir,
-      incremento_aumentar,
-      incremento_diminuir,
-      volume_calculo,
-    } = parametro;
-  
-    if (
-      valor_atual === undefined ||
-      valor_minimo === undefined ||
-      valor_maximo === undefined ||
-      valor_alvo === undefined ||
-      volume_calculo === undefined
-    ) {
-      return { resultado: "Dados incompletos para cálculo.", quantidade: 0 };
-    }
-  
-    // Verifica se o parâmetro está dentro do intervalo ideal
-    if (valor_atual >= valor_minimo && valor_atual <= valor_maximo) {
-      return { resultado: "Dentro do intervalo ideal", quantidade: 0 };
-    }
-  
-    const ajustarParaCima = valor_atual < valor_alvo;
-  
-    // Verifica se é possível ajustar para baixo
-    if (!ajustarParaCima && (!produto_diminuir || !dosagem_diminuir || !incremento_diminuir)) {
-      return { resultado: "Não é possível diminuir este parâmetro.", quantidade: 0 };
-    }
-  
-    const produto = ajustarParaCima ? produto_aumentar : produto_diminuir;
-  
-    if (!produto) {
-      return {
-        resultado: ajustarParaCima
-          ? "Não é possível aumentar este parâmetro."
-          : "Não é possível diminuir este parâmetro.",
-        quantidade: 0,
-      };
-    }
-  
-    const diferenca = ajustarParaCima
-      ? valor_alvo - valor_atual
-      : valor_atual - valor_alvo;
-  
-    const dosagem = ajustarParaCima ? dosagem_aumentar : dosagem_diminuir;
-    const incremento = ajustarParaCima ? incremento_aumentar : incremento_diminuir;
-  
-    if (!dosagem || !incremento || !volume_calculo) {
-      return { resultado: "Dados insuficientes para calcular a quantidade.", quantidade: 0 };
-    }
-  
-    const quantidade = parseFloat(
-      ((diferenca / incremento) * dosagem * (volumePiscina / volume_calculo)).toFixed(2)
-    );
-  
-    return {
-      resultado: `Adicionar ${quantidade}kg de ${produto}`,
-      quantidade,
-      produto,
-    };
+  type ResultadoCalculo = {
+    resultado: string;
+    quantidade: number;
+    produto?: string;
+    status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel' | 'pendente';
   };
   
-  
+
+  const calcularProduto = (
+  parametro: Parametro,
+  volumePiscina: number
+): ResultadoCalculo => { // ✅ Agora retorna um objeto corretamente tipado
+  if (!parametro || !parametro.parametro) {
+    return { resultado: "Parâmetro inválido ou não configurado.", quantidade: 0 };
+  }
+
+  const {
+    valor_atual,
+    valor_minimo,
+    valor_maximo,
+    valor_alvo,
+    produto_aumentar,
+    produto_diminuir,
+    dosagem_aumentar,
+    dosagem_diminuir,
+    incremento_aumentar,
+    incremento_diminuir,
+    volume_calculo,
+  } = parametro;
+
+  // Converte strings para números com validação
+  const valorAtualNum = parseFloat(valor_atual?.toString() || "0");
+  const valorMinNum = parseFloat(valor_minimo?.toString());
+  const valorMaxNum = parseFloat(valor_maximo?.toString());
+  const valorAlvoNum = parseFloat(valor_alvo?.toString());
+  const volumeCalculoNum = parseFloat(volume_calculo?.toString());
+
+  if (
+    isNaN(valorAtualNum) ||
+    isNaN(valorMinNum) ||
+    isNaN(valorMaxNum) ||
+    isNaN(valorAlvoNum) ||
+    isNaN(volumeCalculoNum)
+  ) {
+    return { resultado: "Valores insuficientes ou inválidos para cálculo.", quantidade: 0 };
+  }
+
+  // Verifica se o parâmetro está dentro do intervalo ideal
+  if (valorAtualNum >= valorMinNum && valorAtualNum <= valorMaxNum) {
+    return { resultado: "Dentro do intervalo ideal", quantidade: 0 };
+  }
+
+  // Determina se o ajuste é para cima ou para baixo
+  const ajustarParaCima = valorAtualNum < valorAlvoNum;
+
+  if (!ajustarParaCima) {
+    // 🚨 Verifica se não é possível ajustar para baixo
+    if (!produto_diminuir || !dosagem_diminuir || !incremento_diminuir) {
+      return {
+        resultado: "Não é possível diminuir este parâmetro.",
+        quantidade: 0,
+        status: "nao ajustavel" // ✅ Agora o status é retornado corretamente
+      };
+    }
+  } else {
+    // 🚨 Verifica se não é possível ajustar para cima
+    if (!produto_aumentar || !dosagem_aumentar || !incremento_aumentar) {
+      return {
+        resultado: "Não é possível aumentar este parâmetro.",
+        quantidade: 0,
+        status: "nao ajustavel" // ✅ Garante que também há status neste caso
+      };
+    }
+  }
+
+  const produto = ajustarParaCima ? produto_aumentar : produto_diminuir;
+  const diferenca = ajustarParaCima
+    ? valorAlvoNum - valorAtualNum
+    : valorAtualNum - valorAlvoNum;
+
+  const dosagem = ajustarParaCima ? dosagem_aumentar : dosagem_diminuir;
+  const incremento = ajustarParaCima ? incremento_aumentar : incremento_diminuir;
+
+  if (!dosagem || !incremento || volumeCalculoNum === 0) {
+    return { resultado: "Dados insuficientes para calcular a quantidade.", quantidade: 0 };
+  }
+
+  const quantidade = parseFloat(
+    ((diferenca / incremento) * dosagem * (volumePiscina / volumeCalculoNum)).toFixed(2)
+  );
+
+  return {
+    resultado: `Adicionar ${quantidade}kg de ${produto}`,
+    quantidade,
+    produto,
+    status: "pendente" // ✅ Por padrão, mantém pendente se for um cálculo normal
+  };
+};
+
+
   
   // Dados simulados para os itens com manutenção periódica
   const itensManutencaoPeriodica: ItemManutencao[] = [
@@ -420,10 +507,6 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
     }
   };
   
-  
-  
-
-  
 
 return (
   <FlatList
@@ -480,30 +563,30 @@ return (
           />
 
           {/* Valor Atual */}
-<TextInput
+          <TextInput
   style={[styles.input, styles.inputPequeno]}
   placeholder="Valor Atual"
-  keyboardType="numeric"
-  editable={!isSomenteLeitura && !item.bloqueado} // Editável apenas se não for somente leitura e não bloqueado
-  value={
-    item.valor_atual !== undefined && item.valor_atual !== null
-      ? item.valor_atual.toString()
-      : ""
-  }
+  keyboardType="decimal-pad"
+  editable={!isSomenteLeitura && !item.bloqueado} // Editável apenas se desbloqueado
+  value={item.valor_atual?.toString() || ""} // Exibe valor como string
   onChangeText={(text: string) => {
     if (!isSomenteLeitura && !item.bloqueado) {
-      const valorAtualizado = parseFloat(text) || undefined;
+      // Permite apenas números e um único ponto
+      const formattedText = text
+        .replace(/[^0-9.]/g, '') // Remove caracteres inválidos
+        .replace(/(\..*?)\..*/g, '$1'); // Permite apenas um ponto decimal
+
       setParametrosQuimicos((prev) =>
         prev.map((parametro) =>
           parametro.parametro === item.parametro
-            ? { ...parametro, valor_atual: valorAtualizado }
+            ? { ...parametro, valor_atual: formattedText } // Armazena como string
             : parametro
         )
       );
     }
   }}
+  placeholderTextColor="#888"
 />
-
 
           {/* Botão Calcular */}
 <TouchableOpacity
@@ -555,56 +638,77 @@ return (
 {item.resultado?.resultado === "Não é possível diminuir este parâmetro." && !item.notificacaoEnviada && (
   <TouchableOpacity
     style={styles.notifyButton}
-    onPress={async () => {
-      try {
-        const storedEmpresaid = await AsyncStorage.getItem("empresaid");
-        if (!storedEmpresaid) {
-          Alert.alert("Erro", "Empresaid não encontrado. Faça login novamente.");
-          return;
-        }
+    onPress={() => {
+      console.log("🔄 Botão 'Enviar Notificação' pressionado para o parâmetro:", item.parametro);
 
-        const parsedEmpresaid = parseInt(storedEmpresaid, 10);
-        if (isNaN(parsedEmpresaid)) {
-          Alert.alert("Erro", "Empresaid inválido. Faça login novamente.");
-          return;
-        }
-
-        await axios.post(`${Config.API_URL}/notificacoes`, {
-          clienteId,
-          parametro: item.parametro,
-          mensagem: "Não é possível diminuir este parâmetro. Ação necessária.",
-          empresaid: parsedEmpresaid,
-        });
-
-        Alert.alert("Sucesso", "Notificação enviada à administração.");
-
-        // Atualiza o estado para bloquear o botão e impedir alterações
-        setParametrosQuimicos((prev) =>
-          prev.map((param) =>
-            param.parametro === item.parametro
-              ? {
-                  ...param,
-                  notificacaoEnviada: true,
-                  bloqueado: true, // Impede novas alterações
-                  resultado: {
-                    ...param.resultado,
-                    resultado: "Foi solicitada assistência à administração com sucesso",
-                  },
+      Alert.alert(
+        "Confirmação",
+        "Tem certeza de que deseja enviar esta notificação à administração?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Enviar",
+            onPress: async () => {
+              try {
+                const storedEmpresaid = await AsyncStorage.getItem("empresaid");
+                if (!storedEmpresaid) {
+                  Alert.alert("Erro", "Empresaid não encontrado. Faça login novamente.");
+                  return;
                 }
-              : param
-          )
-        );
-      } catch (error) {
-        console.error("Erro ao enviar notificação:", error);
-        Alert.alert("Erro", "Não foi possível enviar a notificação.");
-      }
+
+                const parsedEmpresaid = parseInt(storedEmpresaid, 10);
+                if (isNaN(parsedEmpresaid)) {
+                  Alert.alert("Erro", "Empresaid inválido. Faça login novamente.");
+                  return;
+                }
+
+                console.log("🔄 Enviando notificação para o backend...");
+                
+                // Enviar a notificação para a administração
+                await axios.post(`${Config.API_URL}/notificacoes`, {
+                  clienteId,
+                  parametro: item.parametro,
+                  mensagem: "Não é possível diminuir este parâmetro. Ação necessária.",
+                  empresaid: parsedEmpresaid,
+                });
+
+                console.log("✅ Notificação enviada com sucesso!");
+
+                // ✅ Agora atualizamos o status no backend para "nao ajustavel"
+                console.log("🔄 Atualizando status para 'nao ajustavel' no backend...");
+                await registrarStatusParametro(item, "nao ajustavel");
+
+                Alert.alert("Sucesso", "Notificação enviada à administração.");
+
+                // Atualiza o estado para bloquear o botão e impedir alterações
+                setParametrosQuimicos((prev) =>
+                  prev.map((param) =>
+                    param.parametro === item.parametro
+                      ? {
+                          ...param,
+                          notificacaoEnviada: true,
+                          bloqueado: true, // Impede novas alterações
+                          resultado: {
+                            ...param.resultado,
+                            resultado: "Foi solicitada assistência à administração com sucesso",
+                          },
+                        }
+                      : param
+                  )
+                );
+              } catch (error) {
+                console.error("❌ Erro ao enviar notificação:", error);
+                Alert.alert("Erro", "Não foi possível enviar a notificação.");
+              }
+            },
+          },
+        ]
+      );
     }}
   >
     <Text style={styles.notifyButtonText}>Enviar Notificação à Administração</Text>
   </TouchableOpacity>
 )}
-
-
 
 {/* Botões de Ação */}
 {!isSomenteLeitura &&
@@ -705,11 +809,6 @@ return (
     <Text style={styles.emptyText}>Nenhum parâmetro químico encontrado.</Text>
   )}
 </View>
-
-
-
-
-
 
 
           {/* Itens com Manutenção Periódica */}
@@ -960,9 +1059,4 @@ const styles = StyleSheet.create({
   },
 });
 
-
 export default FolhaManutencaoScreen;
-
-
-
-

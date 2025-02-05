@@ -18,7 +18,7 @@ const HomeScreen = ({ navigation }: any) => {
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('ListasManutencoes')}>
-        <Text style={styles.buttonText}>Listas de Manutenções</Text>
+        <Text style={styles.buttonText}>Gerir Manutenções</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.button}

@@ -5,6 +5,7 @@ import axios from 'axios';
 import Config from 'react-native-config';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 
 
 // Lista fixa de parâmetros
@@ -22,16 +23,16 @@ const PARAMETROS_VALIDOS = [
 type Parametro = {
   id: number;
   parametro: string;
-  valor_minimo: number;
-  valor_maximo: number;
-  valor_alvo: number;
+  valor_minimo: string | null;
+  valor_maximo: string | null;
+  valor_alvo: string | null;
   produto_aumentar: string;
   produto_diminuir: string;
-  dosagem_aumentar: number;
-  dosagem_diminuir: number;
-  incremento_aumentar: number;
-  incremento_diminuir: number;
-  volume_calculo: number;
+  dosagem_aumentar: string | null;
+  dosagem_diminuir: string | null;
+  incremento_aumentar: string | null;
+  incremento_diminuir: string | null;
+  volume_calculo: string | null;
   ativo: boolean;
 };
 
@@ -69,24 +70,17 @@ const ParametrosQuimicosScreen: React.FC = () => {
 
   // Função para buscar os parâmetros químicos
   const fetchParametros = async () => {
-    if (!userEmpresaid) {
-      Alert.alert('Erro', 'Empresaid não disponível. Certifique-se de que fez login corretamente.');
-      return;
-    }
-  
     try {
-      console.log('[DEBUG] Buscando parâmetros químicos com empresaid:', userEmpresaid);
-  
       const response = await axios.get(`${Config.API_URL}/parametros-quimicos`, {
-        params: { empresaid: userEmpresaid, ativo: true },
+        params: { empresaid: userEmpresaid },
       });
       setParametros(response.data);
     } catch (error) {
-      console.error('[DEBUG] Erro ao buscar parâmetros químicos:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os parâmetros químicos.');
+      console.error('Erro ao buscar parâmetros químicos:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os parâmetros.');
     }
   };
-
+  
   useEffect(() => {
     if (userEmpresaid) {
       fetchParametros();
@@ -97,40 +91,43 @@ const ParametrosQuimicosScreen: React.FC = () => {
 
   // Função para salvar ou atualizar um parâmetro
   const salvarParametro = async () => {
-    if (!parametroSelecionado || !parametroSelecionado.parametro) {
-      Alert.alert('Erro', 'Selecione um parâmetro válido.');
-      return;
-    }
-  
-    if (!userEmpresaid) {
-      Alert.alert('Erro', 'Empresaid não disponível. Certifique-se de que fez login corretamente.');
-      return;
-    }
-  
     try {
-      // Incluímos o empresaid no corpo do pedido
-      const parametroComEmpresaid = { ...parametroSelecionado, empresaid: userEmpresaid };
+      if (!parametroSelecionado) return;
+  
+      const parametroComEmpresaid = {
+        ...parametroSelecionado,
+        valor_minimo: parametroSelecionado.valor_minimo || null,
+        valor_maximo: parametroSelecionado.valor_maximo || null,
+        valor_alvo: parametroSelecionado.valor_alvo || null,
+        produto_aumentar: parametroSelecionado.produto_aumentar || null,
+        produto_diminuir: parametroSelecionado.produto_diminuir || null,
+        dosagem_aumentar: parametroSelecionado.dosagem_aumentar || null,
+        dosagem_diminuir: parametroSelecionado.dosagem_diminuir || null,
+        incremento_aumentar: parametroSelecionado.incremento_aumentar || null,
+        incremento_diminuir: parametroSelecionado.incremento_diminuir || null,
+        volume_calculo: parametroSelecionado.volume_calculo || null,
+        empresaid: userEmpresaid,
+      };
   
       if (parametroSelecionado.id) {
+        // Atualiza o parâmetro existente
         await axios.put(
           `${Config.API_URL}/parametros-quimicos/${parametroSelecionado.id}`,
           parametroComEmpresaid
         );
       } else {
+        // Cria um novo parâmetro
         await axios.post(`${Config.API_URL}/parametros-quimicos`, parametroComEmpresaid);
       }
   
       Alert.alert('Sucesso', 'Parâmetro salvo com sucesso!');
-      fetchParametros(); // Atualiza os dados após salvar
-      setModalVisible(false); // Fecha o modal
+      fetchParametros(); // Atualiza a lista de parâmetros após salvar
+      setModalVisible(false);
     } catch (error) {
       console.error('Erro ao salvar parâmetro:', error);
       Alert.alert('Erro', 'Não foi possível salvar o parâmetro.');
     }
   };
-  
-  
-  
   
 
   // Função para abrir o modal de edição/adicionar
@@ -138,21 +135,21 @@ const ParametrosQuimicosScreen: React.FC = () => {
     setParametroSelecionado(parametro || {
       id: 0,
       parametro: '',
-      valor_minimo: 0,
-      valor_maximo: 0,
-      valor_alvo: 0,
+      valor_minimo: null, // Define como null por padrão
+      valor_maximo: null, // Define como null por padrão
+      valor_alvo: null, // Define como null por padrão
       produto_aumentar: '',
       produto_diminuir: '',
-      dosagem_aumentar: 0,
-      dosagem_diminuir: 0,
-      incremento_aumentar: 0,
-      incremento_diminuir: 0,
-      volume_calculo: 0,
+      dosagem_aumentar: null, // Define como null por padrão
+      dosagem_diminuir: null, // Define como null por padrão
+      incremento_aumentar: null, // Define como null por padrão
+      incremento_diminuir: null, // Define como null por padrão
+      volume_calculo: null, // Define como null por padrão
       ativo: true,
     });
     setModalVisible(true);
   };
-
+  
   // Função para apagar um parâmetro
   const apagarParametro = async (id: number) => {
     if (!userEmpresaid) {
@@ -175,6 +172,10 @@ const ParametrosQuimicosScreen: React.FC = () => {
   
 
   return (
+    <KeyboardAvoidingView
+    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    style={{ flex: 1 }}
+  >
     <View style={styles.container}>
       <FlatList
   data={parametros}
@@ -266,46 +267,52 @@ const ParametrosQuimicosScreen: React.FC = () => {
             {/* 2ª linha: Intervalo ideal */}
             <Text>Intervalo Ideal:</Text>
             <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="Mínimo"
-                keyboardType="numeric"
-                value={parametroSelecionado?.valor_minimo.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    valor_minimo: parseFloat(text) || 0,
-                  })
-                }
-              />
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="Máximo"
-                keyboardType="numeric"
-                value={parametroSelecionado?.valor_maximo.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    valor_maximo: parseFloat(text) || 0,
-                  })
-                }
-              />
+            <TextInput
+               style={[styles.input, styles.smallInput]}
+               placeholder="Mín"
+               keyboardType="decimal-pad" // Teclado para números com decimais
+               value={parametroSelecionado?.valor_minimo || ''} // Trabalha diretamente como string
+               onChangeText={(text) => {
+               const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+               setParametroSelecionado({
+              ...parametroSelecionado!,
+              valor_minimo: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+           />
+           <TextInput
+               style={[styles.input, styles.smallInput]}
+               placeholder="Máx"
+               keyboardType="decimal-pad" // Teclado para números com decimais
+               value={parametroSelecionado?.valor_maximo || ''} // Trabalha diretamente como string
+               onChangeText={(text) => {
+               const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+               setParametroSelecionado({
+               ...parametroSelecionado!,
+               valor_maximo: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+           />
             </View>
   
             {/* 3ª linha: Valor Alvo */}
             <Text>Valor Alvo:</Text>
             <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="Alvo"
-              keyboardType="numeric"
-              value={parametroSelecionado?.valor_alvo.toString()}
-              onChangeText={(text) =>
-                setParametroSelecionado({
-                  ...parametroSelecionado!,
-                  valor_alvo: parseFloat(text) || 0,
-                })
-              }
-            />
+               style={[styles.input, styles.smallInput]}
+               placeholder="Alvo"
+               keyboardType="decimal-pad" // Teclado para números com decimais
+               value={parametroSelecionado?.valor_alvo || ''} // Trabalha diretamente como string
+               onChangeText={(text) => {
+               const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+               setParametroSelecionado({
+               ...parametroSelecionado!,
+               valor_alvo: formattedText, // Atualiza como string
+            });
+          }}
+           placeholderTextColor="#888"
+          />
   
             {/* 4ª linha: Produto para aumentar */}
             <Text>Produto para Aumentar:</Text>
@@ -324,44 +331,50 @@ const ParametrosQuimicosScreen: React.FC = () => {
             {/* 5ª linha: Dosagem para aumentar */}
             <Text>Dosagem para Aumentar:</Text>
             <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="Kg"
-                keyboardType="numeric"
-                value={parametroSelecionado?.dosagem_aumentar.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    dosagem_aumentar: parseFloat(text) || 0,
-                  })
-                }
-              />
-              <Text>para incrementar</Text>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="Incremento"
-                keyboardType="numeric"
-                value={parametroSelecionado?.incremento_aumentar.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    incremento_aumentar: parseFloat(text) || 0,
-                  })
-                }
-              />
-              <Text>em</Text>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="m³"
-                keyboardType="numeric"
-                value={parametroSelecionado?.volume_calculo.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    volume_calculo: parseFloat(text) || 0,
-                  })
-                }
-              />
+            <TextInput
+              style={[styles.input, styles.smallInput]}
+              placeholder="Kg"
+              keyboardType="decimal-pad" // Teclado para números com decimais
+              value={parametroSelecionado?.dosagem_aumentar || ''} // Trabalha diretamente como string
+              onChangeText={(text) => {
+              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+              setParametroSelecionado({
+              ...parametroSelecionado!,
+              dosagem_aumentar: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+          />
+            <Text>para incrementar</Text>
+            <TextInput
+              style={[styles.input, styles.smallInput]}
+              placeholder=""
+              keyboardType="decimal-pad" // Teclado para números com decimais
+              value={parametroSelecionado?.incremento_aumentar || ''} // Trabalha diretamente como string
+              onChangeText={(text) => {
+              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+              setParametroSelecionado({
+              ...parametroSelecionado!,
+              incremento_aumentar: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+          />
+            <Text>em</Text>
+            <TextInput
+              style={[styles.input, styles.smallInput]}
+              placeholder="m³"
+              keyboardType="decimal-pad" // Teclado para números com decimais
+              value={parametroSelecionado?.volume_calculo || ''} // Trabalha diretamente como string
+              onChangeText={(text) => {
+              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+              setParametroSelecionado({
+              ...parametroSelecionado!,
+              volume_calculo: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+          />
             </View>
   
             {/* 6ª linha: Produto para diminuir */}
@@ -379,46 +392,52 @@ const ParametrosQuimicosScreen: React.FC = () => {
             />
   
             {/* 7ª linha: Dosagem para diminuir */}
-            <Text>Dosagem para Diminuir:</Text>
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="Kg"
-                keyboardType="numeric"
-                value={parametroSelecionado?.dosagem_diminuir.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    dosagem_diminuir: parseFloat(text) || 0,
-                  })
-                }
-              />
+          <Text>Dosagem para Diminuir:</Text>
+          <View style={styles.row}>
+          <TextInput
+              style={[styles.input, styles.smallInput]}
+              placeholder="Kg"
+              keyboardType="decimal-pad" // Teclado para números com decimais
+              value={parametroSelecionado?.dosagem_diminuir || ''} // Trabalha diretamente como string
+              onChangeText={(text) => {
+              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+              setParametroSelecionado({
+              ...parametroSelecionado!,
+              dosagem_diminuir: formattedText, // Atualiza como string
+            });
+           }}
+           placeholderTextColor="#888"
+          />
               <Text>para reduzir</Text>
               <TextInput
                 style={[styles.input, styles.smallInput]}
-                placeholder="Incremento"
-                keyboardType="numeric"
-                value={parametroSelecionado?.incremento_diminuir.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    incremento_diminuir: parseFloat(text) || 0,
-                  })
-                }
-              />
-              <Text>em</Text>
-              <TextInput
+                placeholder=""
+                keyboardType="decimal-pad" // Teclado para números com decimais
+                value={parametroSelecionado?.incremento_diminuir || ''} // Trabalha diretamente como string
+                onChangeText={(text) => {
+                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+                setParametroSelecionado({
+                ...parametroSelecionado!,
+                incremento_diminuir: formattedText, // Atualiza como string
+             });
+            }}
+           placeholderTextColor="#888"
+          />
+            <Text>em</Text>
+            <TextInput
                 style={[styles.input, styles.smallInput]}
                 placeholder="m³"
-                keyboardType="numeric"
-                value={parametroSelecionado?.volume_calculo.toString()}
-                onChangeText={(text) =>
-                  setParametroSelecionado({
-                    ...parametroSelecionado!,
-                    volume_calculo: parseFloat(text) || 0,
-                  })
-                }
-              />
+                keyboardType="decimal-pad" // Teclado para números com decimais
+                value={parametroSelecionado?.volume_calculo || ''} // Trabalha diretamente como string
+                onChangeText={(text) => {
+                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
+                setParametroSelecionado({
+                ...parametroSelecionado!,
+                volume_calculo: formattedText, // Atualiza como string
+              });
+             }}
+           placeholderTextColor="#888"
+          />
             </View>
   
             {/* Botões para Salvar e Cancelar */}
@@ -435,6 +454,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
         </Modal>
       )}
     </View>
+    </KeyboardAvoidingView>
   );
   
 };

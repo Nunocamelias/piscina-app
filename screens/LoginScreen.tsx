@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance, } from 'react-native';
 import axios, { AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [email, setEmail] = useState('');
@@ -13,77 +15,67 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       console.log('Iniciando login com:', { email, senha });
 
       const response = await axios.post(`${Config.API_URL}/login`, { email, senha });
-      console.log('Resposta completa do servidor:', response.data);
-
       const { token, user } = response.data;
 
       if (!user.empresaid) {
         throw new Error('Empresaid não encontrado no servidor.');
       }
 
-      console.log('Usuário desestruturado:', user);
-
       await AsyncStorage.setItem('authToken', token);
       await AsyncStorage.setItem('empresaid', user.empresaid.toString());
-      console.log('Token e empresaid armazenados com sucesso:', { token, empresaid: user.empresaid });
 
       const userType = user.tipo_usuario;
       const equipeId = user.equipeId;
 
-      console.log('Tipo de usuário:', userType, 'equipeId:', equipeId);
-
       if (userType === 'admin') {
-        console.log('Usuário identificado como admin. Redirecionando para Home.');
         navigation.navigate('Home');
       } else if (userType === 'equipe') {
         if (!equipeId) {
-          console.error('equipeId está faltando para o tipo de usuário equipe:', user);
           Alert.alert('Erro', 'ID da equipe não encontrado.');
           return;
         }
-        console.log('Usuário identificado como equipe. Redirecionando para EquipeHome.');
         navigation.navigate('EquipeHome', {
           equipeId: user.equipeId,
           equipeNome: user.nome,
         });
       } else {
-        console.log('Tipo de usuário desconhecido:', userType);
         Alert.alert('Erro', 'Tipo de usuário desconhecido.');
       }
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const axiosError = error as AxiosError<{ error: string }>;
-        console.error('Erro ao fazer login (Axios):', axiosError.response?.data || axiosError.message);
-        Alert.alert('Erro', axiosError.response?.data?.error || 'Credenciais inválidas.');
-      } else if (error instanceof Error) {
-        console.error('Erro desconhecido ao fazer login:', error.message);
-        Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
+        Alert.alert('Erro', error.response?.data?.error || 'Credenciais inválidas.');
       } else {
-        console.error('Erro inesperado:', error);
-        Alert.alert('Erro', 'Erro inesperado. Tente novamente.');
+        Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
       }
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>GES-POOL</Text>
+      <Text style={isDarkMode ? styles.titleDark : styles.titleLight}>GES-POOL</Text>
       <TextInput
-        style={styles.input}
+        style={isDarkMode ? styles.inputDark : styles.inputLight}
         placeholder="Email"
+        placeholderTextColor={isDarkMode ? '#BBBBBB' : '#666666'}
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
       <TextInput
-        style={styles.input}
+        style={isDarkMode ? styles.inputDark : styles.inputLight}
         placeholder="Senha"
+        placeholderTextColor={isDarkMode ? '#BBBBBB' : '#666666'}
         secureTextEntry
         value={senha}
         onChangeText={setSenha}
       />
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Entrar</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => navigation.navigate('RegisterCompany')}>
+        <Text style={isDarkMode ? styles.registerTextDark : styles.registerTextLight}>
+          Novo Registo de Empresa
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -94,22 +86,41 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#000' : '#D3D3D3',
     paddingHorizontal: 20,
   },
-  title: {
+  titleLight: {
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 30,
     color: '#000',
   },
-  input: {
+  titleDark: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 30,
+    color: '#FFF',
+  },
+  inputLight: {
     borderWidth: 1,
     borderColor: '#ccc',
     padding: 10,
     marginBottom: 15,
     borderRadius: 25,
     backgroundColor: '#FFF',
+    color: '#000',
+    width: '80%',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  inputDark: {
+    borderWidth: 1,
+    borderColor: '#555',
+    padding: 10,
+    marginBottom: 15,
+    borderRadius: 25,
+    backgroundColor: '#333',
+    color: '#FFF',
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
@@ -127,6 +138,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
+  },
+  registerTextLight: {
+    fontSize: 14,
+    color: '#696969',
+    textDecorationLine: 'underline',
+    marginTop: 15,
+  },
+  registerTextDark: {
+    fontSize: 14,
+    color: '#BBBBBB',
+    textDecorationLine: 'underline',
+    marginTop: 15,
   },
 });
 

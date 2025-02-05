@@ -4,6 +4,10 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg');
 const moment = require('moment'); // Certifique-se de que o moment.js está instalado: npm install moment
+const jwt = require('jsonwebtoken'); // Para gerar tokens JWT
+const bcrypt = require('bcrypt'); // Para criptografar senhas
+const nodemailer = require('nodemailer');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -48,6 +52,14 @@ const formatArrayForPostgres = (array) => {
   }
   return '{}'; // Retorna array vazio como padrão
 };
+
+const transporter = nodemailer.createTransport({
+  service: 'Gmail',
+  auth: {
+    user: 'seu-email@gmail.com', // Seu email
+    pass: 'sua-senha-de-app',   // Senha do app (não a senha da conta)
+  },
+});
 
 // Endpoint POST para adicionar cliente
 app.post('/clientes', async (req, res) => {
@@ -272,7 +284,7 @@ app.get('/clientes/:id', async (req, res) => {
       res.status(500).send('Erro ao apagar cliente.');
     }
   });
-    app.post('/equipes', async (req, res) => {
+  app.post('/equipes', async (req, res) => {
     const {
       empresaid,
       nomeequipe,
@@ -280,12 +292,22 @@ app.get('/clientes/:id', async (req, res) => {
       nome2,
       matricula,
       telefone,
-      proximaInspecao,
-      validadeSeguro, // Novo campo
+      proxima_inspecao,
+      validade_seguro, // Novo campo
     } = req.body;
   
-    if (!empresaid) {
-      return res.status(400).send('O campo empresaid é obrigatório.');
+    // Validações de campos obrigatórios
+    if (!empresaid || !nomeequipe || !nome1 || !nome2 || !matricula || !telefone) {
+      return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+    }
+  
+    // Validações específicas para datas
+    if (proxima_inspecao && isNaN(Date.parse(proxima_inspecao))) {
+      return res.status(400).json({ error: 'A data de próxima inspeção é inválida.' });
+    }
+  
+    if (validade_seguro && isNaN(Date.parse(validade_seguro))) {
+      return res.status(400).json({ error: 'A validade do seguro é inválida.' });
     }
   
     try {
@@ -294,14 +316,16 @@ app.get('/clientes/:id', async (req, res) => {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *;
       `;
-      const values = [empresaid, nomeequipe, nome1, nome2, matricula, telefone, proximaInspecao, validadeSeguro];
+      const values = [empresaid, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao, validade_seguro];
+  
       const result = await pool.query(query, values);
       res.status(201).json(result.rows[0]);
     } catch (error) {
       console.error('Erro ao salvar equipe:', error);
-      res.status(500).send('Erro ao salvar equipe.');
+      res.status(500).json({ error: 'Erro ao salvar equipe.' });
     }
   });
+  
   // Endpoint GET para buscar todas as equipes de uma empresa
 app.get('/equipes', async (req, res) => {
   const { empresaid } = req.query; // Inclui o empresaid como filtro
@@ -357,52 +381,81 @@ app.get('/equipes', async (req, res) => {
   });
   
   // Endpoint PUT para atualizar uma equipe
-  app.put('/equipes/:id', async (req, res) => {
-    const {
-      empresaid,
-      nomeequipe,
-      nome1,
-      nome2,
-      matricula,
-      telefone,
-      proximaInspecao,
-      validadeSeguro, // Novo campo
-    } = req.body;
-  
-    const { id } = req.params;
-  
-    if (!empresaid) {
-      return res.status(400).send('O campo empresaid é obrigatório.');
+app.put('/equipes/:id', async (req, res) => {
+  const {
+    empresaid,
+    nomeequipe,
+    nome1,
+    nome2,
+    matricula,
+    telefone,
+    proxima_inspecao,
+    validade_seguro, 
+    email,          
+    senha,          
+  } = req.body;
+
+  const { id } = req.params;
+
+  if (!empresaid) {
+    return res.status(400).send('O campo empresaid é obrigatório.');
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // Inicia uma transação
+
+    // Verificar se a equipe pertence à empresa
+    const verificaQuery = `
+      SELECT id
+      FROM equipes
+      WHERE id = $1 AND empresaid = $2;
+    `;
+    const verificaResult = await client.query(verificaQuery, [id, empresaid]);
+
+    if (verificaResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(403).send('A equipe não pertence à empresa especificada.');
     }
-  
-    try {
-      // Verificar se a equipe pertence à empresa
-      const verificaQuery = `
-        SELECT id
-        FROM equipes
-        WHERE id = $1 AND empresaid = $2;
+
+    // Atualizar a equipe
+    const queryEquipe = `
+      UPDATE equipes
+      SET nomeequipe = $1, nome1 = $2, nome2 = $3, matricula = $4, telefone = $5, proxima_inspecao = $6, validade_seguro = $7
+      WHERE id = $8
+      RETURNING *;
+    `;
+    const valuesEquipe = [nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao, validade_seguro, id];
+    const equipeResult = await client.query(queryEquipe, valuesEquipe);
+
+    // Atualizar ou criar o usuário associado
+    if (email && senha) {
+      const hashedPassword = await bcrypt.hash(senha, 10);
+      const queryUsuario = `
+        INSERT INTO usuarios (nome, email, senha, tipo_usuario, equipeid, empresaid)
+        VALUES ($1, $2, $3, 'equipe', $4, $5)
+        ON CONFLICT (email) DO UPDATE SET
+          nome = EXCLUDED.nome,
+          senha = EXCLUDED.senha,
+          equipeid = EXCLUDED.equipeid,
+          empresaid = EXCLUDED.empresaid;
       `;
-      const verificaResult = await pool.query(verificaQuery, [id, empresaid]);
-  
-      if (verificaResult.rows.length === 0) {
-        return res.status(403).send('A equipe não pertence à empresa especificada.');
-      }
-  
-      // Atualizar a equipe
-      const query = `
-        UPDATE equipes
-        SET nomeequipe = $1, nome1 = $2, nome2 = $3, matricula = $4, telefone = $5, proxima_inspecao = $6, validade_seguro = $7
-        WHERE id = $8
-        RETURNING *;
-      `;
-      const values = [nomeequipe, nome1, nome2, matricula, telefone, proximaInspecao, validadeSeguro, id];
-      const result = await pool.query(query, values);
-      res.status(200).json(result.rows[0]);
-    } catch (error) {
-      console.error('Erro ao atualizar equipe:', error);
-      res.status(500).send('Erro ao atualizar equipe.');
+      const valuesUsuario = [nomeequipe, email, hashedPassword, id, empresaid];
+      await client.query(queryUsuario, valuesUsuario);
     }
-  });
+
+    await client.query('COMMIT'); // Finaliza a transação
+    res.status(200).json(equipeResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK'); // Reverte em caso de erro
+    console.error('Erro ao atualizar equipe:', error);
+    res.status(500).send('Erro ao atualizar equipe.');
+  } finally {
+    client.release();
+  }
+});
+
   
   
   app.delete('/equipes/:id', async (req, res) => {
@@ -745,36 +798,130 @@ app.get('/contador-clientes', async (req, res) => {
 });
 
 //Esse endpoint permitirá adicionar novos usuários ao sistema
-const bcrypt = require('bcrypt'); // Para criptografar senhas
 
+
+// Endpoint de Registo de Empresa e Usuário
 app.post('/register', async (req, res) => {
-  const { nome, email, senha, tipo_usuario, empresaid } = req.body;
+  const { nome_empresa, email, senha, telefone, endereco } = req.body;
 
-  if (!nome || !email || !senha || !tipo_usuario || !empresaid) {
+  console.log('Iniciando registro:');
+  console.log('Dados recebidos:', { nome_empresa, email, telefone, endereco });
+
+  // Validação dos campos obrigatórios
+  if (!nome_empresa || !email || !senha || !telefone || !endereco) {
+    console.error('Erro: Campos obrigatórios ausentes.');
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   }
 
   try {
-    // Criptografa a senha antes de salvar no banco
+    // Verifica se o email já existe na tabela empresas
+    console.log('Verificando email duplicado...');
+    const emailCheckQuery = `SELECT id FROM empresas WHERE email = $1`;
+    const emailCheckResult = await pool.query(emailCheckQuery, [email]);
+
+    if (emailCheckResult.rows.length > 0) {
+      console.warn('Email já registrado:', email);
+
+      // Verificar se há um registro incompleto
+      const empresaId = emailCheckResult.rows[0].id;
+      const usuarioCheckQuery = `SELECT id FROM usuarios WHERE empresaid = $1`;
+      const usuarioCheckResult = await pool.query(usuarioCheckQuery, [empresaId]);
+
+      if (usuarioCheckResult.rows.length === 0) {
+        // Caso não haja usuário associado, remova o registro incompleto
+        console.log('Removendo registro incompleto da empresa:', empresaId);
+        await pool.query(`DELETE FROM empresas WHERE id = $1`, [empresaId]);
+      } else {
+        return res.status(400).json({ error: 'Este email já está registrado.' });
+      }
+    }
+
+    // Query para inserir a empresa (ID gerado automaticamente pelo banco)
+    const empresaQuery = `
+      INSERT INTO empresas (nome, email, telefone, endereco)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id;
+    `;
+    const empresaValues = [nome_empresa, email, telefone, endereco];
+
+    console.log('Executando query para inserir empresa...');
+    const empresaResult = await pool.query(empresaQuery, empresaValues);
+    const createdEmpresaId = empresaResult.rows[0].id;
+    console.log('Empresa inserida com sucesso:', createdEmpresaId);
+
+    // Criptografa a senha do administrador
+    console.log('Criptografando senha...');
     const hashedPassword = await bcrypt.hash(senha, 10);
 
-    const query = `
-      INSERT INTO usuarios (nome, email, senha, tipo_usuario, empresaid)
-      VALUES ($1, $2, $3, $4, $5)
+    // Query para inserir o usuário administrador
+    const usuarioQuery = `
+      INSERT INTO usuarios (nome, email, senha, tipo_usuario, empresaid, token, confirmado)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id, nome, email, tipo_usuario, empresaid;
     `;
-    const values = [nome, email, hashedPassword, tipo_usuario, empresaid];
+    const usuarioValues = [
+      `Admin - ${nome_empresa}`,
+      email,
+      hashedPassword,
+      'admin',
+      createdEmpresaId,
+      uuidv4(), // Token de confirmação
+      false, // Confirmado inicialmente como falso
+    ];
 
-    const result = await pool.query(query, values);
-    res.status(201).json(result.rows[0]);
+    console.log('Executando query para inserir usuário...');
+    const usuarioResult = await pool.query(usuarioQuery, usuarioValues);
+    console.log('Usuário inserido com sucesso:', usuarioResult.rows[0]);
+
+    // Envia o email de confirmação
+    //const confirmationLink = `${process.env.APP_URL}/confirmar-email?token=${usuarioResult.rows[0].token}`;
+    //await transporter.sendMail({
+      //from: process.env.EMAIL_FROM,
+      //to: email,
+      //subject: 'Confirme seu email - GES-POOL',
+      //html: `<p>Olá, ${nome_empresa}!</p><p>Clique no link abaixo para confirmar seu email:</p><a href="${confirmationLink}">${confirmationLink}</a>`,
+    //});
+
+    //console.log('Email de confirmação enviado com sucesso.');
+    res.status(201).json({ message: 'Registo realizado com sucesso!' });
   } catch (error) {
-    console.error('Erro ao registrar usuário:', error);
-    res.status(500).json({ error: 'Erro ao registrar usuário.' });
+    console.error('Erro ao registrar empresa e usuário:', error);
+
+    // Trata o erro de email duplicado
+    if (error.code === '23505') {
+      console.warn('Erro: Email duplicado.');
+      return res.status(400).json({ error: 'Email já está registrado.' });
+    }
+
+    res.status(500).json({ error: 'Erro ao registrar empresa e usuário.' });
   }
 });
-//Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
-const jwt = require('jsonwebtoken'); // Para gerar tokens JWT
 
+app.get('/confirmar-email', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Token é obrigatório.' });
+  }
+
+  try {
+    const result = await pool.query(`SELECT id FROM usuarios WHERE token = $1 AND confirmado = false`, [token]);
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Token inválido ou já utilizado.' });
+    }
+
+    await pool.query(`UPDATE usuarios SET confirmado = true WHERE token = $1`, [token]);
+
+    res.json({ message: 'Email confirmado com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao confirmar email:', error);
+    res.status(500).json({ error: 'Erro ao confirmar email.' });
+  }
+});
+
+
+//Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
 app.post('/login', async (req, res) => {
   const { email, senha } = req.body;
 
@@ -783,61 +930,173 @@ app.post('/login', async (req, res) => {
   }
 
   try {
-    // Consulta para buscar o usuário pelo email
     const query = `
       SELECT 
         u.id AS userId, 
-        u.nome AS nome, 
-        u.tipo_usuario, 
+        u.nome, 
         u.equipeid AS equipeId, 
-        u.senha AS senha,
-        u.empresaid AS empresaid -- Recupera o empresaid diretamente
+        u.senha, 
+        u.empresaid 
       FROM usuarios u 
-      WHERE u.email = $1
+      WHERE u.email = $1;
     `;
 
     const result = await pool.query(query, [email]);
 
-    if (result.rows.length > 0) {
-      const user = result.rows[0];
-
-      // Verifica se a senha é válida
-      const isPasswordValid = await bcrypt.compare(senha, user.senha);
-      if (!isPasswordValid) {
-        return res.status(401).json({ error: 'Credenciais inválidas.' });
-      }
-
-      // Verifica se o campo empresaid está presente
-      if (!user.empresaid) {
-        return res.status(400).json({ error: 'Empresaid não está definido para este usuário.' });
-      }
-
-      // Gera o token JWT
-      const token = jwt.sign(
-        { id: user.userId, tipo_usuario: user.tipo_usuario, empresaid: user.empresaid },
-        'secreto',
-        { expiresIn: '1h' }
-      );
-
-      // Retorna os dados do usuário e o token
-      return res.json({
-        token,
-        user: {
-          id: user.userId,
-          nome: user.nome,
-          tipo_usuario: user.tipo_usuario,
-          equipeId: user.equipeid,
-          empresaid: user.empresaid, // Inclui empresaid no retorno
-        },
-      });
-    } else {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
+
+    const user = result.rows[0];
+    const isPasswordValid = await bcrypt.compare(senha, user.senha);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Credenciais inválidas.' });
+    }
+
+    if (!user.empresaid) {
+      return res.status(400).json({ error: 'Usuário não associado a uma empresa válida.' });
+    }
+
+    // Determinar o tipo de usuário com base em equipeId
+    const tipoUsuario = user.equipeid ? 'equipe' : 'admin';
+
+    const token = jwt.sign(
+      { id: user.userId, tipo_usuario: tipoUsuario, empresaid: user.empresaid },
+      process.env.JWT_SECRET || 'secreto', // Use variável de ambiente
+      { expiresIn: '1h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.userId,
+        nome: user.nome,
+        tipo_usuario: tipoUsuario, // Calculado dinamicamente
+        equipeId: user.equipeid,
+        empresaid: user.empresaid,
+      },
+    });
   } catch (error) {
     console.error('Erro ao fazer login:', error);
-    return res.status(500).json({ error: 'Erro ao fazer login.' });
+    res.status(500).json({ error: 'Erro ao fazer login.' });
   }
 });
+
+
+app.post('/usuarios', async (req, res) => {
+  const { nome, email, senha, equipeid, empresaid } = req.body;
+
+  if (!nome || !email || !senha || !empresaid) {
+    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+  }
+
+  // Determina o tipo de usuário com base no valor de equipeid
+  const tipo_usuario = equipeid ? 'equipe' : 'admin';
+
+  // Remova caracteres nulos
+  const sanitizedNome = nome.replace(/\0/g, '');
+  const sanitizedEmail = email.replace(/\0/g, '');
+
+  try {
+    const hashedPassword = await bcrypt.hash(senha, 10);
+    const query = `
+      INSERT INTO usuarios (nome, email, senha, tipo_usuario, equipeid, empresaid)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, nome, email, tipo_usuario, equipeid, empresaid;
+    `;
+    const values = [sanitizedNome, sanitizedEmail, hashedPassword, tipo_usuario, equipeid || null, empresaid];
+
+    const result = await pool.query(query, values);
+    res.status(201).json({ message: 'Usuário criado com sucesso!', usuario: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário.' });
+  }
+});
+
+
+
+app.get('/usuarios', async (req, res) => {
+  const { equipeid, empresaid } = req.query;
+
+  if (!equipeid || !empresaid) {
+    return res.status(400).json({ error: 'Os parâmetros equipeid e empresaid são obrigatórios.' });
+  }
+
+  try {
+    const query = `
+      SELECT id, email, equipeid, empresaid
+      FROM usuarios
+      WHERE equipeid = $1 AND empresaid = $2;
+    `;
+    const result = await pool.query(query, [equipeid, empresaid]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro ao buscar usuário.' });
+  }
+});
+
+
+// Endpoint PUT para atualizar um usuário
+app.put('/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nome, email, senha, tipo_usuario, equipeid, empresaid } = req.body;
+
+  if (!id || !nome || !email || !tipo_usuario || !empresaid) {
+    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+  }
+
+  try {
+    // Gera o hash da senha, se fornecida
+    const hashedPassword = senha ? await bcrypt.hash(senha, 10) : null;
+
+    // Constrói dinamicamente o SQL, dependendo da presença de `senha`
+    const senhaQueryPart = hashedPassword ? ', senha = $3' : '';
+    const senhaValuePart = hashedPassword ? [hashedPassword] : [];
+
+    const query = `
+  UPDATE usuarios
+  SET
+    nome = $1,
+    email = $2,
+    ${senha ? 'senha = $3,' : ''} 
+    tipo_usuario = $4,
+    equipeid = $5
+  WHERE id = $6 AND empresaid = $7
+  RETURNING *;
+`;
+
+    // Monta os valores dinamicamente, dependendo da presença de `senha`
+    const values = [
+      nome,
+      email,
+      ...senhaValuePart,
+      tipo_usuario,
+      equipeid || null,
+      id,
+      empresaid,
+    ].filter((v) => v !== undefined); // Remove valores `undefined` para evitar erros no SQL
+
+    const result = await pool.query(query, values);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado ou não pertence à empresa.' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar usuário:', error);
+    res.status(500).json({ error: 'Erro ao atualizar usuário.' });
+  }
+});
+
 
 app.get('/clientes-por-equipe', async (req, res) => {
   const { equipeId, empresaid } = req.query;
@@ -1027,7 +1286,7 @@ app.get('/manutencao-atual', async (req, res) => {
 });
 
 app.get('/parametros-quimicos', async (req, res) => {
-  const { ativo, empresaid } = req.query; // Aceitar o filtro por empresaid e ativo
+  const { ativo, empresaid } = req.query;
 
   if (!empresaid) {
     return res.status(400).json({ error: 'O parâmetro empresaid é obrigatório.' });
@@ -1036,8 +1295,9 @@ app.get('/parametros-quimicos', async (req, res) => {
   let query = 'SELECT * FROM parametros_quimicos WHERE empresaid = $1';
   const values = [empresaid];
 
-  if (ativo === 'true') {
-    query += ' AND ativo = TRUE';
+  if (ativo !== undefined) {
+    query += ' AND ativo = $2';
+    values.push(ativo === 'true');
   }
 
   try {
@@ -1048,6 +1308,7 @@ app.get('/parametros-quimicos', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar parâmetros químicos.' });
   }
 });
+
 
 app.get('/parametros-quimicos/:id', async (req, res) => {
   const { id } = req.params;
@@ -1103,17 +1364,17 @@ app.post('/parametros-quimicos', async (req, res) => {
     `;
     const values = [
       empresaid,
-      parametro,
-      valor_minimo,
-      valor_maximo,
-      valor_alvo,
-      produto_aumentar,
-      produto_diminuir,
-      dosagem_aumentar,
-      dosagem_diminuir,
-      volume_calculo,
-      incremento_aumentar,
-      incremento_diminuir,
+      parametro || null,
+      valor_minimo || null,
+      valor_maximo || null,
+      valor_alvo || null,
+      produto_aumentar || null,
+      produto_diminuir || null,
+      dosagem_aumentar || null,
+      dosagem_diminuir || null,
+      volume_calculo || null,
+      incremento_aumentar || null,
+      incremento_diminuir || null,
       ativo,
     ];
     const result = await pool.query(query, values);
@@ -1646,13 +1907,11 @@ app.get('/ultima-manutencao', async (req, res) => {
 app.post('/manutencoes_parametros', async (req, res) => {
   const { manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, status, motivo, empresaid } = req.body;
 
-  // Validação inicial
   if (!manutencao_id || !parametro || !empresaid) {
     return res.status(400).json({ error: 'Dados incompletos: manutenção, parâmetro ou empresaid ausente.' });
   }
 
   try {
-    // Validação do `empresaid`
     const validaEmpresaQuery = `
       SELECT 1 
       FROM manutencoes m
@@ -1667,7 +1926,18 @@ app.post('/manutencoes_parametros', async (req, res) => {
       return res.status(403).json({ error: 'Parâmetro ou manutenção não pertencem à empresa especificada.' });
     }
 
-    // Inserção ou atualização do parâmetro
+    // 🔍 LOG PARA VERIFICAR SE O STATUS "nao ajustavel" ESTÁ CHEGANDO
+    console.log("🔄 Registrando status no banco de dados:", { 
+      manutencao_id, 
+      parametro, 
+      valor_atual, 
+      produto_usado, 
+      quantidade_usada, 
+      status, 
+      motivo, 
+      empresaid 
+    });
+
     const query = `
       INSERT INTO manutencoes_parametros (
         manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, status, motivo, empresaid
@@ -1675,13 +1945,21 @@ app.post('/manutencoes_parametros', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (manutencao_id, parametro)
       DO UPDATE SET
-        valor_atual = $3,
-        produto_usado = $4,
-        quantidade_usada = $5,
-        status = $6,
-        motivo = $7,
-        empresaid = $8;
+        valor_atual = CASE 
+          WHEN EXCLUDED.status = 'pendente' THEN NULL 
+          WHEN EXCLUDED.status = 'nao ajustavel' THEN COALESCE(manutencoes_parametros.valor_atual, EXCLUDED.valor_atual) 
+          ELSE COALESCE(EXCLUDED.valor_atual, manutencoes_parametros.valor_atual) 
+        END,
+        produto_usado = EXCLUDED.produto_usado,
+        quantidade_usada = EXCLUDED.quantidade_usada,
+        status = CASE 
+          WHEN EXCLUDED.status = 'nao ajustavel' THEN 'nao ajustavel'
+          ELSE EXCLUDED.status
+        END,
+        motivo = EXCLUDED.motivo,
+        empresaid = EXCLUDED.empresaid;
     `;
+
     const values = [
       manutencao_id,
       parametro,
@@ -1690,17 +1968,58 @@ app.post('/manutencoes_parametros', async (req, res) => {
       quantidade_usada || 0,
       status,
       motivo || '',
-      empresaid, // Adicionado aqui
+      empresaid,
     ];
 
     await pool.query(query, values);
 
     res.status(200).json({ message: 'Status do parâmetro registrado com sucesso.' });
+
   } catch (error) {
     console.error('Erro ao registrar status do parâmetro:', error);
     res.status(500).json({ error: 'Erro ao registrar status do parâmetro.' });
   }
 });
+
+app.get('/manutencoes_parametros', async (req, res) => {
+  const { manutencao_id, empresaid } = req.query;
+
+  // Validação inicial
+  if (!manutencao_id || !empresaid) {
+    return res.status(400).json({ error: 'ID da manutenção e empresa são obrigatórios.' });
+  }
+
+  try {
+    const query = `
+      SELECT 
+  mp.manutencao_id,
+  mp.parametro,
+  mp.valor_atual,
+  mp.produto_usado,
+  mp.quantidade_usada,
+  mp.status,
+  CASE 
+    WHEN mp.status = 'nao ajustavel' THEN 'Foi solicitada assistência à administração com sucesso'
+    ELSE mp.motivo
+  END AS motivo,
+  pq.ativo
+FROM manutencoes_parametros mp
+JOIN parametros_quimicos pq ON mp.parametro = pq.parametro AND pq.empresaid = $2
+WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
+
+    `;
+    const values = [manutencao_id, empresaid];
+
+    const result = await pool.query(query, values);
+    console.log("🚀 Parâmetros carregados do banco:", result.rows);
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar parâmetros da manutenção:', error);
+    res.status(500).json({ error: 'Erro ao buscar parâmetros da manutenção.' });
+  }
+});
+
 
 app.post('/manutencoes/concluir', async (req, res) => {
   const { cliente_id, equipe_id, dia_semana, parametros, status, empresaid } = req.body;
@@ -1859,7 +2178,7 @@ app.get('/notificacoes', async (req, res) => {
         c.nome AS cliente_nome,
         c.morada AS cliente_morada,
         c.email AS cliente_email,
-        e.nome AS equipe_nome
+        e.nomeequipe AS equipe_nome
       FROM notificacoes n
       LEFT JOIN clientes c ON n.cliente_id = c.id
       LEFT JOIN associados a ON a.clienteid = c.id

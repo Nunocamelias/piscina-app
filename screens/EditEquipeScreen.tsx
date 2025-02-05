@@ -5,6 +5,11 @@ import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
 
+const validatePassword = (password: string) => {
+  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  return passwordRegex.test(password);
+};
+
 const EditEquipeScreen = ({ route, navigation }: any) => {
   const { equipeId } = route.params;
   const [isEditable, setIsEditable] = useState(false);
@@ -15,36 +20,90 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
     nome2: '',
     matricula: '',
     telefone: '',
-    proximaInspecao: '',
-    validadeSeguro: '', // Campos adicionados
+    proxima_inspecao: '',
+    validade_seguro: '',
+    email: '',
+    password: '',
   });
 
-  // Fetch equipe data
-  useEffect(() => {
-    const fetchEquipe = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid'); // Recupera o empresaid
-        if (!empresaid) {
-          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-          navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
-          return;
-        }
+  const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+  const [usuarioId, setUsuarioId] = useState<number | null>(null);
 
-        const response = await axios.get(`${Config.API_URL}/equipes/${equipeId}`, {
-          params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
-        });
-        setForm(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error('Erro ao buscar equipe:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os detalhes da equipe.');
-        navigation.goBack(); // Volta para a tela anterior em caso de erro
+  useEffect(() => {
+    const fetchEmpresaid = async () => {
+      const storedEmpresaid = await AsyncStorage.getItem('empresaid');
+      if (storedEmpresaid) {
+        setUserEmpresaid(parseInt(storedEmpresaid, 10));
+      } else {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        navigation.navigate('Login');
       }
     };
+  
+    fetchEmpresaid();
+  }, []);
 
-    fetchEquipe();
-  }, [equipeId, navigation]);
+  useEffect(() => {
+    const fetchDados = async () => {
+      await fetchEquipe();
+    };
+    fetchDados();
+  }, [equipeId]);
 
+  
+  // Fetch equipe data
+ 
+    const fetchEquipe = async () => {
+      console.log('[DEBUG] Iniciando fetchEquipe para equipeId:', equipeId);
+    
+      try {
+        const empresaid = await AsyncStorage.getItem('empresaid');
+        if (!empresaid) {
+          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+          navigation.navigate('Login');
+          return;
+        }
+    
+        console.log('[DEBUG] Empresaid carregado do AsyncStorage:', empresaid);
+    
+        const equipeResponse = await axios.get(`${Config.API_URL}/equipes/${equipeId}`, {
+          params: { empresaid: parseInt(empresaid, 10) },
+        });
+        console.log('[DEBUG] Dados da equipe recebidos:', equipeResponse.data);
+    
+        const usuarioResponse = await axios.get(`${Config.API_URL}/usuarios`, {
+          params: { equipeid: equipeId, empresaid: parseInt(empresaid, 10) },
+        });
+    
+        if (!usuarioResponse.data.id) {
+          console.error('[DEBUG] Nenhum ID de usuário encontrado.');
+          Alert.alert('Erro', 'Nenhum usuário associado à equipe encontrado.');
+          return;
+        }
+    
+        console.log('[DEBUG] Dados do usuário recebidos:', usuarioResponse.data);
+    
+        setForm({
+          nomeequipe: equipeResponse.data.nomeequipe,
+          nome1: equipeResponse.data.nome1,
+          nome2: equipeResponse.data.nome2,
+          matricula: equipeResponse.data.matricula,
+          telefone: equipeResponse.data.telefone,
+          proxima_inspecao: equipeResponse.data.proxima_inspecao,
+          validade_seguro: equipeResponse.data.validade_seguro,
+          email: usuarioResponse.data.email || '',
+          password: '', // Sempre em branco por segurança
+        });
+    
+        setUsuarioId(usuarioResponse.data.id); // Salva o ID do usuário
+        setLoading(false);
+      } catch (error) {
+        console.error('[DEBUG] Erro ao carregar os dados da equipe:', error);
+        Alert.alert('Erro', 'Não foi possível carregar os dados da equipe.');
+        navigation.goBack();
+      }
+    };
+    
   const getColorForDate = (date: string) => {
       if (!date) return '#FFF'; // Branco por padrão
   
@@ -59,62 +118,86 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       return '#FFF'; // Branco (fora do período de alerta)
     };
 
-  const salvarEquipe = async () => {
-    try {
-      const empresaid = await AsyncStorage.getItem('empresaid');
-      if (!empresaid) {
+    const salvarEquipe = async () => {
+      if (!userEmpresaid) {
         Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-        navigation.navigate('Login');
         return;
       }
-  
-      const updatedForm = { ...form, empresaid: parseInt(empresaid, 10) };
-  
-      await axios.put(`${Config.API_URL}/equipes/${equipeId}`, updatedForm);
-  
-      Alert.alert('Sucesso', 'Equipe atualizada com sucesso!');
-      navigation.goBack();
-    } catch (error) {
-      console.error('Erro ao atualizar equipe:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar a equipe.');
-    }
-  };
-  
+    
+      try {
+        const payloadEquipe = {
+          nomeequipe: form.nomeequipe,
+          nome1: form.nome1,
+          nome2: form.nome2,
+          matricula: form.matricula,
+          telefone: form.telefone,
+          proxima_inspecao: form.proxima_inspecao,
+          validade_seguro: form.validade_seguro,
+          empresaid: userEmpresaid,
+        };
+    
+        await axios.put(`${Config.API_URL}/equipes/${equipeId}`, payloadEquipe);
+    
+        if (form.password && form.email) {
+          if (!validatePassword(form.password)) {
+            Alert.alert(
+              'Erro',
+              'A senha deve ter pelo menos 8 caracteres, incluindo uma letra, um número e um caractere especial.'
+            );
+            return;
+          }
+    
+          const usuarioPayload = {
+            nome: form.nomeequipe,
+            email: form.email,
+            senha: form.password,
+            tipo_usuario: 'equipe',
+            empresaid: userEmpresaid,
+            equipeid: equipeId,
+          };
+    
+          await axios.put(`${Config.API_URL}/usuarios/${usuarioId}`, usuarioPayload);
+        }
+    
+        Alert.alert('Sucesso', 'Equipe e usuário atualizados com sucesso!');
+        navigation.goBack();
+      } catch (error) {
+        console.error('Erro ao salvar equipe:', error);
+        Alert.alert(
+          'Erro',
+          'Não foi possível atualizar a equipe. Verifique os dados e tente novamente.'
+        );
+      }
+    };
+    
 
-  const apagarEquipe = async () => {
-    Alert.alert(
-      'Confirmação',
-      'Tem certeza de que deseja apagar esta equipe?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Apagar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const empresaid = await AsyncStorage.getItem('empresaid');
-              if (!empresaid) {
-                Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-                navigation.navigate('Login');
-                return;
+    
+  
+    const apagarEquipe = async () => {
+      Alert.alert(
+        'Confirmação',
+        'Tem certeza de que deseja apagar esta equipe?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Apagar',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await axios.delete(`${Config.API_URL}/equipes/${equipeId}`);
+                await axios.delete(`${Config.API_URL}/usuarios/${equipeId}`);
+                Alert.alert('Sucesso', 'Equipe apagada com sucesso!');
+                navigation.goBack();
+              } catch (error) {
+                console.error('Erro ao apagar equipe:', error);
+                Alert.alert('Erro', 'Não foi possível apagar a equipe.');
               }
-
-              await axios.delete(`${Config.API_URL}/equipes/${equipeId}`, {
-                params: { empresaid: parseInt(empresaid, 10) }, // Inclui o empresaid como parâmetro
-              });
-
-              Alert.alert('Sucesso', 'Equipe apagada com sucesso!');
-              navigation.goBack();
-            } catch (error) {
-              console.error('Erro ao apagar equipe:', error);
-              Alert.alert('Erro', 'Não foi possível apagar a equipe.');
-            }
+            },
           },
-        },
-      ]
-    );
-  };
-
+        ]
+      );
+    };
+    
   const handleChange = (field: string, value: string | boolean) => {
     setForm({ ...form, [field]: value });
   };
@@ -126,6 +209,42 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       </View>
     );
   }
+  
+  const salvarSenha = async () => {
+    console.log('[DEBUG] Iniciando salvarSenha para usuarioId:', usuarioId);
+  
+    if (!usuarioId) {
+      Alert.alert('Erro', 'ID do usuário não encontrado.');
+      return;
+    }
+  
+    if (!validatePassword(form.password)) {
+      Alert.alert(
+        'Senha Inválida',
+        'A senha deve conter pelo menos 8 caracteres, incluindo letras, números e um caractere especial.'
+      );
+      return;
+    }
+  
+    try {
+      const payload = {
+        nome: form.nomeequipe, // Deve estar preenchido
+        email: form.email,     // Deve ser válido
+        senha: form.password,  // Deve ser válida
+        tipo_usuario: 'equipe',
+        equipeid: equipeId,    // Certifique-se de que não é null
+        empresaid: userEmpresaid, // Certifique-se de que não é null
+      };
+  
+      await axios.put(`${Config.API_URL}/usuarios/${usuarioId}`, payload);
+  
+      Alert.alert('Sucesso', 'Senha salva com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar a senha:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a senha.');
+    }
+  };
+  
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -167,26 +286,52 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         onChangeText={(value) => handleChange('telefone', value)}
       />
      <TextInput
-  style={[
-    styles.input,
-    { backgroundColor: getColorForDate(form.proximaInspecao) }, // Aplica cor
-  ]}
-  placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
-  value={form.proximaInspecao}
-  editable={isEditable}
-  onChangeText={(value) => handleChange('proximaInspecao', value)}
-/>
+        style={[styles.input,{ backgroundColor: getColorForDate(form.proxima_inspecao) },]}
+        placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
+        value={form.proxima_inspecao}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('proxima_inspecao', value)}
+      />
+     <TextInput
+        style={[styles.input,{ backgroundColor: getColorForDate(form.validade_seguro) },]}
+        placeholder="Validade do Seguro (AAAA-MM-DD)"
+        value={form.validade_seguro}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('validade_seguro', value)}
+      />
+     <TextInput
+        style={[styles.input, !isEditable && styles.readOnly]}
+        placeholder="Email"
+        keyboardType="email-address"
+        value={form.email}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('email', value)}
+      />
+     <TextInput
+        style={[styles.input, !isEditable && styles.readOnly]}
+        placeholder="Senha"
+        secureTextEntry
+        value={form.password}
+        editable={isEditable}
+        onChangeText={(value) => {if (isEditable) {handleChange('password', value);}}}
+      />
+     <TouchableOpacity
+        style={styles.generateButton}
+        onPress={() => {if (!validatePassword(form.password)) {
+      Alert.alert(
+        'Senha Fraca',
+        'A senha deve conter pelo menos 8 caracteres, incluindo letras, números e um caractere especial.'
+      );
+    } else {
+      salvarSenha(); // Chama a função para salvar a senha
+    }
+  }}
+>
+  <Text style={styles.generateButtonText}>Salvar Senha</Text>
+</TouchableOpacity>
 
-<TextInput
-  style={[
-    styles.input,
-    { backgroundColor: getColorForDate(form.validadeSeguro) }, // Aplica cor
-  ]}
-  placeholder="Validade do Seguro (AAAA-MM-DD)"
-  value={form.validadeSeguro}
-  editable={isEditable}
-  onChangeText={(value) => handleChange('validadeSeguro', value)}
-/>
+
+
 
       <View style={styles.buttonContainer}>
   <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
@@ -261,13 +406,37 @@ const styles = StyleSheet.create({
         flex: 1, // Faz com que os botões tenham tamanhos proporcionais
         maxWidth: '30%', // Limita a largura máxima de cada botão
       },
-    buttonText: {
+      buttonText: {
       color: '#000', // Preto para o texto
       fontWeight: 'bold',
       fontSize: 16,
+    }, 
+    saveButton: {
+      backgroundColor: '#ADD8E6',
+      padding: 10,
+      borderRadius: 5,
+      marginTop: 15,
+      alignItems: 'center',
     },
+    saveButtonText: {
+      color: '#FFF',
+      fontWeight: 'bold',
+    },
+    generateButton: {
+      backgroundColor: '#ADD8E6', // Azul claro
+      paddingVertical: 15,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      width: '100%', // Faz o botão ocupar toda a largura disponível
+      marginBottom: 10, // Espaço entre outros elementos
+    },
+    generateButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#000',
+    },
+    
   });
 
 export default EditEquipeScreen;
-
-

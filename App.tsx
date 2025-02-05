@@ -23,6 +23,7 @@ import AdministracaoScreen from './screens/AdministracaoScreen';
 import ParametrosQuimicosScreen from './screens/ParametrosQuimicosScreen';
 import FolhaManutencaoScreen from './screens/FolhaManutencaoScreen';
 import ReceberNotificacoesScreen from './screens/ReceberNotificacoesScreen';
+import RegisterCompanyScreen from './screens/RegisterCompanyScreen';
 
 
 
@@ -65,6 +66,7 @@ type RootStackParamList = {
     diaSemana: string;
     };
     ReceberNotificacoes: undefined;
+    RegisterCompany: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -170,6 +172,10 @@ const App = (): React.JSX.Element => {
           name="ReceberNotificacoes"
           component={ReceberNotificacoesScreen}
           options={{ title: 'Notificações' }}/>
+        <Stack.Screen
+          name="RegisterCompany"
+          component={RegisterCompanyScreen}
+          options={{ title: 'Registar Empresa' }}/>
       </Stack.Navigator>
     </NavigationContainer>
   );

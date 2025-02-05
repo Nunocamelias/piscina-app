@@ -60,12 +60,10 @@ const ListaEquipesScreen = ({ navigation }: any) => {
     }
     setLoading(true);
     try {
-      console.log('[DEBUG] Buscando equipes com empresaid:', userEmpresaid);
       const response = await axios.get(`${Config.API_URL}/equipes`, {
         params: { empresaid: userEmpresaid },
       });
-      console.log('[DEBUG] Equipes recebidas:', response.data);
-      setEquipes(response.data);
+          setEquipes(response.data);
     } catch (error) {
       console.error('[DEBUG] Erro ao buscar equipes:', error);
       Alert.alert('Erro', 'Não foi possível carregar a lista de equipes.');

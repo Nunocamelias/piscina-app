@@ -1,3 +1,13 @@
 {
-  "extends": "@react-native/typescript-config/tsconfig.json"
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true, // Ignora verificações em node_modules
+    "allowJs": true,      // Permite importar ficheiros JavaScript
+    "checkJs": false,     // Evita verificar tipos em ficheiros .js
+    "forceConsistentCasingInFileNames": true // Garante consistência de maiúsculas e minúsculas
+  },
+  "exclude": [
+    "node_modules" // Exclui a verificação de tipos em node_modules
+  ]
 }
+
