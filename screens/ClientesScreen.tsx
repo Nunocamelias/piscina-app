@@ -24,14 +24,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D3D3D3', // Fundo cinza claro
+    backgroundColor: '#B0B0B0', // Fundo cinza claro
     paddingHorizontal: 20,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 30,
-    color: '#000', // Preto
+    color: '#333', // Preto
   },
   button: {
     backgroundColor: '#ADD8E6', // Azul claro
@@ -41,6 +41,8 @@ const styles = StyleSheet.create({
     marginBottom: 15, // Espaçamento entre os botões
     width: '80%', // Largura uniforme
     alignItems: 'center',
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   buttonText: {
     fontSize: 16,

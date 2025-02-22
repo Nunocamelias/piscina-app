@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Appearance } from 'react-native';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 type Props = {
   navigation: any;
@@ -9,7 +11,7 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Área de Administração</Text>
-      
+
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('Faturas')}>
@@ -37,7 +39,7 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D3D3D3', // Cinza claro
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 28,
@@ -53,6 +55,8 @@ const styles = StyleSheet.create({
     marginBottom: 15, // Espaçamento entre botões
     width: '80%', // Largura consistente para todos os botões
     alignItems: 'center',
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   buttonText: {
     fontSize: 16,

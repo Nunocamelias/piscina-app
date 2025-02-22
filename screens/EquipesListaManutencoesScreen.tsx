@@ -48,21 +48,21 @@ const EquipesListaManutencoesScreen = ({ navigation, route }: Props) => {
   }, [equipeId]);
 
   const getColorForDate = (date: string | null) => {
-    if (!date) return '#000'; // Preto por padrão
+    if (!date) {return '#000';} // Preto por padrão
 
     const today = moment();
     const targetDate = moment(date);
 
     const diffDays = targetDate.diff(today, 'days');
 
-    if (diffDays <= 3) return '#FF6347'; // Vermelho
-    if (diffDays <= 15) return '#FFA500'; // Laranja
-    if (diffDays <= 30) return '#FFD700'; // Amarelo
+    if (diffDays <= 3) {return '#FF6347';} // Vermelho
+    if (diffDays <= 15) {return '#FFA500';} // Laranja
+    if (diffDays <= 30) {return '#FFD700';} // Amarelo
     return '#000'; // Preto (fora do período de alerta)
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Não definida';
+    if (!dateString) {return 'Não definida';}
     const date = new Date(dateString);
     return date.toLocaleDateString('pt-PT');
   };

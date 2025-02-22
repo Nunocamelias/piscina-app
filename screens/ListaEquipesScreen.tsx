@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Appearance, ActivityIndicator } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import Config from 'react-native-config';
@@ -13,6 +13,8 @@ interface Equipe {
   nome1: string;
 }
 
+const isDarkMode = Appearance.getColorScheme() === 'dark';
+
 const ListaEquipesScreen = ({ navigation }: any) => {
   const [equipes, setEquipes] = useState<Equipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ const ListaEquipesScreen = ({ navigation }: any) => {
       try {
         console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
         const empresaid = await AsyncStorage.getItem('empresaid');
-  
+
         if (empresaid) {
           console.log('[DEBUG] Empresaid encontrado:', empresaid);
           setUserEmpresaid(parseInt(empresaid, 10));
@@ -49,28 +51,36 @@ const ListaEquipesScreen = ({ navigation }: any) => {
         Alert.alert('Erro', 'Ocorreu um problema ao recuperar o empresaid.');
       }
     };
-  
+
     fetchEmpresaid();
   }, [navigation]);
 
   // Função para buscar equipes
   const fetchEquipes = useCallback(async () => {
-    if (!userEmpresaid) {
-      return; // Evita chamar o backend sem empresaid
-    }
+    if (!userEmpresaid) {return;}
+
     setLoading(true);
     try {
       const response = await axios.get(`${Config.API_URL}/equipes`, {
         params: { empresaid: userEmpresaid },
       });
-          setEquipes(response.data);
+
+      if (Array.isArray(response.data) && response.data.length === 0) {
+        console.log('[DEBUG] Nenhuma equipe cadastrada.');
+        setEquipes([]); // ✅ Define a lista vazia sem erro
+      } else {
+        setEquipes(response.data);
+      }
     } catch (error) {
       console.error('[DEBUG] Erro ao buscar equipes:', error);
-      Alert.alert('Erro', 'Não foi possível carregar a lista de equipes.');
+      if (!axios.isAxiosError(error) || error.response?.status !== 200) {
+        Alert.alert('Erro', 'Não foi possível carregar a lista de equipes.');
+      }
     } finally {
       setLoading(false);
     }
   }, [userEmpresaid]);
+
 
   // Atualiza as equipes ao carregar a tela
   useFocusEffect(
@@ -98,20 +108,26 @@ const ListaEquipesScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Lista de Equipes</Text>
-      <FlatList
-        data={equipes}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderEquipe}
-        ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma equipe encontrada.</Text>}
-      />
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#007bff" style={styles.loadingIndicator} />
+      ) : (
+        <FlatList
+          data={equipes}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderEquipe}
+          ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma equipe encontrada.</Text>}
+        />
+      )}
     </View>
   );
+
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
@@ -155,6 +171,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
+    borderWidth: 1.5, // Adiciona moldura
+    borderColor: '#000', // Cor da moldura preta
   },
   buttonText: {
     color: '#000',
@@ -165,6 +183,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     color: '#000',
+  },
+  loadingIndicator: {
+    marginTop: 20, // Ajusta conforme necessário
+    alignSelf: 'center',
   },
 });
 

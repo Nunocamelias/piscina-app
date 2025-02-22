@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Appearance } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
@@ -18,6 +18,8 @@ type ListasManutencoesScreenNavigationProp = StackNavigationProp<
 type Props = {
   navigation: ListasManutencoesScreenNavigationProp;
 };
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const ListasManutencoesScreen = ({ navigation }: Props) => {
   const [equipes, setEquipes] = useState([]);
@@ -96,15 +98,27 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
           })
         }
       >
-        <Text style={styles.equipeButtonText}>
-          {`Nome da Equipe: ${item.nomeequipe}\n` +
-            `Técnicos: ${item.nome1}${item.nome2 ? ' & ' + item.nome2 : ''}\n` +
-            `Telefone: ${item.telefone || 'Não informado'}\n` +
-            `Matrícula: ${item.matricula || 'Não informada'}\n` +
-            `Próxima inspeção: ${formatDate(item.proxima_inspecao)}\n` +
-            `Validade do Seguro: ${formatDate(item.validade_seguro)}`}
-        </Text>
-      </TouchableOpacity>
+       <Text style={styles.equipeButtonText}>
+    <Text style={styles.boldText}>Nome da Equipe: </Text>
+    {item.nomeequipe + '\n'}
+
+    <Text style={styles.boldText}>Técnicos: </Text>
+    {item.nome1}
+    {item.nome2 ? ` & ${item.nome2}` : ''} {'\n'}
+
+    <Text style={styles.boldText}>Telefone: </Text>
+    {item.telefone || 'Não informado'} {'\n'}
+
+    <Text style={styles.boldText}>Matrícula: </Text>
+    {item.matricula || 'Não informada'} {'\n'}
+
+    <Text style={styles.boldText}>Próxima inspeção: </Text>
+    {formatDate(item.proxima_inspecao)} {'\n'}
+
+    <Text style={styles.boldText}>Validade do Seguro: </Text>
+    {formatDate(item.validade_seguro)}
+  </Text>
+</TouchableOpacity>
     );
   };
 
@@ -125,7 +139,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 24,
@@ -138,6 +152,8 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 10,
     marginVertical: 10,
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   equipeButtonText: {
     color: '#333', // Cinza escuro para suavizar o contraste
@@ -151,6 +167,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     color: '#333',
+  },
+  boldText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: isDarkMode ? '#FFF' : '#000', // 🔥 Garante legibilidade no dark mode
   },
 });
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, Alert, StyleSheet, TouchableOpacity, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,12 +25,14 @@ type Cliente = {
   status?: string;
 };
 
+const isDarkMode = Appearance.getColorScheme() === 'dark';
+
 const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => {
   const { equipeId, equipeNome, diaSemana, empresaid } = route.params; // Recebe o empresaid
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
 
-  
+
 
   // Função para buscar clientes associados
   const fetchClientes = async () => {
@@ -138,7 +140,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 24,
@@ -150,7 +152,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     padding: 15,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 3,
     borderColor: '#CCC',
     marginBottom: 10,
   },

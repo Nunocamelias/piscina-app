@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Switch, Alert, TouchableOpacity, Appearance } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const EditClienteScreen = ({ route, navigation }: any) => {
   const { clienteId } = route.params;
@@ -21,7 +23,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
           navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
           return;
         }
-  
+
         const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`, {
           params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
         });
@@ -33,10 +35,10 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         navigation.goBack(); // Volta para a tela anterior em caso de erro
       }
     };
-  
+
     fetchCliente();
   }, [clienteId, navigation]); // Adicione `navigation` às dependências para evitar avisos
-  
+
 
   // Atualiza o volume ao alterar os campos
   useEffect(() => {
@@ -59,13 +61,13 @@ const EditClienteScreen = ({ route, navigation }: any) => {
         navigation.navigate('Login'); // Redireciona para a tela de login
         return;
       }
-  
+
       // Inclui o empresaid no formulário antes de enviar
       const updatedForm = { ...form, empresaid: parseInt(empresaid, 10) };
-  
+
       // Faz a requisição para atualizar o cliente
       const response = await axios.put(`${Config.API_URL}/clientes/${clienteId}`, updatedForm);
-  
+
       Alert.alert('Sucesso', 'Cliente atualizado com sucesso!');
       navigation.goBack(); // Retorna para a lista de clientes
     } catch (error) {
@@ -78,7 +80,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
       }
     }
   };
-  
+
   const apagarCliente = async () => {
     Alert.alert(
       'Confirmação',
@@ -96,9 +98,9 @@ const EditClienteScreen = ({ route, navigation }: any) => {
                 navigation.navigate('Login');
                 return;
               }
-  
+
               console.log('Apagando cliente com empresaid:', empresaid);
-  
+
               await axios.delete(`${Config.API_URL}/clientes/${clienteId}`, {
                 params: { empresaid: parseInt(empresaid, 10) }, // Envia o empresaid no query string
               });
@@ -113,7 +115,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
       ]
     );
   };
-  
+
   const handleChange = (field: string, value: string | boolean) => {
     setForm({ ...form, [field]: value });
   };
@@ -126,161 +128,232 @@ const EditClienteScreen = ({ route, navigation }: any) => {
     );
   }
 
+  const isAnySwitchOn =
+  form.tanque_compensacao ||
+  form.cobertura ||
+  form.bomba_calor ||
+  form.equipamentos_especiais;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Detalhes do Cliente</Text>
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Nome"
-        value={form.nome}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('nome', value)}
-      />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Morada"
-        value={form.morada}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('morada', value)}
-      />
-      <View style={styles.row}>
-      <TextInput
-        style={[styles.input, styles.localidadeInput, !isEditable && styles.readOnly]}
-        placeholder="Localidade"
-        value={form.localidade}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('localidade', value)}
-      />
-      <TextInput
-        style={[styles.input, styles.codigoPostalInput, !isEditable && styles.readOnly]}
-        placeholder="Código Postal (0000-000)"
-        keyboardType="numeric"
-        value={form.codigo_postal}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('codigo_postal', value)}
-      />
-      </View>
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Google Maps"
-        value={form.google_maps}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('google_maps', value)}
-      />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Email"
-        value={form.email}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('email', value)}
-      />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Telefone"
-        keyboardType="phone-pad"
-        value={form.telefone}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('telefone', value)}
-      />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Informações de Acesso"
-        value={form.info_acesso}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('info_acesso', value)}
-      />
-      <View style={styles.row}>
-      <TextInput
-        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
-        placeholder="Comprimento (m)"
-        keyboardType="numeric"
-        value={form.comprimento}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('comprimento', value)}
-      />
-      <TextInput
-        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
-        placeholder="Largura (m)"
-        keyboardType="numeric"
-        value={form.largura}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('largura', value)}
-      />
-      </View>
 
-      <View style={styles.row}>
-      <TextInput
-        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
-        placeholder="Profundidade Média (m)"
-        keyboardType="numeric"
-        value={form.profundidade_media}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('profundidade_media', value)}
-      />
-      <TextInput
-        style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
-        placeholder="Volume m³ (calculado automaticamente)"
-        value={form.volume}
-        editable={false} // O volume é calculado automaticamente
-      />
-      </View>
-      <View style={styles.switchContainer}>
-        <Text>Tanque de Compensação</Text>
-        <Switch
-          value={form.tanque_compensacao}
-          onValueChange={(value) => handleChange('tanque_compensacao', value)}
-          disabled={!isEditable}
-        />
-      </View>
-      <View style={styles.switchContainer}>
-        <Text>Cobertura</Text>
-        <Switch
-          value={form.cobertura}
-          onValueChange={(value) => handleChange('cobertura', value)}
-          disabled={!isEditable}
-        />
-      </View>
-      <View style={styles.switchContainer}>
-        <Text>Bomba de Calor</Text>
-        <Switch
-          value={form.bomba_calor}
-          onValueChange={(value) => handleChange('bomba_calor', value)}
-          disabled={!isEditable}
-        />
-      </View>
-      <View style={styles.switchContainer}>
-        <Text>Equipamentos Especiais</Text>
-        <Switch
-          value={form.equipamentos_especiais}
-          onValueChange={(value) =>
-            handleChange('equipamentos_especiais', value)
-          }
-          disabled={!isEditable}
-        />
-      </View>
-      <TextInput
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Nome"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'} // 🔥 Garante visibilidade no modo escuro
+  value={form.nome}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('nome', value)}
+/>
+
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Morada"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+  value={form.morada}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('morada', value)}
+/>
+
+<View style={styles.row}>
+  <TextInput
+    style={[
+      isDarkMode ? styles.inputDark : styles.inputLight,
+      styles.localidadeInput,
+      !isEditable && styles.readOnly,
+    ]}
+    placeholder="Localidade"
+    placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+    value={form.localidade}
+    editable={isEditable}
+    onChangeText={(value) => handleChange('localidade', value)}
+  />
+
+  <TextInput
+    style={[
+      isDarkMode ? styles.inputDark : styles.inputLight,
+      styles.codigoPostalInput,
+      !isEditable && styles.readOnly,
+    ]}
+    placeholder="Código Postal (0000-000)"
+    placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+    keyboardType="numeric"
+    value={form.codigo_postal}
+    editable={isEditable}
+    onChangeText={(value) => handleChange('codigo_postal', value)}
+  />
+</View>
+
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Google Maps"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+  value={form.google_maps}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('google_maps', value)}
+/>
+
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Email"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+  value={form.email}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('email', value)}
+/>
+
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Telefone"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+  keyboardType="phone-pad"
+  value={form.telefone}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('telefone', value)}
+/>
+
+<TextInput
+  style={[
+    isDarkMode ? styles.inputDark : styles.inputLight,
+    !isEditable && styles.readOnly,
+  ]}
+  placeholder="Informações de Acesso"
+  placeholderTextColor={isDarkMode ? '#BBB' : '#666'}
+  value={form.info_acesso}
+  editable={isEditable}
+  onChangeText={(value) => handleChange('info_acesso', value)}
+/>
+
+<View style={styles.row}>
+  <View style={styles.inputWithUnit}>
+    <TextInput
+      style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
+      placeholder="Comprimento"
+      keyboardType="numeric"
+      value={form.comprimento}
+      editable={isEditable}
+      onChangeText={(value) => handleChange('comprimento', value)}
+    />
+    <Text style={styles.unitText}>m</Text>
+  </View>
+
+  <View style={styles.inputWithUnit}>
+    <TextInput
+      style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
+      placeholder="Largura"
+      keyboardType="numeric"
+      value={form.largura}
+      editable={isEditable}
+      onChangeText={(value) => handleChange('largura', value)}
+    />
+    <Text style={styles.unitText}>m </Text>
+  </View>
+</View>
+
+<View style={styles.row}>
+  <View style={styles.inputWithUnit}>
+    <TextInput
+      style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
+      placeholder="Profundidade Média"
+      keyboardType="numeric"
+      value={form.profundidade_media}
+      editable={isEditable}
+      onChangeText={(value) => handleChange('profundidade_media', value)}
+    />
+    <Text style={styles.unitText}>m</Text>
+  </View>
+
+  <View style={styles.inputWithUnit}>
+    <TextInput
+      style={[styles.input, styles.halfInput, !isEditable && styles.readOnly]}
+      placeholder="Volume"
+      value={form.volume}
+      editable={false} // O volume é calculado automaticamente
+    />
+    <Text style={styles.unitText}>m³</Text>
+  </View>
+</View>
+
+<TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Última Substituição (AAAA-MM-DD)"
         value={form.ultima_substituicao}
         editable={isEditable}
         onChangeText={(value) => handleChange('ultima_substituicao', value)}
       />
-      <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Valor da Manutenção (€)"
-        keyboardType="numeric"
-        value={form.valor_manutencao}
-        editable={isEditable}
-        onChangeText={(value) => handleChange('valor_manutencao', value)}
-      />
+
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>
+  <Switch
+    value={form.tanque_compensacao}
+    onValueChange={(value) => handleChange('tanque_compensacao', value)}
+    disabled={!isEditable}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.tanque_compensacao ? '#FFF' : '#777'}
+  />
+</View>
+
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Cobertura</Text>
+  <Switch
+    value={form.cobertura}
+    onValueChange={(value) => handleChange('cobertura', value)}
+    disabled={!isEditable}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.cobertura ? '#FFF' : '#777'}
+  />
+</View>
+
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Bomba de Calor</Text>
+  <Switch
+    value={form.bomba_calor}
+    onValueChange={(value) => handleChange('bomba_calor', value)}
+    disabled={!isEditable}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.bomba_calor ? '#FFF' : '#777'}
+  />
+</View>
+
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Equipamentos Especiais</Text>
+  <Switch
+    value={form.equipamentos_especiais}
+    onValueChange={(value) => handleChange('equipamentos_especiais', value)}
+    disabled={!isEditable}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.equipamentos_especiais ? '#FFF' : '#777'}
+  />
+</View>
+
       {/* Novo Campo: Periodicidade */}
-      <Text style={styles.label}>Periodicidade da Manutenção</Text>
-<View style={styles.input}>
+      <Text style={isDarkMode ? styles.labelDark : styles.labelLight}>
+  Periodicidade da Manutenção
+</Text>
+
+<View style={styles.pickerContainer}>
   <Picker
     selectedValue={form.periodicidade}
     onValueChange={(value) => handleChange('periodicidade', value)}
-    enabled={isEditable} // Habilita ou desabilita com base na edição
-    style={styles.picker} // Estilo para melhorar a aparência
+    enabled={isEditable}
+    style={styles.picker}
+    dropdownIconColor={isDarkMode ? '#FFF' : '#000'}
   >
     <Picker.Item label="1 vez por semana" value="1" />
     <Picker.Item label="2 vezes por semana" value="2" />
@@ -291,26 +364,45 @@ const EditClienteScreen = ({ route, navigation }: any) => {
     <Picker.Item label="Semana sim, semana não" value="quinzenal" />
   </Picker>
 </View>
-      {/* Novo Campo: Condicionantes */}
-      <Text style={styles.label}>Condicionantes de Dias</Text>
-      <View style={styles.checkboxContainer}>
-      {['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'].map((dia: string) => (
-  <View key={dia} style={styles.checkboxItem}>
-    <Switch
-      value={form.condicionantes.includes(dia)}
-      onValueChange={() => {
-        const updated = form.condicionantes.includes(dia)
-          ? form.condicionantes.filter((item: string) => item !== dia)
-          : [...form.condicionantes, dia];
-        handleChange('condicionantes', updated);
-      }}
-      disabled={!isEditable}
-    />
-    <Text>{dia}</Text>
-  </View>
-))}
 
-      </View>
+      {/* Novo Campo: Condicionantes */}
+      <Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Condicionantes de Dias</Text>
+<View style={styles.checkboxContainer}>
+  {['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'].map((dia: string) => (
+    <View key={dia} style={styles.checkboxItem}>
+      <Switch
+        value={form.condicionantes.includes(dia)}
+        onValueChange={() => {
+          const updated = form.condicionantes.includes(dia)
+            ? form.condicionantes.filter((item: string) => item !== dia)
+            : [...form.condicionantes, dia];
+          handleChange('condicionantes', updated);
+        }}
+        disabled={!isEditable}
+        trackColor={{ false: '#767577', true: '#32CD32' }}
+        thumbColor={form.condicionantes.includes(dia) ? '#FFF' : '#000'}
+      />
+      <Text style={isDarkMode ? styles.checkboxLabelDark : styles.checkboxLabelLight}>{dia}</Text>
+    </View>
+  ))}
+</View>
+<View style={styles.row}>
+  <Text style={styles.label}>Valor mensal da manutenção</Text>
+  <View style={styles.inputWithUnit}>
+    <TextInput
+      style={[styles.input, !isEditable && styles.readOnly]}
+      placeholder="0.00"
+      placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+      keyboardType="numeric"
+      value={form.valor_manutencao?.toString() || ''}
+      editable={isEditable}
+      onChangeText={(value) => handleChange('valor_manutencao', value)}
+    />
+    <Text style={styles.unitText}>€</Text>
+  </View>
+</View>
+
+
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
           <Text style={styles.buttonText}>Voltar</Text>
@@ -330,34 +422,109 @@ const EditClienteScreen = ({ route, navigation }: any) => {
       </View>
     </ScrollView>
   );
-  
+
 };
 
 const styles = StyleSheet.create({
     container: {
       padding: 20,
-      backgroundColor: '#D3D3D3',
+      backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
       flexGrow: 1,
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: '48%',
+      backgroundColor: '#FFF',
+      borderWidth: 1.5,
+      borderColor: '#000',
+      borderRadius: 5,
+      paddingHorizontal: 10,
     },
     title: {
       fontSize: 24,
       fontWeight: 'bold',
       marginBottom: 20,
       textAlign: 'center',
+      color: isDarkMode ? '#000' : '#000', // Sempre preto para contraste
     },
     input: {
       backgroundColor: '#FFF',
       padding: 10,
       borderRadius: 5,
       marginBottom: 15,
-      borderWidth: 1,
+      borderWidth: 0, // Borda mais visível
+      borderColor: '#000', // Preto para melhor contraste
+      color: '#000', // Texto preto
+    },
+    inputLight: {
+      backgroundColor: '#FFF',
+      borderWidth: 0,
       borderColor: '#CCC',
+      padding: 10,
+      borderRadius: 5,
+      marginBottom: 15,
+      color: '#000', // 🔥 Texto preto no modo claro
+    },
+    inputDark: {
+      backgroundColor: '#FFF',
+      padding: 10,
+      borderRadius: 5,
+      marginBottom: 15,
+      borderWidth: 0,
+      borderColor: '#000',
+      color: '#000',
     },
     label: {
       fontSize: 16,
       fontWeight: 'bold',
       marginVertical: 10,
     },
+    labelLight: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#000',
+      alignSelf: 'flex-start',
+      marginLeft: '10%',
+      marginTop: 10,
+    },
+    labelDark: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#222222',
+      opacity: 1,
+      alignSelf: 'flex-start',
+      marginLeft: '10%',
+      marginTop: 10,
+    },
+    inputWithUnit: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 0,
+      borderColor: '#555',
+      borderRadius: 5,
+      backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+      paddingHorizontal: 5,
+      width: '40%', // Mantém alinhado
+    },
+    unitText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: isDarkMode ? '#000' : '#000',
+      marginLeft: 5,
+      top: '50%', // Posiciona o elemento no meio do campo
+      transform: [{ translateY: -32 }], // Ajuste fino para melhor alinhamento vertical
+    },
+    checkboxLabelLight: {
+      fontSize: 16,
+      color: '#000', // Preto no modo claro
+    },
+
+    checkboxLabelDark: {
+      fontSize: 16,
+      color: '#FFF', // Branco no modo escuro para melhor contraste
+    },
+
     checkboxContainer: {
       marginVertical: 10,
       paddingHorizontal: 10,
@@ -366,7 +533,7 @@ const styles = StyleSheet.create({
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 5,
-    },        
+    },
     readOnly: {
       backgroundColor: '#EEE',
     },
@@ -379,7 +546,7 @@ const styles = StyleSheet.create({
     row: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: 0, // Espaçamento entre as linhas
+      marginBottom: 0,
     },
     halfInput: {
       flex: 1, // Cada campo ocupa metade da largura
@@ -392,18 +559,19 @@ const styles = StyleSheet.create({
     codigoPostalInput: {
       flex: 1, // Ocupa 1/3 da linha
     },
-    picker: {
-      backgroundColor: '#FFF',
-      borderWidth: 1,
-      borderColor: '#CCC',
+    pickerContainer: {
+      borderWidth: 1.5,
+      borderColor: '#000',
       borderRadius: 5,
-      height: 53,
-      paddingHorizontal: 10,
-      justifyContent: 'center',
-      marginTop: -10, // Espaço acima do picker
-      marginBottom: -10, // Espaço abaixo do picker
+      overflow: 'hidden',
+      backgroundColor: isDarkMode ? '#333' : '#FFF',
     },
-  pickerItem: {
+    picker: {
+      color: isDarkMode ? '#FFF' : '#000',
+      height: 50,
+      width: '100%',
+    },
+    pickerItem: {
       fontSize: 16,
       color: '#000',
     },
@@ -412,6 +580,17 @@ const styles = StyleSheet.create({
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: 15,
+    },
+    switchLabelLight: {
+      fontSize: 16,
+      color: '#000', // Preto no modo claro
+      fontWeight: 'bold',
+    },
+
+    switchLabelDark: {
+      fontSize: 16,
+      color: '#222222', // Cinza escuro no modo escuro
+      fontWeight: 'bold',
     },
     buttonContainer: {
         flexDirection: 'row',
@@ -429,14 +608,28 @@ const styles = StyleSheet.create({
         margin: 5, // Espaçamento ao redor de cada botão
         flex: 1, // Faz com que os botões tenham tamanhos proporcionais
         maxWidth: '30%', // Limita a largura máxima de cada botão
+        borderWidth: 1.5, // Adiciona moldura
+        borderColor: '#000', // Cor da moldura preta
     },
     buttonText: {
       color: '#000', // Preto para o texto
       fontWeight: 'bold',
       fontSize: 16,
     },
+    smallInput: {
+      flex: 1,
+      padding: 10,
+      fontSize: 16,
+      color: '#000',
+    },
+    unit: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#000',
+      marginLeft: 5,
+    },
   });
-  
+
 
 export default EditClienteScreen;
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance, } from 'react-native';
-import axios, { AxiosError } from 'axios';
+import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance } from 'react-native';
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? '#000' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 20,
   },
   titleLight: {
@@ -99,11 +99,28 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 30,
-    color: '#FFF',
+    color: '#333',
+  },
+  labelLight: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000', // Preto em modo claro
+    alignSelf: 'flex-start',
+    marginLeft: '10%',
+    marginTop: 10,
+  },
+  labelDark: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#222222',
+    opacity: 1,
+    alignSelf: 'flex-start',
+    marginLeft: '10%',
+    marginTop: 10,
   },
   inputLight: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#000',
     padding: 10,
     marginBottom: 15,
     borderRadius: 25,
@@ -114,8 +131,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inputDark: {
-    borderWidth: 1,
-    borderColor: '#555',
+    borderWidth: 1.2,
+    borderColor: '#000',
     padding: 10,
     marginBottom: 15,
     borderRadius: 25,
@@ -133,6 +150,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
+    borderWidth: 1.2, // Moldura preta
+    borderColor: '#000', // Cor da moldura preta
   },
   buttonText: {
     fontSize: 16,
@@ -141,13 +160,13 @@ const styles = StyleSheet.create({
   },
   registerTextLight: {
     fontSize: 14,
-    color: '#696969',
+    color: '#444444',
     textDecorationLine: 'underline',
     marginTop: 15,
   },
   registerTextDark: {
     fontSize: 14,
-    color: '#BBBBBB',
+    color: '#333',
     textDecorationLine: 'underline',
     marginTop: 15,
   },

@@ -27,7 +27,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D3D3D3',
+    backgroundColor: '#B0B0B0',
     paddingHorizontal: 20,
   },
   title: {
@@ -37,13 +37,15 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   button: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#ADD8E6', // Azul claro
     paddingVertical: 15,
     paddingHorizontal: 40,
-    borderRadius: 25,
-    marginBottom: 15,
-    width: '80%',
+    borderRadius: 25, // Cantos arredondados
+    marginBottom: 15, // Espaçamento entre os botões
+    width: '80%', // Largura uniforme
     alignItems: 'center',
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   buttonText: {
     fontSize: 16,

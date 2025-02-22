@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Appearance, } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -17,13 +17,13 @@ const RegisterCompanyScreen = () => {
 
   const navigation = useNavigation<NavigationProp<any>>(); // Solução genérica para navegação
 
-  const isValidEmail = (email: string): boolean => {
+  const isValidEmail = (emailInput: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return emailRegex.test(emailInput);
   };
 
   const handleRegister = async () => {
-    if (isLoading) return; // Impede cliques duplos
+    if (isLoading) {return;} // Impede cliques duplos
 
     if (password !== confirmPassword) {
       Alert.alert('Erro', 'As senhas não coincidem.');
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? '#000' : '#D3D3D3', // Adapta ao modo escuro
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 20,
   },
   titleLight: {
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 30,
-    color: '#FFF',
+    color: '#333',
   },
   inputLight: {
     borderWidth: 1,
@@ -153,8 +153,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inputDark: {
-    borderWidth: 1,
-    borderColor: '#555',
+    borderWidth: 1.2,
+    borderColor: '#000',
     padding: 10,
     marginBottom: 15,
     borderRadius: 25,
@@ -172,6 +172,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
+    borderWidth: 1.2, // Moldura preta
+    borderColor: '#000', // Cor da moldura preta
   },
   buttonText: {
     fontSize: 16,

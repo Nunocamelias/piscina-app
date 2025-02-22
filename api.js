@@ -262,11 +262,11 @@ app.get('/clientes/:id', async (req, res) => {
   app.delete('/clientes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid como filtro
-  
+
     if (!empresaid) {
       return res.status(400).send('O parâmetro empresaid é obrigatório.');
     }
-  
+
     try {
       const query = `
         DELETE FROM clientes 
@@ -285,82 +285,109 @@ app.get('/clientes/:id', async (req, res) => {
     }
   });
   app.post('/equipes', async (req, res) => {
-    const {
-      empresaid,
-      nomeequipe,
-      nome1,
-      nome2,
-      matricula,
-      telefone,
-      proxima_inspecao,
-      validade_seguro, // Novo campo
-    } = req.body;
-  
-    // Validações de campos obrigatórios
-    if (!empresaid || !nomeequipe || !nome1 || !nome2 || !matricula || !telefone) {
-      return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
-    }
-  
-    // Validações específicas para datas
-    if (proxima_inspecao && isNaN(Date.parse(proxima_inspecao))) {
-      return res.status(400).json({ error: 'A data de próxima inspeção é inválida.' });
-    }
-  
-    if (validade_seguro && isNaN(Date.parse(validade_seguro))) {
-      return res.status(400).json({ error: 'A validade do seguro é inválida.' });
-    }
-  
     try {
+      const {
+        empresaid,
+        nomeequipe,
+        nome1,
+        nome2,
+        matricula,
+        telefone,
+        proxima_inspecao,
+        validade_seguro,
+      } = req.body;
+
+      console.debug('📩 Recebendo dados para criação de equipe:', req.body);
+
+      // ✅ Validação de campos obrigatórios
+      if (!empresaid || !nomeequipe || !nome1 || !nome2 || !matricula || !telefone) {
+        console.warn('⚠️ Campos obrigatórios ausentes.');
+        return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+      }
+
+      // ✅ Verifica se `empresaid` é um número válido
+      const empresaidNum = Number(empresaid);
+      if (isNaN(empresaidNum)) {
+        console.warn('⚠️ Empresaid inválido:', empresaid);
+        return res.status(400).json({ error: 'Empresaid deve ser um número válido.' });
+      }
+
+      // ✅ Validações de formato de data
+      if (proxima_inspecao && isNaN(Date.parse(proxima_inspecao))) {
+        console.warn('⚠️ Data inválida para próxima inspeção:', proxima_inspecao);
+        return res.status(400).json({ error: 'A data de próxima inspeção é inválida.' });
+      }
+
+      if (validade_seguro && isNaN(Date.parse(validade_seguro))) {
+        console.warn('⚠️ Data inválida para validade do seguro:', validade_seguro);
+        return res.status(400).json({ error: 'A validade do seguro é inválida.' });
+      }
+
+      // ✅ Inserção no banco de dados
       const query = `
-        INSERT INTO equipes (empresaid, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao, validade_seguro)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO equipes (empresaid, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao, validade_seguro, data_criacao)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING *;
       `;
-      const values = [empresaid, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao, validade_seguro];
-  
+      const values = [empresaidNum, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao || null, validade_seguro || null];
+
+      console.debug('🛠️ Executando query de inserção de equipe...');
       const result = await pool.query(query, values);
-      res.status(201).json(result.rows[0]);
+
+      console.debug('✅ Equipe criada com sucesso:', result.rows[0]);
+
+      res.status(201).json({
+        message: 'Equipe criada com sucesso!',
+        equipe: result.rows[0],
+      });
     } catch (error) {
-      console.error('Erro ao salvar equipe:', error);
+      console.error('❌ Erro ao salvar equipe:', error);
+
+      // ✅ Tratamento específico para erro de chave duplicada (caso já exista uma equipe com os mesmos dados)
+      if (error.code === '23505') {
+        return res.status(400).json({ error: 'Já existe uma equipe com esses dados.' });
+      }
+
       res.status(500).json({ error: 'Erro ao salvar equipe.' });
     }
   });
-  
+
   // Endpoint GET para buscar todas as equipes de uma empresa
-app.get('/equipes', async (req, res) => {
-  const { empresaid } = req.query; // Inclui o empresaid como filtro
+  app.get('/equipes', async (req, res) => {
+    const { empresaid } = req.query;
 
-  if (!empresaid) {
-    return res.status(400).send('O parâmetro empresaid é obrigatório.');
-  }
-
-  try {
-    const query = `
-      SELECT * 
-      FROM equipes 
-      WHERE empresaid = $1;
-    `;
-    const values = [empresaid];
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
-      return res.status(404).send('Nenhuma equipe encontrada para esta empresa.');
+    if (!empresaid) {
+      return res.status(400).json({ error: 'O parâmetro empresaid é obrigatório.' });
     }
 
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Erro ao buscar equipes:', error);
-    res.status(500).send('Erro ao buscar equipes.');
-  }
-});
+    try {
+      const query = `
+        SELECT * 
+        FROM equipes 
+        WHERE empresaid = $1;
+      `;
+      const result = await pool.query(query, [empresaid]);
+
+      if (result.rows.length === 0) {
+        console.warn('[DEBUG] Nenhuma equipe encontrada para empresa:', empresaid);
+        return res.status(200).json([]); // ✅ Retorna um array vazio, sem erro 404
+      }
+
+      res.status(200).json(result.rows);
+    } catch (error) {
+      console.error('[DEBUG] Erro ao buscar equipes:', error);
+      res.status(500).json({ error: 'Erro ao buscar equipes.' });
+    }
+  });
+
   app.get('/equipes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid como filtro
-  
+
     if (!empresaid) {
       return res.status(400).send('O parâmetro empresaid é obrigatório.');
     }
-  
+
     try {
       const query = `
         SELECT * 
@@ -379,7 +406,7 @@ app.get('/equipes', async (req, res) => {
       res.status(500).send('Erro ao buscar equipe.');
     }
   });
-  
+
   // Endpoint PUT para atualizar uma equipe
 app.put('/equipes/:id', async (req, res) => {
   const {
@@ -390,9 +417,9 @@ app.put('/equipes/:id', async (req, res) => {
     matricula,
     telefone,
     proxima_inspecao,
-    validade_seguro, 
-    email,          
-    senha,          
+    validade_seguro,
+    email,
+    senha,
   } = req.body;
 
   const { id } = req.params;
@@ -456,16 +483,16 @@ app.put('/equipes/:id', async (req, res) => {
   }
 });
 
-  
-  
+
+
   app.delete('/equipes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid na query string
-  
+
     if (!empresaid) {
       return res.status(400).send('O parâmetro empresaid é obrigatório.');
     }
-  
+
     try {
       // Verificar se a equipe pertence à empresa
       const verificaQuery = `
@@ -474,11 +501,11 @@ app.put('/equipes/:id', async (req, res) => {
         WHERE id = $1 AND empresaid = $2;
       `;
       const verificaResult = await pool.query(verificaQuery, [id, empresaid]);
-  
+
       if (verificaResult.rows.length === 0) {
         return res.status(403).send('A equipe não pertence à empresa especificada.');
       }
-  
+
       // Excluir a equipe
       const query = `
         DELETE FROM equipes
@@ -487,26 +514,26 @@ app.put('/equipes/:id', async (req, res) => {
       `;
       const values = [id];
       const result = await pool.query(query, values);
-  
+
       if (result.rows.length === 0) {
         return res.status(404).send('Equipe não encontrada.');
       }
-  
+
       res.status(200).json(result.rows[0]);
     } catch (error) {
       console.error('Erro ao excluir equipe:', error);
       res.status(500).send('Erro ao excluir equipe.');
     }
   });
-  
+
   // Rota para buscar clientes associados a um dia específico da equipe
   app.get('/clientes-por-dia', async (req, res) => {
     const { equipeId, diaSemana, empresaid } = req.query;
-  
+
     if (!equipeId || !diaSemana || !empresaid) {
       return res.status(400).json({ error: 'EquipeId, diaSemana e empresaid são obrigatórios.' });
     }
-  
+
     try {
       const query = `
         SELECT DISTINCT ON (c.id) 
@@ -541,18 +568,18 @@ app.put('/equipes/:id', async (req, res) => {
       res.status(500).json({ error: 'Erro ao buscar clientes.' });
     }
   });
-  
+
    // Rota para associar um cliente a uma equipe em um dia específico
    app.post('/associar-cliente', async (req, res) => {
     const { clienteId, equipeId, diaSemana, empresaid } = req.body;
-  
+
     console.log('[DEBUG] Dados recebidos:', { clienteId, equipeId, diaSemana, empresaid });
-  
+
     if (!clienteId || !equipeId || !diaSemana || !empresaid) {
       console.log('[DEBUG] Dados ausentes na requisição.');
       return res.status(400).json({ error: 'ClienteId, equipeId, diaSemana e empresaid são obrigatórios.' });
     }
-  
+
     try {
       const verificarQuery = `
         SELECT 1
@@ -562,12 +589,12 @@ app.put('/equipes/:id', async (req, res) => {
       `;
       console.log('[DEBUG] Executando query de verificação...');
       const verificarResult = await pool.query(verificarQuery, [clienteId, equipeId, empresaid]);
-  
+
       if (verificarResult.rowCount === 0) {
         console.log('[DEBUG] Cliente ou equipe não pertencem à empresa.');
         return res.status(400).json({ error: 'Cliente ou equipe não pertencem à empresa especificada.' });
       }
-  
+
       const query = `
         INSERT INTO associados (clienteId, equipeId, diaSemana, empresaid)
         VALUES ($1, $2, $3, $4)
@@ -577,28 +604,28 @@ app.put('/equipes/:id', async (req, res) => {
       console.log('[DEBUG] Executando query de inserção...');
       const values = [clienteId, equipeId, diaSemana, empresaid];
       const result = await pool.query(query, values);
-  
+
       if (result.rowCount === 0) {
         console.log('[DEBUG] Associação já existente.');
         return res.status(400).json({ error: 'Cliente já associado a este dia.' });
       }
-  
+
       res.status(201).json(result.rows[0]);
     } catch (error) {
       console.error('[DEBUG] Erro ao associar cliente:', error);
       res.status(500).json({ error: 'Erro ao associar cliente.' });
     }
   });
-  
-  
+
+
     // Rota para desassociar um cliente de um dia específico
     app.delete('/desassociar-cliente', async (req, res) => {
       const { clienteId, equipeId, diaSemana, empresaid } = req.body;
-    
+
       if (!clienteId || !equipeId || !diaSemana || !empresaid) {
         return res.status(400).json({ error: 'ClienteId, equipeId, diaSemana e empresaid são obrigatórios.' });
       }
-    
+
       try {
         const query = `
           DELETE FROM associados
@@ -607,26 +634,26 @@ app.put('/equipes/:id', async (req, res) => {
         `;
         const values = [clienteId, equipeId, diaSemana, empresaid];
         const result = await pool.query(query, values);
-    
+
         if (result.rowCount === 0) {
           return res.status(404).json({ error: 'Associação não encontrada ou não pertence à empresa especificada.' });
         }
-    
+
         res.status(200).json({ message: 'Cliente desassociado com sucesso.' });
       } catch (error) {
         console.error('Erro ao desassociar cliente:', error);
         res.status(500).json({ error: 'Erro ao desassociar cliente.' });
       }
     });
-   
+
     app.get('/associados/:equipeId/:diaSemana', async (req, res) => {
       const { equipeId, diaSemana } = req.params;
       const { empresaid } = req.query;
-    
+
       if (!empresaid) {
         return res.status(400).json({ error: 'O parâmetro empresaid é obrigatório.' });
       }
-    
+
       try {
         const query = `
           SELECT 
@@ -649,17 +676,17 @@ app.put('/equipes/:id', async (req, res) => {
         res.status(500).send('Erro ao buscar associados.');
       }
     });
-    
+
     app.post('/associados', async (req, res) => {
       const { equipeId, clienteId, diaSemana, empresaid } = req.body;
-    
+
       console.log('[DEBUG] Dados recebidos:', { equipeId, clienteId, diaSemana, empresaid });
-    
+
       if (!empresaid) {
         console.log('[DEBUG] Campo empresaid ausente.');
         return res.status(400).json({ error: 'O campo empresaid é obrigatório.' });
       }
-    
+
       try {
         // Verifica se a equipe pertence à empresa
         const equipeQuery = `
@@ -672,7 +699,7 @@ app.put('/equipes/:id', async (req, res) => {
           console.log('[DEBUG] Equipe não encontrada ou não pertence à empresa.');
           return res.status(400).json({ error: 'Equipe não encontrada ou não pertence à empresa.' });
         }
-    
+
         // Verifica se o cliente pertence à empresa
         const clienteQuery = `
           SELECT 1 FROM clientes
@@ -684,7 +711,7 @@ app.put('/equipes/:id', async (req, res) => {
           console.log('[DEBUG] Cliente não encontrado ou não pertence à empresa.');
           return res.status(400).json({ error: 'Cliente não encontrado ou não pertence à empresa.' });
         }
-    
+
         // Verifica se o cliente já está associado no mesmo dia
         const checkQuery = `
           SELECT * FROM associados
@@ -696,7 +723,7 @@ app.put('/equipes/:id', async (req, res) => {
           console.log('[DEBUG] Cliente já associado a este dia.');
           return res.status(400).json({ error: 'Cliente já associado a este dia.' });
         }
-    
+
         // Insere a nova associação
         const insertQuery = `
           INSERT INTO associados (equipeId, clienteId, diaSemana, empresaid)
@@ -705,7 +732,7 @@ app.put('/equipes/:id', async (req, res) => {
         `;
         console.log('[DEBUG] Inserindo associação...');
         const result = await pool.query(insertQuery, [equipeId, clienteId, diaSemana, empresaid]);
-    
+
         console.log('[DEBUG] Associação realizada com sucesso:', result.rows[0]);
         res.status(201).json(result.rows[0]);
       } catch (error) {
@@ -713,7 +740,7 @@ app.put('/equipes/:id', async (req, res) => {
         res.status(500).send('Erro ao associar cliente.');
       }
     });
-    
+
 
 app.delete('/associados/:id', async (req, res) => {
   const { id } = req.params;
@@ -816,7 +843,7 @@ app.post('/register', async (req, res) => {
   try {
     // Verifica se o email já existe na tabela empresas
     console.log('Verificando email duplicado...');
-    const emailCheckQuery = `SELECT id FROM empresas WHERE email = $1`;
+    const emailCheckQuery = 'SELECT id FROM empresas WHERE email = $1';
     const emailCheckResult = await pool.query(emailCheckQuery, [email]);
 
     if (emailCheckResult.rows.length > 0) {
@@ -824,13 +851,13 @@ app.post('/register', async (req, res) => {
 
       // Verificar se há um registro incompleto
       const empresaId = emailCheckResult.rows[0].id;
-      const usuarioCheckQuery = `SELECT id FROM usuarios WHERE empresaid = $1`;
+      const usuarioCheckQuery = 'SELECT id FROM usuarios WHERE empresaid = $1';
       const usuarioCheckResult = await pool.query(usuarioCheckQuery, [empresaId]);
 
       if (usuarioCheckResult.rows.length === 0) {
         // Caso não haja usuário associado, remova o registro incompleto
         console.log('Removendo registro incompleto da empresa:', empresaId);
-        await pool.query(`DELETE FROM empresas WHERE id = $1`, [empresaId]);
+        await pool.query('DELETE FROM empresas WHERE id = $1', [empresaId]);
       } else {
         return res.status(400).json({ error: 'Este email já está registrado.' });
       }
@@ -905,13 +932,13 @@ app.get('/confirmar-email', async (req, res) => {
   }
 
   try {
-    const result = await pool.query(`SELECT id FROM usuarios WHERE token = $1 AND confirmado = false`, [token]);
+    const result = await pool.query('SELECT id FROM usuarios WHERE token = $1 AND confirmado = false', [token]);
 
     if (result.rows.length === 0) {
       return res.status(400).json({ error: 'Token inválido ou já utilizado.' });
     }
 
-    await pool.query(`UPDATE usuarios SET confirmado = true WHERE token = $1`, [token]);
+    await pool.query('UPDATE usuarios SET confirmado = true WHERE token = $1', [token]);
 
     res.json({ message: 'Email confirmado com sucesso!' });
   } catch (error) {
@@ -1184,7 +1211,7 @@ app.get('/manutencao-atual', async (req, res) => {
     let manutencao;
 
     if (manutencaoResult.rows.length === 0) {
-      console.log("Nenhuma manutenção encontrada. Criando uma nova...");
+      console.log('Nenhuma manutenção encontrada. Criando uma nova...');
 
       const equipeQuery = `
         SELECT e.id
@@ -1224,7 +1251,7 @@ app.get('/manutencao-atual', async (req, res) => {
       `;
       await pool.query(criarParametrosQuery, [manutencao.id, empresaid]);
 
-      console.log("Nova manutenção criada com parâmetros padrão.");
+      console.log('Nova manutenção criada com parâmetros padrão.');
     } else {
       manutencao = manutencaoResult.rows[0];
     }
@@ -1471,11 +1498,11 @@ app.put('/manutencoes/:id', async (req, res) => {
 
   // Validação dos dados recebidos
   if (!empresaid) {
-    return res.status(400).json({ error: "Empresaid é obrigatório." });
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
   }
 
   if (!parametros || parametros.length === 0) {
-    return res.status(400).json({ error: "Parâmetros são obrigatórios para concluir a manutenção." });
+    return res.status(400).json({ error: 'Parâmetros são obrigatórios para concluir a manutenção.' });
   }
 
   try {
@@ -1489,7 +1516,7 @@ app.put('/manutencoes/:id', async (req, res) => {
     const verificarResult = await pool.query(verificarManutencaoQuery, [id, empresaid]);
 
     if (verificarResult.rowCount === 0) {
-      return res.status(404).json({ error: "Manutenção não encontrada ou não pertence à empresa." });
+      return res.status(404).json({ error: 'Manutenção não encontrada ou não pertence à empresa.' });
     }
 
     // Atualiza o status da manutenção
@@ -1502,10 +1529,10 @@ app.put('/manutencoes/:id', async (req, res) => {
     const manutencaoResult = await pool.query(updateManutencaoQuery, [status, id, empresaid]);
 
     if (manutencaoResult.rowCount === 0) {
-      return res.status(400).json({ error: "Erro ao atualizar status da manutenção." });
+      return res.status(400).json({ error: 'Erro ao atualizar status da manutenção.' });
     }
 
-    console.log("Atualizando parâmetros para manutenção:", id);
+    console.log('Atualizando parâmetros para manutenção:', id);
 
     // Atualiza os parâmetros químicos
     for (const parametro of parametros) {
@@ -1536,15 +1563,15 @@ app.put('/manutencoes/:id', async (req, res) => {
         empresaid, // Adicionado aqui
       ];
 
-      console.log("Atualizando parâmetro:", parametroValues);
+      console.log('Atualizando parâmetro:', parametroValues);
 
       await pool.query(updateParametroQuery, parametroValues);
     }
 
-    res.status(200).json({ message: "Manutenção concluída com sucesso." });
+    res.status(200).json({ message: 'Manutenção concluída com sucesso.' });
   } catch (error) {
-    console.error("Erro ao atualizar manutenção:", error);
-    res.status(500).json({ error: "Erro ao atualizar manutenção." });
+    console.error('Erro ao atualizar manutenção:', error);
+    res.status(500).json({ error: 'Erro ao atualizar manutenção.' });
   }
 });
 
@@ -1620,10 +1647,10 @@ app.get('/manutencoes/:id', async (req, res) => {
       return res.status(404).json({ error: 'Manutenção não encontrada ou não pertence à empresa.' });
     }
 
-    const manutencaoQuery = `SELECT * FROM manutencoes WHERE id = $1`;
+    const manutencaoQuery = 'SELECT * FROM manutencoes WHERE id = $1';
     const manutencaoResult = await pool.query(manutencaoQuery, [id]);
 
-    const parametrosQuery = `SELECT * FROM manutencoes_parametros WHERE manutencao_id = $1`;
+    const parametrosQuery = 'SELECT * FROM manutencoes_parametros WHERE manutencao_id = $1';
     const parametrosResult = await pool.query(parametrosQuery, [id]);
 
     res.status(200).json({
@@ -1678,15 +1705,15 @@ app.put('/manutencoes/:id/parametros', async (req, res) => {
         parametro.valor_atual || null,
         parametro.produto_usado || null,
         parametro.quantidade_usada || 0,
-        parametro.status || "pendente",
+        parametro.status || 'pendente',
       ];
       await pool.query(parametroQuery, parametroValues);
     }
 
-    res.status(200).json({ message: "Parâmetros atualizados com sucesso." });
+    res.status(200).json({ message: 'Parâmetros atualizados com sucesso.' });
   } catch (error) {
-    console.error("Erro ao atualizar parâmetros:", error);
-    res.status(500).json({ error: "Erro ao atualizar parâmetros." });
+    console.error('Erro ao atualizar parâmetros:', error);
+    res.status(500).json({ error: 'Erro ao atualizar parâmetros.' });
   }
 });
 
@@ -1927,15 +1954,15 @@ app.post('/manutencoes_parametros', async (req, res) => {
     }
 
     // 🔍 LOG PARA VERIFICAR SE O STATUS "nao ajustavel" ESTÁ CHEGANDO
-    console.log("🔄 Registrando status no banco de dados:", { 
-      manutencao_id, 
-      parametro, 
-      valor_atual, 
-      produto_usado, 
-      quantidade_usada, 
-      status, 
-      motivo, 
-      empresaid 
+    console.log('🔄 Registrando status no banco de dados:', {
+      manutencao_id,
+      parametro,
+      valor_atual,
+      produto_usado,
+      quantidade_usada,
+      status,
+      motivo,
+      empresaid,
     });
 
     const query = `
@@ -2011,7 +2038,7 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
     const values = [manutencao_id, empresaid];
 
     const result = await pool.query(query, values);
-    console.log("🚀 Parâmetros carregados do banco:", result.rows);
+    console.log('🚀 Parâmetros carregados do banco:', result.rows);
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -2081,10 +2108,10 @@ app.post('/manutencoes/concluir', async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: "Manutenção concluída com sucesso.", id: manutencaoId });
+    res.status(201).json({ message: 'Manutenção concluída com sucesso.', id: manutencaoId });
   } catch (error) {
-    console.error("Erro ao concluir manutenção:", error);
-    res.status(500).json({ error: "Erro ao concluir manutenção." });
+    console.error('Erro ao concluir manutenção:', error);
+    res.status(500).json({ error: 'Erro ao concluir manutenção.' });
   }
 });
 
@@ -2172,6 +2199,7 @@ app.get('/notificacoes', async (req, res) => {
         n.id,
         n.assunto,
         n.mensagem,
+        n.anexos,
         n.status,
         n.data_criacao,
         n.data_resolucao,
@@ -2198,36 +2226,63 @@ app.get('/notificacoes', async (req, res) => {
 });
 
 app.post('/notificacoes', async (req, res) => {
-  const { clienteId, parametro, mensagem, empresaid } = req.body;
+  console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
 
-  // Validação dos dados recebidos
-  if (!clienteId || !parametro || !mensagem || !empresaid) {
-    return res.status(400).json({ error: 'Todos os campos são obrigatórios, incluindo empresaid.' });
+  const { cliente_id, clienteId, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
+
+  const clienteFinal = cliente_id || clienteId;
+
+  // 🛠️ Validação dos dados recebidos
+  if (!clienteFinal || !mensagem || !empresaid) {
+    console.warn('⚠️ Campos obrigatórios ausentes:', { cliente_id, clienteId, mensagem, empresaid });
+    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
   }
 
   try {
-    // Inserção de notificação, garantindo que não existem duplicadas
+    // **🔹 Ajuste:** `parametro` pode ser opcional (usado para distinguir entre notificações de parâmetros químicos e relatórios de anomalias)
+    const assunto = parametro ? parametro : 'Relatório de Anomalia';
+
+    // **🔹 Ajuste:** Conversão dos anexos para JSONB válido
+    const anexosJson = anexos && anexos.length > 0 ? JSON.stringify(anexos) : null;
+
     const query = `
-      INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
-      SELECT $1, $2::VARCHAR, $3, 'pendente', NOW(), $4
-      WHERE NOT EXISTS (
-        SELECT 1 FROM notificacoes
-        WHERE cliente_id = $1 AND assunto = $2 AND mensagem = $3 AND status = 'pendente' AND empresaid = $4
-      )
+      INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid, anexos, valor_servico_extra)
+      VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
       RETURNING *;
     `;
-    const result = await pool.query(query, [clienteId, parametro, mensagem, empresaid]);
+
+    const values = [
+      clienteFinal,
+      assunto,
+      mensagem,
+      empresaid,
+      anexosJson, // Envio correto para JSONB
+      valor_servico_extra ? parseFloat(valor_servico_extra) : 0,
+    ];
+
+    console.log('📤 Query para o banco de dados:', query);
+    console.log('🔹 Valores enviados para o banco de dados:', values);
+
+    const result = await pool.query(query, values);
 
     if (result.rowCount === 0) {
       return res.status(200).json({ message: 'Notificação já existe e está pendente.' });
     }
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ message: 'Notificação criada com sucesso!', notificacao: result.rows[0] });
+
   } catch (error) {
-    console.error('Erro ao criar notificação:', error);
+    console.error('❌ Erro ao criar notificação:', error);
+
+    // 🛠️ Melhor diagnóstico do erro
+    if (error.code) {
+      console.error(`🚨 Código de erro SQL: ${error.code}`);
+    }
+
     res.status(500).json({ error: 'Erro ao criar notificação.' });
   }
 });
+
 app.put('/notificacoes/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status, empresaid } = req.body;

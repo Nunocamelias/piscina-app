@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,6 +9,8 @@ type Props = {
   navigation: any;
   route: any;
 };
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const DiasDaSemanaScreen: React.FC<Props> = ({ navigation, route }) => {
   const { equipeId, equipeNome } = route.params;
@@ -93,7 +95,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 24,

@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, FlatList, TextInput, Alert, Modal, StyleSheet, Switch, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, FlatList, TextInput, Alert, Modal, StyleSheet, Switch, Appearance } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; // Importando o Picker para o dropdown
 import axios from 'axios';
 import Config from 'react-native-config';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 // Lista fixa de parâmetros
 const PARAMETROS_VALIDOS = [
@@ -37,7 +37,6 @@ type Parametro = {
 };
 
 const ParametrosQuimicosScreen: React.FC = () => {
-  const navigation = useNavigation();
   const [parametros, setParametros] = useState<Parametro[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [parametroSelecionado, setParametroSelecionado] = useState<Parametro | null>(null);
@@ -49,7 +48,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
       try {
         console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
         const empresaid = await AsyncStorage.getItem('empresaid');
-  
+
         if (empresaid) {
           console.log('[DEBUG] Empresaid encontrado:', empresaid);
           setUserEmpresaid(parseInt(empresaid, 10));
@@ -64,12 +63,12 @@ const ParametrosQuimicosScreen: React.FC = () => {
         setUserEmpresaid(null); // Define como null em caso de erro
       }
     };
-  
+
     fetchEmpresaid();
   }, []);
 
   // Função para buscar os parâmetros químicos
-  const fetchParametros = async () => {
+  const fetchParametros = useCallback(async () => {
     try {
       const response = await axios.get(`${Config.API_URL}/parametros-quimicos`, {
         params: { empresaid: userEmpresaid },
@@ -79,21 +78,22 @@ const ParametrosQuimicosScreen: React.FC = () => {
       console.error('Erro ao buscar parâmetros químicos:', error);
       Alert.alert('Erro', 'Não foi possível carregar os parâmetros.');
     }
-  };
-  
+  }, [userEmpresaid]); // ✅ Memoiza a função para evitar loops infinitos
+
   useEffect(() => {
     if (userEmpresaid) {
       fetchParametros();
     }
-  }, [userEmpresaid]);
-  
+  }, [userEmpresaid, fetchParametros]); // ✅ Agora o React não dispara o efeito infinitamente
+
+
 
 
   // Função para salvar ou atualizar um parâmetro
   const salvarParametro = async () => {
     try {
-      if (!parametroSelecionado) return;
-  
+      if (!parametroSelecionado) {return;}
+
       const parametroComEmpresaid = {
         ...parametroSelecionado,
         valor_minimo: parametroSelecionado.valor_minimo || null,
@@ -108,7 +108,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
         volume_calculo: parametroSelecionado.volume_calculo || null,
         empresaid: userEmpresaid,
       };
-  
+
       if (parametroSelecionado.id) {
         // Atualiza o parâmetro existente
         await axios.put(
@@ -119,7 +119,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
         // Cria um novo parâmetro
         await axios.post(`${Config.API_URL}/parametros-quimicos`, parametroComEmpresaid);
       }
-  
+
       Alert.alert('Sucesso', 'Parâmetro salvo com sucesso!');
       fetchParametros(); // Atualiza a lista de parâmetros após salvar
       setModalVisible(false);
@@ -128,7 +128,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
       Alert.alert('Erro', 'Não foi possível salvar o parâmetro.');
     }
   };
-  
+
 
   // Função para abrir o modal de edição/adicionar
   const abrirModal = (parametro?: Parametro) => {
@@ -149,19 +149,19 @@ const ParametrosQuimicosScreen: React.FC = () => {
     });
     setModalVisible(true);
   };
-  
+
   // Função para apagar um parâmetro
   const apagarParametro = async (id: number) => {
     if (!userEmpresaid) {
       Alert.alert('Erro', 'Empresaid não disponível. Certifique-se de que fez login corretamente.');
       return;
     }
-  
+
     try {
       await axios.delete(`${Config.API_URL}/parametros-quimicos/${id}`, {
         params: { empresaid: userEmpresaid },
       });
-  
+
       Alert.alert('Sucesso', 'Parâmetro apagado com sucesso!');
       fetchParametros(); // Atualiza os dados após apagar
     } catch (error) {
@@ -169,12 +169,12 @@ const ParametrosQuimicosScreen: React.FC = () => {
       Alert.alert('Erro', 'Não foi possível apagar o parâmetro.');
     }
   };
-  
+
 
   return (
     <KeyboardAvoidingView
     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    style={{ flex: 1 }}
+    style={styles.flexContainer}
   >
     <View style={styles.container}>
       <FlatList
@@ -240,30 +240,35 @@ const ParametrosQuimicosScreen: React.FC = () => {
 />
 
 
-  
+      <View style={styles.buttonContainer}>
       <TouchableOpacity style={styles.addButton} onPress={() => abrirModal()}>
         <Text style={styles.addButtonText}>Adicionar Parâmetro</Text>
       </TouchableOpacity>
-  
+      </View>
+
       {/* Modal para edição/adicionar */}
       {modalVisible && (
         <Modal visible={modalVisible} animationType="slide">
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>Parâmetro Químico</Text>
-  
+
             {/* 1ª linha: Nome do parâmetro com o array */}
-            <Picker
-              selectedValue={parametroSelecionado?.parametro}
-              onValueChange={(itemValue) =>
-                setParametroSelecionado({ ...parametroSelecionado!, parametro: itemValue })
-              }
-              style={styles.input}
-            >
-              {PARAMETROS_VALIDOS.map((parametro) => (
-                <Picker.Item key={parametro} label={parametro} value={parametro} />
-              ))}
-            </Picker>
-  
+            <View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={parametroSelecionado?.parametro}
+    onValueChange={(itemValue) =>
+      setParametroSelecionado({ ...parametroSelecionado!, parametro: itemValue })
+    }
+    style={styles.picker} // 🔹 Usa um estilo dedicado para o Picker
+    dropdownIconColor={isDarkMode ? '#FFF' : '#000'} // 🔹 Personaliza a cor da seta
+  >
+    {PARAMETROS_VALIDOS.map((parametro) => (
+      <Picker.Item key={parametro} label={parametro} value={parametro} />
+    ))}
+  </Picker>
+</View>
+
+
             {/* 2ª linha: Intervalo ideal */}
             <Text>Intervalo Ideal:</Text>
             <View style={styles.row}>
@@ -296,7 +301,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
            placeholderTextColor="#888"
            />
             </View>
-  
+
             {/* 3ª linha: Valor Alvo */}
             <Text>Valor Alvo:</Text>
             <TextInput
@@ -313,12 +318,13 @@ const ParametrosQuimicosScreen: React.FC = () => {
           }}
            placeholderTextColor="#888"
           />
-  
+
             {/* 4ª linha: Produto para aumentar */}
             <Text>Produto para Aumentar:</Text>
             <TextInput
               style={styles.input}
               placeholder="Produto"
+              placeholderTextColor="#888"
               value={parametroSelecionado?.produto_aumentar}
               onChangeText={(text) =>
                 setParametroSelecionado({
@@ -327,7 +333,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
                 })
               }
             />
-  
+
             {/* 5ª linha: Dosagem para aumentar */}
             <Text>Dosagem para Aumentar:</Text>
             <View style={styles.row}>
@@ -376,12 +382,13 @@ const ParametrosQuimicosScreen: React.FC = () => {
            placeholderTextColor="#888"
           />
             </View>
-  
+
             {/* 6ª linha: Produto para diminuir */}
             <Text>Produto para Diminuir:</Text>
             <TextInput
               style={styles.input}
               placeholder="Produto"
+              placeholderTextColor="#888"
               value={parametroSelecionado?.produto_diminuir}
               onChangeText={(text) =>
                 setParametroSelecionado({
@@ -390,7 +397,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
                 })
               }
             />
-  
+
             {/* 7ª linha: Dosagem para diminuir */}
           <Text>Dosagem para Diminuir:</Text>
           <View style={styles.row}>
@@ -439,7 +446,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
            placeholderTextColor="#888"
           />
             </View>
-  
+
             {/* Botões para Salvar e Cancelar */}
             <TouchableOpacity style={styles.saveButton} onPress={salvarParametro}>
               <Text style={styles.buttonText}>Salvar</Text>
@@ -456,15 +463,18 @@ const ParametrosQuimicosScreen: React.FC = () => {
     </View>
     </KeyboardAvoidingView>
   );
-  
+
 };
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
         padding: 16,
-        backgroundColor: '#f8f8f8',
+        backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     },
+    flexContainer: {
+      flex: 1,
+    },
+
     row: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -537,12 +547,22 @@ const styles = StyleSheet.create({
       fontSize: 16,
       color: '#777',
     },
+    buttonContainer: {
+      flex: 1, // Faz a View ocupar todo o espaço disponível
+      justifyContent: 'center', // Centraliza verticalmente
+      alignItems: 'center', // Centraliza horizontalmente
+    },
     addButton: {
-      backgroundColor: '#2196F3',
-      padding: 15,
-      borderRadius: 5,
-      alignItems: 'center',
-      marginTop: 20,
+      backgroundColor: '#ADD8E6', // Azul claro para os botões
+      paddingVertical: 15,
+      paddingHorizontal: 40,
+      borderRadius: 25, // Cantos redondos
+      marginBottom: 15, // Espaçamento entre os botões
+      width: '80%', // Todos os botões com a mesma largura
+      alignItems: 'center', // Centraliza o texto dentro do botão
+      borderWidth: 1.2, // Moldura preta ao botão
+      borderColor: '#000',
+      marginTop: 40, // 🔹 Move o botão 50px para baixo (ajusta conforme necessário)
     },
     toggleButton: {
       padding: 10,
@@ -556,9 +576,9 @@ const styles = StyleSheet.create({
     },
     buttonInactive: {
       backgroundColor: '#FF6347', // Vermelho para desativado
-    },  
+    },
     addButtonText: {
-      color: '#fff',
+      color: '#000',
       fontSize: 16,
       fontWeight: 'bold',
     },
@@ -594,7 +614,15 @@ const styles = StyleSheet.create({
       alignItems: 'center',
       marginTop: 10,
     },
+    pickerContainer: {
+      backgroundColor: isDarkMode ? '#333' : '#FFF', // 🔹 Cor de fundo do Picker
+      borderRadius: 8,
+      padding: 5,
+      marginBottom: 15,
+    },
+    picker: {
+      color: isDarkMode ? '#FFF' : '#000', // 🔹 Cor do texto dentro do Picker
+      width: '100%',
+    },
   });
-  
-
 export default ParametrosQuimicosScreen;

@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Appearance } from 'react-native';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const HomeScreen = ({ navigation }: any) => {
   return (
@@ -34,14 +36,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D3D3D3', // Cinza claro
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 20,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 30,
-    color: '#000', // Preto para contraste
+    color: '#333', // Preto para contraste
   },
   button: {
     backgroundColor: '#ADD8E6', // Azul claro para os botões
@@ -51,6 +53,8 @@ const styles = StyleSheet.create({
     marginBottom: 15, // Espaçamento entre os botões
     width: '80%', // Todos os botões com a mesma largura
     alignItems: 'center', // Centraliza o texto dentro do botão
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   buttonText: {
     fontSize: 16,

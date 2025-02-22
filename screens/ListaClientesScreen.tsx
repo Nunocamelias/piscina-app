@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput, Appearance } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import Config from 'react-native-config';
@@ -12,8 +12,9 @@ interface Cliente {
   id: number;
   nome: string;
   morada: string;
-  
 }
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const ListaClientesScreen = ({ navigation }: any) => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -28,7 +29,7 @@ const ListaClientesScreen = ({ navigation }: any) => {
       try {
         console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
         const empresaid = await AsyncStorage.getItem('empresaid');
-  
+
         if (empresaid) {
           console.log('[DEBUG] Empresaid encontrado:', empresaid);
           setUserEmpresaid(parseInt(empresaid, 10));
@@ -53,31 +54,31 @@ const ListaClientesScreen = ({ navigation }: any) => {
         Alert.alert('Erro', 'Ocorreu um problema ao recuperar o empresaid.');
       }
     };
-  
+
     fetchEmpresaid();
   }, [navigation]);
-  
-  
+
+
   // Função para buscar clientes
   const fetchClientes = useCallback(async () => {
     if (!userEmpresaid) {
       return; // Evita chamar o backend sem empresaid
-    }  
+    }
     setLoading(true);
-    try {      
+    try {
       const response = await axios.get(`${Config.API_URL}/clientes`, {
         params: { empresaid: userEmpresaid },
-      });  
-      
+      });
+
       setClientes(response.data);
-    } catch (error) {     
+    } catch (error) {
       Alert.alert('Erro', 'Não foi possível carregar a lista de clientes.');
     } finally {
       setLoading(false);
     }
   }, [userEmpresaid]);
-  
-  
+
+
 
   // Atualiza os clientes ao carregar a tela
   useFocusEffect(
@@ -122,26 +123,32 @@ const ListaClientesScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Lista de Clientes</Text>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Procurar por nome ou morada"
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-      />
-      {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" />
-      ) : (
-        <FlatList
-          data={filteredClientes}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderCliente}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Nenhum cliente encontrado.</Text>
-          }
-        />
-      )}
-    </View>
+  <Text style={styles.title}>Lista de Clientes</Text>
+
+  <TextInput
+    style={isDarkMode ? styles.searchInputDark : styles.searchInputLight}
+    placeholder="Procurar por nome ou morada"
+    placeholderTextColor={isDarkMode ? '#333' : '#666666'} // 🔥 Melhor contraste no dark mode
+    value={searchQuery}
+    onChangeText={setSearchQuery}
+  />
+
+  {loading ? (
+    <ActivityIndicator size="large" color={isDarkMode ? '#FFF' : '#0000ff'} /> // 🔥 Azul no claro, branco no escuro
+  ) : (
+    <FlatList
+      data={filteredClientes}
+      keyExtractor={(item) => item.id.toString()}
+      renderItem={renderCliente}
+      ListEmptyComponent={
+        <Text style={isDarkMode ? styles.emptyTextDark : styles.emptyTextLight}>
+          Nenhum cliente encontrado.
+        </Text>
+      }
+    />
+  )}
+</View>
+
   );
 };
 
@@ -149,16 +156,16 @@ const ListaClientesScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    textAlign: 'center',
     marginBottom: 20,
-    color: '#000',
+    textAlign: 'center',
+    color: isDarkMode ? '#000' : '#000', // 🔥 Mantém preto para ambos
   },
   searchInput: {
     backgroundColor: '#FFF',
@@ -167,6 +174,38 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 1,
     borderColor: '#CCC',
+  },
+  searchInputLight: {
+    backgroundColor: '#FFF',
+    borderWidth: 0,
+    borderColor: '#CCC',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 15,
+    color: '#000',
+    textAlign: 'center',
+  },
+  searchInputDark: {
+    backgroundColor: '#FFF', // 🔥 Mantém branco para contraste com o fundo cinza
+    borderWidth: 0,
+    borderColor: '#000', // 🔥 Borda preta para destaque
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 15,
+    color: '#000',
+    textAlign: 'center',
+  },
+  emptyTextLight: {
+    fontSize: 16,
+    color: '#666', // 🔥 Cinza escuro no modo claro
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  emptyTextDark: {
+    fontSize: 16,
+    color: '#222', // 🔥 Cinza mais escuro para melhorar a visibilidade no dark mode
+    textAlign: 'center',
+    marginTop: 20,
   },
   clienteItem: {
     backgroundColor: '#FFF',

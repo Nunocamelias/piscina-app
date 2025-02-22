@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const validatePassword = (password: string) => {
   const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
@@ -39,7 +41,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         navigation.navigate('Login');
       }
     };
-  
+
     fetchEmpresaid();
   }, []);
 
@@ -50,71 +52,87 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
     fetchDados();
   }, [equipeId]);
 
-  
+
   // Fetch equipe data
- 
-    const fetchEquipe = async () => {
-      console.log('[DEBUG] Iniciando fetchEquipe para equipeId:', equipeId);
-    
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid');
-        if (!empresaid) {
-          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-          navigation.navigate('Login');
-          return;
-        }
-    
-        console.log('[DEBUG] Empresaid carregado do AsyncStorage:', empresaid);
-    
-        const equipeResponse = await axios.get(`${Config.API_URL}/equipes/${equipeId}`, {
-          params: { empresaid: parseInt(empresaid, 10) },
-        });
-        console.log('[DEBUG] Dados da equipe recebidos:', equipeResponse.data);
-    
-        const usuarioResponse = await axios.get(`${Config.API_URL}/usuarios`, {
-          params: { equipeid: equipeId, empresaid: parseInt(empresaid, 10) },
-        });
-    
-        if (!usuarioResponse.data.id) {
-          console.error('[DEBUG] Nenhum ID de usuário encontrado.');
-          Alert.alert('Erro', 'Nenhum usuário associado à equipe encontrado.');
-          return;
-        }
-    
-        console.log('[DEBUG] Dados do usuário recebidos:', usuarioResponse.data);
-    
-        setForm({
-          nomeequipe: equipeResponse.data.nomeequipe,
-          nome1: equipeResponse.data.nome1,
-          nome2: equipeResponse.data.nome2,
-          matricula: equipeResponse.data.matricula,
-          telefone: equipeResponse.data.telefone,
-          proxima_inspecao: equipeResponse.data.proxima_inspecao,
-          validade_seguro: equipeResponse.data.validade_seguro,
-          email: usuarioResponse.data.email || '',
-          password: '', // Sempre em branco por segurança
-        });
-    
-        setUsuarioId(usuarioResponse.data.id); // Salva o ID do usuário
-        setLoading(false);
-      } catch (error) {
-        console.error('[DEBUG] Erro ao carregar os dados da equipe:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os dados da equipe.');
-        navigation.goBack();
+
+  const fetchEquipe = async () => {
+    console.log('[DEBUG] Iniciando fetchEquipe para equipeId:', equipeId);
+
+    try {
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (!empresaid) {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        navigation.navigate('Login');
+        return;
       }
-    };
-    
+
+      console.log('[DEBUG] Empresaid carregado do AsyncStorage:', empresaid);
+
+      // 🔹 Busca os dados da equipe
+      const equipeResponse = await axios.get(`${Config.API_URL}/equipes/${equipeId}`, {
+        params: { empresaid: parseInt(empresaid, 10) },
+      });
+
+      console.log('[DEBUG] Status da resposta da equipe:', equipeResponse.status);
+      console.log('[DEBUG] Dados da equipe recebidos:', equipeResponse.data);
+
+      // ✅ Armazena os dados da equipe antes de continuar
+      setForm({
+        nomeequipe: equipeResponse.data.nomeequipe,
+        nome1: equipeResponse.data.nome1,
+        nome2: equipeResponse.data.nome2,
+        matricula: equipeResponse.data.matricula,
+        telefone: equipeResponse.data.telefone,
+        proxima_inspecao: equipeResponse.data.proxima_inspecao,
+        validade_seguro: equipeResponse.data.validade_seguro,
+        email: '',
+        password: '',
+      });
+
+      // 🔹 Agora busca o usuário associado à equipe
+      console.log('[DEBUG] Fazendo requisição para buscar usuário associado à equipe...');
+      const usuarioResponse = await axios.get(`${Config.API_URL}/usuarios`, {
+        params: { equipeid: equipeId, empresaid: parseInt(empresaid, 10) },
+      });
+
+      console.log('[DEBUG] Status da resposta do usuário:', usuarioResponse.status);
+      console.log('[DEBUG] Dados do usuário recebidos:', usuarioResponse.data);
+
+      if (!usuarioResponse.data || usuarioResponse.data.length === 0) {
+        console.error('[DEBUG] Nenhum usuário encontrado para esta equipe.');
+        Alert.alert('Erro', 'Nenhum usuário associado à equipe encontrado.');
+        return;
+      }
+
+      setForm((prevForm) => ({
+        ...prevForm,
+        email: usuarioResponse.data.email || '',
+      }));
+
+      setUsuarioId(usuarioResponse.data.id);
+    } catch (error) {
+      console.error('[DEBUG] Erro ao carregar os dados da equipe ou usuário:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os dados da equipe.');
+      navigation.goBack();
+    } finally {
+      setLoading(false); // ✅ Garante que "Carregando..." desapareça
+    }
+
+  };
+
+
+
   const getColorForDate = (date: string) => {
-      if (!date) return '#FFF'; // Branco por padrão
-  
+      if (!date) {return '#FFF';} // Branco por padrão
+
       const today = moment();
       const targetDate = moment(date);
-  
+
       const diffDays = targetDate.diff(today, 'days');
-  
-      if (diffDays <= 3) return '#FF6347'; // Vermelho
-      if (diffDays <= 15) return '#FFA500'; // Laranja
-      if (diffDays <= 30) return '#FFD700'; // Amarelo
+
+      if (diffDays <= 3) {return '#FF6347';} // Vermelho
+      if (diffDays <= 15) {return '#FFA500';} // Laranja
+      if (diffDays <= 30) {return '#FFD700';} // Amarelo
       return '#FFF'; // Branco (fora do período de alerta)
     };
 
@@ -123,7 +141,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
         return;
       }
-    
+
       try {
         const payloadEquipe = {
           nomeequipe: form.nomeequipe,
@@ -135,9 +153,9 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
           validade_seguro: form.validade_seguro,
           empresaid: userEmpresaid,
         };
-    
+
         await axios.put(`${Config.API_URL}/equipes/${equipeId}`, payloadEquipe);
-    
+
         if (form.password && form.email) {
           if (!validatePassword(form.password)) {
             Alert.alert(
@@ -146,7 +164,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
             );
             return;
           }
-    
+
           const usuarioPayload = {
             nome: form.nomeequipe,
             email: form.email,
@@ -155,10 +173,10 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
             empresaid: userEmpresaid,
             equipeid: equipeId,
           };
-    
+
           await axios.put(`${Config.API_URL}/usuarios/${usuarioId}`, usuarioPayload);
         }
-    
+
         Alert.alert('Sucesso', 'Equipe e usuário atualizados com sucesso!');
         navigation.goBack();
       } catch (error) {
@@ -169,10 +187,10 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         );
       }
     };
-    
 
-    
-  
+
+
+
     const apagarEquipe = async () => {
       Alert.alert(
         'Confirmação',
@@ -197,7 +215,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         ]
       );
     };
-    
+
   const handleChange = (field: string, value: string | boolean) => {
     setForm({ ...form, [field]: value });
   };
@@ -209,15 +227,15 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       </View>
     );
   }
-  
+
   const salvarSenha = async () => {
     console.log('[DEBUG] Iniciando salvarSenha para usuarioId:', usuarioId);
-  
+
     if (!usuarioId) {
       Alert.alert('Erro', 'ID do usuário não encontrado.');
       return;
     }
-  
+
     if (!validatePassword(form.password)) {
       Alert.alert(
         'Senha Inválida',
@@ -225,7 +243,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       );
       return;
     }
-  
+
     try {
       const payload = {
         nome: form.nomeequipe, // Deve estar preenchido
@@ -235,16 +253,16 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
         equipeid: equipeId,    // Certifique-se de que não é null
         empresaid: userEmpresaid, // Certifique-se de que não é null
       };
-  
+
       await axios.put(`${Config.API_URL}/usuarios/${usuarioId}`, payload);
-  
+
       Alert.alert('Sucesso', 'Senha salva com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar a senha:', error);
       Alert.alert('Erro', 'Não foi possível salvar a senha.');
     }
   };
-  
+
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -252,6 +270,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Nome da Equipe"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         value={form.nomeequipe}
         editable={isEditable}
         onChangeText={(value) => handleChange('nomeequipe', value)}
@@ -259,6 +278,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Nome 1"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         value={form.nome1}
         editable={isEditable}
         onChangeText={(value) => handleChange('nome1', value)}
@@ -266,6 +286,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Nome 2"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         value={form.nome2}
         editable={isEditable}
         onChangeText={(value) => handleChange('nome2', value)}
@@ -273,6 +294,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Matrícula"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         value={form.matricula}
         editable={isEditable}
         onChangeText={(value) => handleChange('matricula', value)}
@@ -280,20 +302,21 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Telefone"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         keyboardType="phone-pad"
         value={form.telefone}
         editable={isEditable}
         onChangeText={(value) => handleChange('telefone', value)}
       />
      <TextInput
-        style={[styles.input,{ backgroundColor: getColorForDate(form.proxima_inspecao) },]}
+        style={[styles.input,{ backgroundColor: getColorForDate(form.proxima_inspecao) }]}
         placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
         value={form.proxima_inspecao}
         editable={isEditable}
         onChangeText={(value) => handleChange('proxima_inspecao', value)}
       />
      <TextInput
-        style={[styles.input,{ backgroundColor: getColorForDate(form.validade_seguro) },]}
+        style={[styles.input,{ backgroundColor: getColorForDate(form.validade_seguro) }]}
         placeholder="Validade do Seguro (AAAA-MM-DD)"
         value={form.validade_seguro}
         editable={isEditable}
@@ -302,6 +325,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
      <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Email"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         keyboardType="email-address"
         value={form.email}
         editable={isEditable}
@@ -310,6 +334,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
      <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Senha"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
         secureTextEntry
         value={form.password}
         editable={isEditable}
@@ -357,7 +382,7 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
     container: {
       padding: 20,
-      backgroundColor: '#D3D3D3',
+      backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
       flexGrow: 1,
     },
     title: {
@@ -405,38 +430,45 @@ const styles = StyleSheet.create({
         margin: 5, // Espaçamento ao redor de cada botão
         flex: 1, // Faz com que os botões tenham tamanhos proporcionais
         maxWidth: '30%', // Limita a largura máxima de cada botão
+        borderWidth: 1.5, // Adiciona moldura
+        borderColor: '#000', // Cor da moldura preta
       },
       buttonText: {
-      color: '#000', // Preto para o texto
-      fontWeight: 'bold',
-      fontSize: 16,
-    }, 
-    saveButton: {
-      backgroundColor: '#ADD8E6',
-      padding: 10,
-      borderRadius: 5,
-      marginTop: 15,
-      alignItems: 'center',
-    },
-    saveButtonText: {
+        color: '#000', // Preto para o texto
+        fontWeight: 'bold',
+        fontSize: 16,
+      },
+      saveButton: {
+        backgroundColor: '#ADD8E6',
+        paddingVertical: 15,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginBottom: 15,
+        width: '100%',
+        alignSelf: 'center',
+      },
+      saveButtonText: {
       color: '#FFF',
       fontWeight: 'bold',
-    },
-    generateButton: {
-      backgroundColor: '#ADD8E6', // Azul claro
-      paddingVertical: 15,
-      paddingHorizontal: 20,
-      borderRadius: 10,
-      alignItems: 'center',
-      width: '100%', // Faz o botão ocupar toda a largura disponível
-      marginBottom: 10, // Espaço entre outros elementos
+      },
+      generateButton: {
+        backgroundColor: '#ADD8E6', // Azul claro
+        paddingVertical: 15,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        width: '100%', // Faz o botão ocupar toda a largura disponível
+        marginBottom: 10, // Espaço entre outros elementos
+        borderWidth: 1.5, // Adiciona moldura
+        borderColor: '#000', // Cor da moldura preta
     },
     generateButtonText: {
       fontSize: 16,
       fontWeight: '600',
       color: '#000',
     },
-    
+
   });
 
 export default EditEquipeScreen;

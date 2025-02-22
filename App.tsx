@@ -124,17 +124,17 @@ const App = (): React.JSX.Element => {
           component={EditEquipeScreen}
           options={{ title: 'Detalhes da Equipe' }}
         />
-        <Stack.Screen 
-          name="ListasManutencoes" 
-          component={ListasManutencoesScreen} 
+        <Stack.Screen
+          name="ListasManutencoes"
+          component={ListasManutencoesScreen}
           options={{ title: 'Listas de Manutenções' }} />
-        <Stack.Screen 
-          name="DiasDaSemana" 
-          component={DiasDaSemanaScreen} 
+        <Stack.Screen
+          name="DiasDaSemana"
+          component={DiasDaSemanaScreen}
           options={{ title: 'Dias da Semana' }} />
-        <Stack.Screen 
-          name="PiscinasPorDia" 
-          component={PiscinasPorDiaScreen} 
+        <Stack.Screen
+          name="PiscinasPorDia"
+          component={PiscinasPorDiaScreen}
           options={{ title: 'Piscinas por Dia' }} />
         <Stack.Screen
           name="AdminHome"
@@ -152,9 +152,9 @@ const App = (): React.JSX.Element => {
           name="EquipesDiasDaSemana"
           component={EquipesDiasDaSemanaScreen}
           options={{ title: 'Dias da Semana' }}/>
-        <Stack.Screen 
-          name="EquipesPiscinasPorDia" 
-          component={EquipesPiscinasPorDiaScreen} 
+        <Stack.Screen
+          name="EquipesPiscinasPorDia"
+          component={EquipesPiscinasPorDiaScreen}
           options={{ title: 'Piscinas por Dia' }}/>
         <Stack.Screen
           name="Administracao"

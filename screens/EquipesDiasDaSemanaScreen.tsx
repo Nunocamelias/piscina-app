@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ProgressBar } from 'react-native-paper'; // Biblioteca para barra de progresso
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
   const { equipeId, equipeNome } = route.params;
@@ -43,7 +45,7 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
 
   // Busca os contadores de clientes
   const fetchContadores = async () => {
-    if (!userEmpresaid) return;
+    if (!userEmpresaid) {return;}
 
     try {
       const response = await axios.get(`${Config.API_URL}/contador-clientes`, {
@@ -71,7 +73,7 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
 
   // Atualiza o progresso (simulado)
   const atualizarProgresso = (dia: string) => {
-    if (!contadores[dia]) return; // Evita divisão por zero
+    if (!contadores[dia]) {return;} // Evita divisão por zero
     const novosProgresso = Math.min(progress[dia] + 1 / contadores[dia], 1); // Incrementa o progresso
     setProgress((prev) => ({ ...prev, [dia]: novosProgresso }));
   };
@@ -112,7 +114,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#D3D3D3', // Cinza claro
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 24,

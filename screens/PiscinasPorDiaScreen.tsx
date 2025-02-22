@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Modal, Button } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Modal, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +18,8 @@ type Cliente = {
   periodicidadeRestante: number;
   periodicidadeformatada: string;
 };
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
   const { equipeId, equipeNome, diaSemana, readOnly } = route.params;
@@ -50,8 +52,8 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
   }, []);
 
   // Função para buscar clientes associados
-  const fetchClientes = async () => {
-    if (!userEmpresaid) return;
+  const fetchClientes = useCallback(async () => {
+    if (!userEmpresaid) { return; }
 
     try {
       console.log('[DEBUG] Buscando clientes associados para equipe:', equipeId, 'e dia:', diaSemana);
@@ -64,11 +66,10 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
       console.error('[DEBUG] Erro ao buscar clientes associados:', error);
       Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
     }
-  };
+  }, [userEmpresaid, equipeId, diaSemana]); // ✅ Agora só muda quando alguma dessas variáveis mudar
 
-  // Função para buscar clientes disponíveis
-  const fetchClientesDisponiveis = async () => {
-    if (!userEmpresaid) return;
+  const fetchClientesDisponiveis = useCallback(async () => {
+    if (!userEmpresaid) { return; }
 
     try {
       console.log('[DEBUG] Buscando clientes disponíveis para dia:', diaSemana);
@@ -81,17 +82,18 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
       console.error('[DEBUG] Erro ao buscar clientes disponíveis:', error);
       Alert.alert('Erro', 'Não foi possível carregar os clientes disponíveis.');
     }
-  };
+  }, [userEmpresaid, diaSemana]); // ✅ Agora só muda quando `userEmpresaid` ou `diaSemana` mudar
 
   useEffect(() => {
     if (userEmpresaid) {
       fetchClientes();
-      if (!readOnly) fetchClientesDisponiveis();
+      if (!readOnly) { fetchClientesDisponiveis(); }
     }
-  }, [userEmpresaid, equipeId, diaSemana]);
+  }, [userEmpresaid, equipeId, diaSemana, fetchClientes, fetchClientesDisponiveis, readOnly]); // ✅ Agora otimizado
+
 
   const associarCliente = async (clienteId: number) => {
-    if (readOnly) return;
+    if (readOnly) {return;}
 
     try {
       console.log('[DEBUG] Associando cliente:', clienteId, 'com equipe:', equipeId, 'e dia:', diaSemana);
@@ -112,7 +114,7 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
   };
 
   const desassociarCliente = async (clienteId: number) => {
-    if (readOnly) return;
+    if (readOnly) {return;}
 
     Alert.alert(
       'Confirmação',
@@ -208,10 +210,15 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
                   Nenhum cliente disponível para associar.
                 </Text>
               }
-            />
-            <Button title="Fechar" onPress={() => setModalVisible(false)} />
-          </View>
-        </Modal>
+              />
+              <TouchableOpacity
+                style={styles.closeButton} // 🔥 Aplica o novo estilo
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.closeButtonText}>Fechar</Text>
+              </TouchableOpacity>
+              </View>
+              </Modal>
       )}
     </View>
   );
@@ -221,7 +228,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
     fontSize: 20,
@@ -235,6 +242,8 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     marginBottom: 20,
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   addButtonText: {
     color: '#000',
@@ -273,16 +282,18 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#FFF',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   removeButton: {
     backgroundColor: '#ADD8E6', // Azul característico da app
     paddingVertical: 10,
     paddingHorizontal: 15, // Botão suficiente para o texto "Desassociar"
-    borderRadius: 5,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10, // Espaço entre o texto e o botão
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
   },
   removeButtonText: {
     color: '#000',
@@ -303,10 +314,27 @@ const styles = StyleSheet.create({
   modalItemText: {
     fontSize: 16,
   },
+  closeButton: {
+    backgroundColor: '#ADD8E6', // 🔹 Azul claro, igual aos outros botões da app
+    paddingVertical: 12,
+    paddingHorizontal: 50,
+    borderRadius: 25, // 🔥 Cantos arredondados
+    alignItems: 'center',
+    alignSelf: 'center', // 🔥 Centraliza o botão
+    marginTop: 15, // 🔥 Espaço acima do botão
+    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
+    borderColor: '#000',
+  },
+
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000', // 🔥 Preto para boa legibilidade
+  },
 });
 
 export default PiscinasPorDiaScreen;
-  
+
 
 
 
