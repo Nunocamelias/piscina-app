@@ -1,131 +1,178 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
 import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import LoginScreen from './screens/LoginScreen';
+import HomeScreen from './screens/HomeScreen';
+import ClientesScreen from './screens/ClientesScreen';
+import AddClienteScreen from './screens/AddClienteScreen';
+import ListaClientesScreen from './screens/ListaClientesScreen';
+import EditClienteScreen from './screens/EditClienteScreen';
+import EquipesScreen from './screens/EquipesScreen';
+import AddEquipeScreen from './screens/AddEquipeScreen';
+import ListaEquipesScreen from './screens/ListaEquipesScreen';
+import EditEquipeScreen from './screens/EditEquipeScreen';
+import ListasManutencoesScreen from './screens/ListasManutencoesScreen';
+import DiasDaSemanaScreen from './screens/DiasDaSemanaScreen';
+import PiscinasPorDiaScreen from './screens/PiscinasPorDiaScreen';
+import AdminHomeScreen from './screens/AdminHomeScreen';
+import EquipeHomeScreen from './screens/EquipeHomeScreen';
+import EquipesListaManutencoesScreen from './screens/EquipesListaManutencoesScreen';
+import EquipesDiasDaSemanaScreen from './screens/EquipesDiasDaSemanaScreen';
+import EquipesPiscinasPorDiaScreen from './screens/EquipesPiscinasPorDiaScreen';
+import AdministracaoScreen from './screens/AdministracaoScreen';
+import ParametrosQuimicosScreen from './screens/ParametrosQuimicosScreen';
+import FolhaManutencaoScreen from './screens/FolhaManutencaoScreen';
+import RegisterCompanyScreen from './screens/RegisterCompanyScreen';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+export type RootStackParamList = {
+  Login: undefined;
+  Home: undefined;
+  Clientes: undefined;
+  AddCliente: undefined;
+  ListaClientes: undefined;
+  EditCliente: { clienteId: number };
+  Equipes: undefined;
+  AddEquipe: undefined;
+  ListaEquipes: undefined;
+  EditEquipe: { equipeId: number };
+  ListasManutencoes: undefined;
+  DiasDaSemana: { equipeId: number; equipeNome: string }; // Inclui equipeNome para consistência
+  PiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string };
+  AdminHome: undefined;
+  EquipeHome: { equipeId: number; equipeNome: string };
+  EquipesListaManutencoes: { equipeId: number; equipeNome: string }; // Adiciona os parâmetros
+  EquipesDiasDaSemana: { equipeId: number; equipeNome: string; atualizarProgressoDia?: string; atualizarProgressoStatus?: string }; // Adiciona os parâmetros
+  EquipesPiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string; atualizarStatusClienteId?: number; atualizarStatusCliente?: string };
+  Administracao: undefined; // Define a tela de administração
+  ParametrosQuimicos: undefined;
+  FolhaManutencao: {
+    clienteId: number;
+    nome: string;
+    morada: string;
+    telefone: string;
+    info_acesso: string;
+    volume: number;
+    google_maps: string;
+    tanque_compensacao: boolean;
+    cobertura: boolean;
+    bomba_calor: boolean;
+    equipamentos_especiais: boolean;
+    ultima_substituicao: string;
+    status: string;
+    equipeId: number;
+    diaSemana: string;
+    };
+    RegisterCompany: undefined;
+};
+
+const Stack = createStackNavigator<RootStackParamList>();
+
+const App = (): React.JSX.Element => {
   return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="Login">
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ title: 'Login', headerShown: false }}/>
+        <Stack.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{ title: 'GES-POOL' }}
+        />
+        <Stack.Screen
+          name="Clientes"
+          component={ClientesScreen}
+          options={{ title: 'Área de Cliente' }}
+        />
+        <Stack.Screen
+          name="AddCliente"
+          component={AddClienteScreen}
+          options={{ title: 'Adicionar Cliente' }}
+        />
+        <Stack.Screen
+          name="ListaClientes"
+          component={ListaClientesScreen}
+          options={{ title: 'Lista de Clientes' }}
+        />
+        <Stack.Screen
+          name="EditCliente"
+          component={EditClienteScreen}
+          options={{ title: 'Detalhes do Cliente' }}
+        />
+        <Stack.Screen
+          name="Equipes"
+          component={EquipesScreen}
+          options={{ title: 'Área de Equipes' }}
+        />
+        <Stack.Screen
+          name="AddEquipe"
+          component={AddEquipeScreen}
+          options={{ title: 'Adicionar Equipe' }}
+        />
+        <Stack.Screen
+          name="ListaEquipes"
+          component={ListaEquipesScreen}
+          options={{ title: 'Lista de Equipes' }}
+        />
+        <Stack.Screen
+          name="EditEquipe"
+          component={EditEquipeScreen}
+          options={{ title: 'Detalhes da Equipe' }}
+        />
+        <Stack.Screen
+          name="ListasManutencoes"
+          component={ListasManutencoesScreen}
+          options={{ title: 'Listas de Manutenções' }} />
+        <Stack.Screen
+          name="DiasDaSemana"
+          component={DiasDaSemanaScreen}
+          options={{ title: 'Dias da Semana' }} />
+        <Stack.Screen
+          name="PiscinasPorDia"
+          component={PiscinasPorDiaScreen}
+          options={{ title: 'Piscinas por Dia' }} />
+        <Stack.Screen
+          name="AdminHome"
+          component={AdminHomeScreen}
+          options={{ title: 'Administração' }}/>
+        <Stack.Screen
+          name="EquipeHome"
+          component={EquipeHomeScreen}
+          options={{ title: 'Equipe' }}/>
+        <Stack.Screen
+          name="EquipesListaManutencoes"
+          component={EquipesListaManutencoesScreen}
+          options={{ title: 'Equipes - Lista de Manutenções' }}/>
+        <Stack.Screen
+          name="EquipesDiasDaSemana"
+          component={EquipesDiasDaSemanaScreen}
+          options={{ title: 'Dias da Semana' }}/>
+        <Stack.Screen
+          name="EquipesPiscinasPorDia"
+          component={EquipesPiscinasPorDiaScreen}
+          options={{ title: 'Piscinas por Dia' }}/>
+        <Stack.Screen
+          name="Administracao"
+          component={AdministracaoScreen}
+          options={{ title: 'Administração' }}/>
+        <Stack.Screen
+          name="ParametrosQuimicos"
+          component={ParametrosQuimicosScreen}
+          options={{ title: 'Parâmetros Químicos' }}/>
+        <Stack.Screen
+          name="FolhaManutencao"
+          component={FolhaManutencaoScreen}
+          options={{ title: 'Folha de Manutenção' }}/>
+        <Stack.Screen
+          name="RegisterCompany"
+          component={RegisterCompanyScreen}
+          options={{ title: 'Registar Empresa' }}/>
+      </Stack.Navigator>
+    </NavigationContainer>
   );
-}
-
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
-
-  /*
-   * To keep the template simple and small we're adding padding to prevent view
-   * from rendering under the System UI.
-   * For bigger apps the reccomendation is to use `react-native-safe-area-context`:
-   * https://github.com/AppAndFlow/react-native-safe-area-context
-   *
-   * You can read more about it here:
-   * https://github.com/react-native-community/discussions-and-proposals/discussions/827
-   */
-  const safePadding = '5%';
-
-  return (
-    <View style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        style={backgroundStyle}>
-        <View style={{paddingRight: safePadding}}>
-          <Header/>
-        </View>
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-            paddingHorizontal: safePadding,
-            paddingBottom: safePadding,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
+};
 
 export default App;
