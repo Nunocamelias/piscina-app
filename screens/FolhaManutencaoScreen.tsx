@@ -5,7 +5,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import DocumentPicker, { DocumentPickerResponse, isCancel, types } from 'react-native-document-picker';
+import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import moment from 'moment';
 
@@ -502,14 +502,26 @@ const confirmarManutencaoPeriodica = async (item: ItemManutencao) => {
 
 const handleAnexarFoto = async () => {
   try {
+    console.log('📎 A abrir DocumentPicker...');
     const res = await DocumentPicker.pick({
-      type: [types.images, types.pdf, types.video],
+      type: [
+        DocumentPicker.types.images,
+        DocumentPicker.types.pdf,
+        DocumentPicker.types.video,
+      ],
       allowMultiSelection: false,
     });
 
-    const file = res[0] as any;
-    const finalUriOriginal = file.uri as string;
+    console.log('📄 Resultado do DocumentPicker:', res);
 
+    // ⚙️ Garante que estamos a ler o formato correto (array ou único objeto)
+    const file = Array.isArray(res) ? res[0] : res;
+
+    if (!file || !file.uri) {
+      throw new Error('O ficheiro selecionado não contém URI.');
+    }
+
+    const finalUriOriginal = file.uri;
     let finalUri = finalUriOriginal;
 
     if (Platform.OS === 'android' && finalUri.startsWith('content://')) {
@@ -520,22 +532,19 @@ const handleAnexarFoto = async () => {
     }
 
     setImagensAnexadas((prev) => [...prev, finalUri]);
-  } catch (err) {
-    if (isCancel(err as any)) {
-      console.log('❌ Seleção cancelada');
-    } else {
-      const error = err as Error;
-      console.error('❌ Erro ao selecionar ficheiro:', error.message);
-      Alert.alert('Erro', error.message || 'Erro ao selecionar o ficheiro.');
-    }
+    console.log('📸 Imagem adicionada com sucesso:', finalUri);
+
+  } catch (err: any) {
+  console.log('🧩 ERRO COMPLETO (DocumentPicker):', JSON.stringify(err, null, 2));
+
+  if (err?.code === 'DOCUMENT_PICKER_CANCELED') {
+    console.log('❌ Seleção cancelada pelo utilizador');
+  } else {
+    console.error('❌ Erro ao selecionar ficheiro:', err);
+    Alert.alert('Erro', err?.message || 'Erro ao selecionar o ficheiro.');
   }
+}
 };
-
-
-
-
-
-
 
 
   const handleEnviarRelatorio = async () => {
