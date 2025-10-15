@@ -181,7 +181,7 @@ const ParametrosQuimicosScreen: React.FC = () => {
           data={parametros}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: item.ativo ? '#CCFFCC' : '#B0B0B0' }]}>
               <Text style={styles.cardTitle}>{item.parametro}</Text>
               <Text>Intervalo: {item.valor_minimo} - {item.valor_maximo}</Text>
               <Text>Valor Alvo: {item.valor_alvo}</Text>
@@ -268,22 +268,28 @@ ListFooterComponent={
         <View style={styles.innerContainer}>
           <Text style={styles.modalTitle}>Parâmetro Químico</Text>
 
-          {/* 1ª linha: Nome do parâmetro com o array */}
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={parametroSelecionado?.parametro}
-              onValueChange={(itemValue) =>
-                setParametroSelecionado({ ...parametroSelecionado!, parametro: itemValue })
-              }
-              style={styles.picker}
-              dropdownIconColor={'#FFF'}
-            >
-              <Picker.Item label="Escolha um Parâmetro" value="" color="#FFF" />
-              {PARAMETROS_VALIDOS.map((parametro) => (
-                <Picker.Item key={parametro} label={parametro} value={parametro} />
-              ))}
-            </Picker>
-          </View>
+         {/* 1ª linha: Nome do parâmetro com o array */}
+<View style={[styles.pickerContainer, { backgroundColor: '#FFFFFF' }]}>
+  <Picker
+    selectedValue={parametroSelecionado?.parametro}
+    onValueChange={(itemValue) =>
+      setParametroSelecionado({ ...parametroSelecionado!, parametro: itemValue })
+    }
+    style={[
+      styles.picker,
+      { backgroundColor: '#FFFFFF', color: '#000000' } // força texto preto e fundo branco
+    ]}
+    dropdownIconColor={'#000000'}
+    mode="dropdown" // 🔹 garante o estilo dropdown (não dialog)
+  >
+    <Picker.Item label="Escolha um Parâmetro" value="" color="#333333" />
+    {PARAMETROS_VALIDOS.map((parametro) => (
+      <Picker.Item key={parametro} label={parametro} value={parametro} color="#000000" />
+    ))}
+  </Picker>
+</View>
+
+
 
           {/* 2ª linha: Intervalo ideal */}
           <Text style={styles.titleText}>Intervalo Ideal:</Text>
@@ -663,7 +669,7 @@ const styles = StyleSheet.create({
       borderRadius: 8,
       overflow: 'hidden',
       marginBottom: 20,
-      backgroundColor: isDarkMode ? '#FFF' : '#000',
+      backgroundColor: isDarkMode ? '#FFFFFF' : '#FFFFFF',
     },
     picker: {
       backgroundColor: '#333', // 🔹 Cor do texto dentro do Picker

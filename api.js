@@ -2009,14 +2009,17 @@ app.get('/ultima-manutencao', async (req, res) => {
 });
 
 
+// 🔹 Regista parâmetros de manutenção e gera notificação automática se necessário
 app.post('/manutencoes_parametros', async (req, res) => {
   const { manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, status, motivo, empresaid } = req.body;
 
+  // 🧩 Validação inicial
   if (!manutencao_id || !parametro || !empresaid) {
     return res.status(400).json({ error: 'Dados incompletos: manutenção, parâmetro ou empresaid ausente.' });
   }
 
   try {
+    // 🧩 Confirma se a manutenção e o parâmetro pertencem à empresa
     const validaEmpresaQuery = `
       SELECT 1 
       FROM manutencoes m
@@ -2031,7 +2034,7 @@ app.post('/manutencoes_parametros', async (req, res) => {
       return res.status(403).json({ error: 'Parâmetro ou manutenção não pertencem à empresa especificada.' });
     }
 
-    // 🔍 LOG PARA VERIFICAR SE O STATUS "nao ajustavel" ESTÁ CHEGANDO
+    // 🧾 Log informativo
     console.log('🔄 Registrando status no banco de dados:', {
       manutencao_id,
       parametro,
@@ -2043,6 +2046,7 @@ app.post('/manutencoes_parametros', async (req, res) => {
       empresaid,
     });
 
+    // 🧩 Regista ou atualiza o parâmetro
     const query = `
       INSERT INTO manutencoes_parametros (
         manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, status, motivo, empresaid
@@ -2078,13 +2082,56 @@ app.post('/manutencoes_parametros', async (req, res) => {
 
     await pool.query(query, values);
 
+    // ✅ Busca o cliente da manutenção
+    const clienteQuery = `
+      SELECT cliente_id 
+      FROM manutencoes 
+      WHERE id = $1 AND empresaid = $2
+    `;
+    const clienteResult = await pool.query(clienteQuery, [manutencao_id, empresaid]);
+    const clienteId = clienteResult.rows[0]?.cliente_id;
+
+    // 🔔 Notificação automática (exemplo: alcalinidade alta)
+    if (clienteId) {
+      if (parametro === 'alcalinidade' && valor_atual > 120) {
+        // Verifica se já existe notificação pendente semelhante
+        const existeNotif = await pool.query(`
+          SELECT id FROM notificacoes
+          WHERE cliente_id = $1
+            AND assunto = 'Parâmetro químico fora do intervalo'
+            AND mensagem ILIKE '%alcalinidade%'
+            AND status != 'resolvido'
+            AND empresaid = $2
+        `, [clienteId, empresaid]);
+
+        if (existeNotif.rows.length === 0) {
+          const mensagem = `A alcalinidade está acima de 120 ppm. É necessário repor parte da água da piscina.`;
+          await pool.query(`
+            INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
+            VALUES ($1, $2, $3, 'pendente', NOW(), $4)
+          `, [
+            clienteId,
+            'Parâmetro químico fora do intervalo',
+            mensagem,
+            empresaid
+          ]);
+
+          console.log(`📢 Notificação criada automaticamente para o cliente ${clienteId}`);
+        } else {
+          console.log(`⚠️ Notificação já existente para o cliente ${clienteId}, não duplicada.`);
+        }
+      }
+    }
+
+    // 🔚 Resposta final
     res.status(200).json({ message: 'Status do parâmetro registrado com sucesso.' });
 
   } catch (error) {
-    console.error('Erro ao registrar status do parâmetro:', error);
+    console.error('❌ Erro ao registrar status do parâmetro:', error);
     res.status(500).json({ error: 'Erro ao registrar status do parâmetro.' });
   }
 });
+
 
 app.get('/manutencoes_parametros', async (req, res) => {
   const { manutencao_id, empresaid } = req.query;

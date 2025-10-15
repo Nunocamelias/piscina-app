@@ -46,23 +46,39 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
     fetchEmpresaid();
   }, []);
 
-  // 🔹 Busca os contadores de clientes
+// 🔹 Busca os contadores de clientes
 const fetchContadores = useCallback(async () => {
   if (!userEmpresaid) {
     console.log('[DEBUG] Tentativa de buscar contadores sem empresaid.');
     return;
   }
 
+  console.log('[DEBUG] Entrou em fetchContadores');
+  console.log('[DEBUG] Vai fazer pedido GET:', `${Config.API_URL}/contador-clientes`);
+
   try {
-    console.log('[DEBUG] Buscando contadores para empresa ID:', userEmpresaid);
     const response = await axios.get(`${Config.API_URL}/contador-clientes`, {
       params: { equipeId, empresaid: userEmpresaid },
     });
 
     console.log('[DEBUG] Contadores recebidos:', response.data);
 
+    // 🧩 Verifica se a resposta é um array
+    if (!Array.isArray(response.data)) {
+      console.warn('[DEBUG] Resposta inesperada de /contador-clientes:', response.data);
+      setContadores({});
+      return;
+    }
+
+    // 🧩 Converte o array num objeto de contadores
     const novosContadores = response.data.reduce(
-      (acc: Record<string, { total: number; concluidas: number; naoConcluidas: number }>, item: any) => {
+      (
+        acc: Record<
+          string,
+          { total: number; concluidas: number; naoConcluidas: number }
+        >,
+        item: any
+      ) => {
         acc[item.diasemana] = {
           total: item.total,
           concluidas: item.concluidas,
@@ -75,11 +91,12 @@ const fetchContadores = useCallback(async () => {
 
     console.log('[DEBUG] Contadores formatados:', novosContadores);
     setContadores(novosContadores);
-  } catch (error) {
-    console.error('Erro ao buscar contadores de clientes:', error);
+
+  } catch (error: any) {
+    console.error('❌ Erro ao buscar contadores de clientes:', error?.message || error);
     Alert.alert('Erro', 'Não foi possível carregar os contadores de clientes.');
   }
-}, [userEmpresaid, equipeId]); // ✅ Agora só é recriada quando necessário
+}, [userEmpresaid, equipeId]);
 
 // 🔹 Atualizamos o `useEffect`
 useEffect(() => {
