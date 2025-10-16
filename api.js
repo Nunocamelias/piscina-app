@@ -2091,37 +2091,52 @@ app.post('/manutencoes_parametros', async (req, res) => {
     const clienteResult = await pool.query(clienteQuery, [manutencao_id, empresaid]);
     const clienteId = clienteResult.rows[0]?.cliente_id;
 
-    // 🔔 Notificação automática (exemplo: alcalinidade alta)
-    if (clienteId) {
-      if (parametro === 'alcalinidade' && valor_atual > 120) {
-        // Verifica se já existe notificação pendente semelhante
-        const existeNotif = await pool.query(`
-          SELECT id FROM notificacoes
-          WHERE cliente_id = $1
-            AND assunto = 'Parâmetro químico fora do intervalo'
-            AND mensagem ILIKE '%alcalinidade%'
-            AND status != 'resolvido'
-            AND empresaid = $2
-        `, [clienteId, empresaid]);
+    // 🔔 Notificações automáticas para parâmetros fora do intervalo
+if (clienteId) {
+  let limite = null;
+  let descricao = '';
 
-        if (existeNotif.rows.length === 0) {
-          const mensagem = `A alcalinidade está acima de 120 ppm. É necessário repor parte da água da piscina.`;
-          await pool.query(`
-            INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
-            VALUES ($1, $2, $3, 'pendente', NOW(), $4)
-          `, [
-            clienteId,
-            'Parâmetro químico fora do intervalo',
-            mensagem,
-            empresaid
-          ]);
+  // 🧩 Define o limite e a descrição conforme o parâmetro
+  if (parametro === 'alcalinidade' && valor_atual > 120) {
+    limite = 120;
+    descricao = 'A alcalinidade está acima de 120 ppm. É necessário repor parte da água da piscina.';
+  } else if (parametro === 'acido cianurico' && valor_atual > 50) {
+    limite = 50;
+    descricao = 'O ácido cianúrico está acima de 50 ppm. É recomendada a reposição parcial da água da piscina.';
+  } else if (parametro === 'sal' && valor_atual > 6) {
+    limite = 6;
+    descricao = 'O teor de sal está acima de 6 kg/m³. Verifique o equipamento de eletrólise e a concentração de sal.';
+  }
 
-          console.log(`📢 Notificação criada automaticamente para o cliente ${clienteId}`);
-        } else {
-          console.log(`⚠️ Notificação já existente para o cliente ${clienteId}, não duplicada.`);
-        }
-      }
+  // Só continua se houver limite definido e o valor estiver fora do intervalo
+  if (limite !== null) {
+    const existeNotif = await pool.query(`
+      SELECT id FROM notificacoes
+      WHERE cliente_id = $1
+        AND assunto = 'Parâmetro químico fora do intervalo'
+        AND mensagem ILIKE $2
+        AND status != 'resolvido'
+        AND empresaid = $3
+    `, [clienteId, `%${parametro}%`, empresaid]);
+
+    if (existeNotif.rows.length === 0) {
+      await pool.query(`
+        INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
+        VALUES ($1, $2, $3, 'pendente', NOW(), $4)
+      `, [
+        clienteId,
+        'Parâmetro químico fora do intervalo',
+        descricao,
+        empresaid
+      ]);
+
+      console.log(`📢 Notificação criada automaticamente (${parametro}) para o cliente ${clienteId}`);
+    } else {
+      console.log(`⚠️ Notificação já existente (${parametro}) para o cliente ${clienteId}, não duplicada.`);
     }
+  }
+}
+
 
     // 🔚 Resposta final
     res.status(200).json({ message: 'Status do parâmetro registrado com sucesso.' });
