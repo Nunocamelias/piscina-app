@@ -2343,7 +2343,7 @@ app.get('/notificacoes', async (req, res) => {
         n.status,
         n.data_criacao,
         n.data_resolucao,
-        n.atribuido_a,  -- ✅ Adicionado para garantir que o responsável seja carregado
+        n.atribuido_a,
         c.nome AS cliente_nome,
         c.morada AS cliente_morada,
         c.email AS cliente_email,
@@ -2357,15 +2357,17 @@ app.get('/notificacoes', async (req, res) => {
       ORDER BY n.data_criacao DESC;
     `;
 
-    const result = await pool.query(notificacoesQuery, [Number(empresaid)]); // ✅ Garante que empresaid é um número
+    const result = await pool.query(notificacoesQuery, [Number(empresaid)]);
 
     if (result.rows.length === 0) {
       return res.status(200).json([]); // ✅ Retorna um array vazio em vez de 404
     }
 
-    console.log('📥 Notificações carregadas:', result.rows); // Debugging opcional
+    // 🔹 Remove duplicadas com base no ID antes de enviar
+    const unicas = Array.from(new Map(result.rows.map(n => [n.id, n])).values());
+    console.log('📥 Notificações carregadas (únicas):', unicas);
 
-    res.status(200).json(result.rows);
+    res.status(200).json(unicas);
   } catch (error) {
     console.error('❌ Erro ao buscar notificações:', error);
     res.status(500).json({ error: 'Erro ao buscar notificações.' });
