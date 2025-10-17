@@ -21,6 +21,8 @@ const ReceberNotificacoesScreen = () => {
   const [responsaveis, setResponsaveis] = useState<{ [id: number]: string }>({});
   const [imagemSelecionada, setImagemSelecionada] = useState<string | null>(null);
   const [mostrarModalImagem, setMostrarModalImagem] = useState(false);
+  const fetchedOnce = React.useRef(false);
+
 
 
 
@@ -34,20 +36,32 @@ const ReceberNotificacoesScreen = () => {
   }, []);
 
   useEffect(() => {
-    const fetchNotificacoes = async () => {
-      if (!empresaid) return;
-      try {
-        const res = await axios.get(`${Config.API_URL}/notificacoes`, {
-          params: { empresaid },
-        });
-        setNotificacoes(res.data);
-      } catch (error) {
-        console.error('Erro ao buscar notificações:', error);
-        Alert.alert('Erro', 'Não foi possível carregar as notificações.');
-      }
-    };
-    fetchNotificacoes();
-  }, [empresaid]);
+  const fetchNotificacoes = async () => {
+    if (!empresaid) return;
+
+    // ✅ Impede execução duplicada (modo Strict do React)
+    if (fetchedOnce.current) return;
+    fetchedOnce.current = true;
+
+    try {
+      const res = await axios.get(`${Config.API_URL}/notificacoes`, {
+        params: { empresaid },
+      });
+
+      // ✅ remove notificações duplicadas com base no ID
+      const unicos = [...new Map(res.data.map((n: any) => [n.id, n])).values()];
+      setNotificacoes(unicos);
+
+      console.log('📥 Notificações carregadas (únicas):', unicos);
+    } catch (error) {
+      console.error('Erro ao buscar notificações:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as notificações.');
+    }
+  };
+
+  fetchNotificacoes();
+}, [empresaid]);
+
 
   const renderItem = ({ item }: { item: any }) => {
     const isExpanded = expandedId === item.id;
