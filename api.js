@@ -2179,7 +2179,7 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
     const values = [manutencao_id, empresaid];
 
     const result = await pool.query(query, values);
-    console.log('🚀 Parâmetros carregados do banco:', result.rows);
+    //console.log('🚀 Parâmetros carregados do banco:', result.rows);
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -2377,16 +2377,16 @@ app.get('/notificacoes', async (req, res) => {
 
 
 app.post('/notificacoes', async (req, res) => {
-  console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
+  //console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
 
   const { cliente_id, clienteId, assunto, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
     console.log('📨 Nova notificação recebida:');
-  console.log('Cliente ID:', cliente_id);
-  console.log('Assunto:', assunto);
-  console.log('Mensagem:', mensagem);
-  console.log('Empresa ID:', empresaid);
-  console.log('Anexos recebidos:', anexos ? anexos.map((a) => a.slice(0, 60) + '...') : 'Nenhum');
-  console.log('Valor serviço extra:', valor_servico_extra);
+  //console.log('Cliente ID:', cliente_id);
+  //console.log('Assunto:', assunto);
+  //console.log('Mensagem:', mensagem);
+  //console.log('Empresa ID:', empresaid);
+  //console.log('Anexos recebidos:', anexos ? anexos.map((a) => a.slice(0, 60) + '...') : 'Nenhum');
+  //console.log('Valor serviço extra:', valor_servico_extra);
 
   const clienteFinal = cliente_id || clienteId;
 
