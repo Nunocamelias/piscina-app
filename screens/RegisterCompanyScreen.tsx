@@ -121,7 +121,7 @@ const RegisterCompanyScreen = () => {
           placeholderTextColor="#BBBBBB"
           secureTextEntry={!senhaVisivel}
           value={password}
-          onChangeText={(text) => setPassword(text.replace(/[^a-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]/g, ''))}
+          onChangeText={(text) => setPassword(text.replace(/[^A-Za-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]/g, ''))}
         />
         <TouchableOpacity onPress={() => setSenhaVisivel(!senhaVisivel)} style={styles.eyeButton}>
           <Icon source={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="black" />
@@ -136,7 +136,7 @@ const RegisterCompanyScreen = () => {
           placeholderTextColor="#BBBBBB"
           secureTextEntry={!confirmSenhaVisivel}
           value={confirmPassword}
-          onChangeText={(text) => setConfirmPassword(text.replace(/[^a-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]/g, ''))}
+          onChangeText={(text) => setConfirmPassword(text.replace(/[^A-Za-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]/g, ''))}
         />
         <TouchableOpacity onPress={() => setConfirmSenhaVisivel(!confirmSenhaVisivel)} style={styles.eyeButton}>
           <Icon source={confirmSenhaVisivel ? 'eye' : 'eye-off'} size={24} color="black" />

@@ -2379,6 +2379,13 @@ app.post('/notificacoes', async (req, res) => {
   console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
 
   const { cliente_id, clienteId, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
+    console.log('📨 Nova notificação recebida:');
+  console.log('Cliente ID:', cliente_id);
+  console.log('Assunto:', assunto);
+  console.log('Mensagem:', mensagem);
+  console.log('Empresa ID:', empresaid);
+  console.log('Anexos recebidos:', anexos ? anexos.map((a) => a.slice(0, 60) + '...') : 'Nenhum');
+  console.log('Valor serviço extra:', valor_servico_extra);
 
   const clienteFinal = cliente_id || clienteId;
 
