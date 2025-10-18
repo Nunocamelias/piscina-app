@@ -524,6 +524,7 @@ const handleAnexarFoto = async () => {
     const finalUriOriginal = file.uri;
     let finalUri = finalUriOriginal;
 
+    // 🧩 Corrige URIs de conteúdo (Android)
     if (Platform.OS === 'android' && finalUri.startsWith('content://')) {
       const filePath = `${RNFS.CachesDirectoryPath}/anexo_${Date.now()}`;
       await RNFS.copyFile(finalUri, filePath);
@@ -531,20 +532,27 @@ const handleAnexarFoto = async () => {
       console.log('✅ URI convertida:', finalUri);
     }
 
-    setImagensAnexadas((prev) => [...prev, finalUri]);
-    console.log('📸 Imagem adicionada com sucesso:', finalUri);
+    // 🔥 Novo trecho — converte a imagem para base64
+    const base64Data = await RNFS.readFile(finalUri, 'base64');
+    const mimeType = file.type || 'image/jpeg'; // Padrão caso não venha definido
+    const base64Uri = `data:${mimeType};base64,${base64Data}`;
+
+    // 📦 Guarda o base64 no array de anexos
+    setImagensAnexadas((prev) => [...prev, base64Uri]);
+    console.log('📸 Imagem convertida e adicionada com sucesso');
 
   } catch (err: any) {
-  console.log('🧩 ERRO COMPLETO (DocumentPicker):', JSON.stringify(err, null, 2));
+    console.log('🧩 ERRO COMPLETO (DocumentPicker):', JSON.stringify(err, null, 2));
 
-  if (err?.code === 'DOCUMENT_PICKER_CANCELED') {
-    console.log('❌ Seleção cancelada pelo utilizador');
-  } else {
-    console.error('❌ Erro ao selecionar ficheiro:', err);
-    Alert.alert('Erro', err?.message || 'Erro ao selecionar o ficheiro.');
+    if (err?.code === 'DOCUMENT_PICKER_CANCELED') {
+      console.log('❌ Seleção cancelada pelo utilizador');
+    } else {
+      console.error('❌ Erro ao selecionar ficheiro:', err);
+      Alert.alert('Erro', err?.message || 'Erro ao selecionar o ficheiro.');
+    }
   }
-}
 };
+
 
 
   const handleEnviarRelatorio = async () => {

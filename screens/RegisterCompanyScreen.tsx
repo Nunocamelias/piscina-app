@@ -26,7 +26,7 @@ const RegisterCompanyScreen = () => {
   };
 
   const isValidPassword = (passwordInput: string): boolean => {
-    return /^[a-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]+$/.test(passwordInput);
+    return /^[A-Za-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]+$/.test(passwordInput);
   };
 
   const handleRegister = async () => {
