@@ -2378,7 +2378,7 @@ app.get('/notificacoes', async (req, res) => {
 app.post('/notificacoes', async (req, res) => {
   console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
 
-  const { cliente_id, clienteId, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
+  const { cliente_id, clienteId, assunto, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
     console.log('📨 Nova notificação recebida:');
   console.log('Cliente ID:', cliente_id);
   console.log('Assunto:', assunto);
