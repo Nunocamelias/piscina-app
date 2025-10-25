@@ -110,7 +110,7 @@ app.post('/clientes', async (req, res) => {
       cobertura,
       bomba_calor,
       equipamentos_especiais,
-      moment(ultima_substituicao).format('YYYY-MM-DD'),
+      ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null, // ✅ esta é a correção
       parseFloat(valor_manutencao),
       sanitizeString(periodicidade),
       formatArrayForPostgres(condicionantes),
@@ -128,19 +128,69 @@ app.get('/empresas/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const result = await pool.query('SELECT id, nome FROM empresas WHERE id = $1', [id]);
+    const query = `
+      SELECT 
+        id,
+        nome,
+        email,
+        telefone,
+        endereco,
+        logo,
+        nif
+      FROM empresas
+      WHERE id = $1
+    `;
+
+    const result = await pool.query(query, [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    res.json(result.rows[0]); // 🔹 Retorna apenas o primeiro resultado
+    console.log('🏢 Dados da empresa retornados:', result.rows[0]);
+    res.status(200).json(result.rows[0]);
   } catch (error) {
-    console.error('Erro ao buscar empresa:', error);
+    console.error('❌ Erro ao buscar empresa:', error);
     res.status(500).json({ error: 'Erro ao buscar empresa.' });
   }
 });
 
+
+app.put('/empresas/:id/update', async (req, res) => {
+  const { id } = req.params;
+  const { nome, email, telefone, endereco, logo, nif } = req.body;
+
+  try {
+    const query = `
+      UPDATE empresas
+      SET 
+        nome = COALESCE($1, nome),
+        email = COALESCE($2, email),
+        telefone = COALESCE($3, telefone),
+        endereco = COALESCE($4, endereco),
+        logo = COALESCE($5, logo),
+        nif = COALESCE($6, nif)
+      WHERE id = $7
+      RETURNING id, nome, email, telefone, endereco, logo, nif;
+    `;
+
+    const values = [nome, email, telefone, endereco, logo, nif, id];
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+
+    console.log('🏢 Empresa atualizada:', result.rows[0]);
+    res.status(200).json({
+      message: 'Empresa atualizada com sucesso!',
+      empresa: result.rows[0],
+    });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar empresa:', error);
+    res.status(500).json({ error: 'Erro ao atualizar empresa.' });
+  }
+});
 
 app.put('/clientes/:id', async (req, res) => {
   const { id } = req.params;
@@ -853,58 +903,63 @@ app.get('/contador-clientes', async (req, res) => {
 
 // Endpoint de Registo de Empresa e Usuário
 app.post('/register', async (req, res) => {
-  const { nome_empresa, email, senha, telefone, endereco } = req.body;
+  const { nome_empresa, email, senha, telefone, endereco, logo, nif } = req.body;
 
-  console.log('Iniciando registro:');
-  console.log('Dados recebidos:', { nome_empresa, email, telefone, endereco });
+  console.log('📩 Iniciando registro de empresa...');
+  console.log('📦 Dados recebidos:', {
+    nome_empresa,
+    email,
+    telefone,
+    endereco,
+    nif,
+    logo: logo ? '✅ Logo recebido' : '❌ Sem logo',
+  });
 
-  // Validação dos campos obrigatórios
+  // 🧩 Validação dos campos obrigatórios
   if (!nome_empresa || !email || !senha || !telefone || !endereco) {
-    console.error('Erro: Campos obrigatórios ausentes.');
+    console.error('❌ Erro: Campos obrigatórios ausentes.');
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   }
 
   try {
-    // Verifica se o email já existe na tabela empresas
-    console.log('Verificando email duplicado...');
+    // 🔍 Verifica se o email já existe na tabela empresas
+    console.log('🔎 Verificando email duplicado...');
     const emailCheckQuery = 'SELECT id FROM empresas WHERE email = $1';
     const emailCheckResult = await pool.query(emailCheckQuery, [email]);
 
     if (emailCheckResult.rows.length > 0) {
-      console.warn('Email já registrado:', email);
+      console.warn('⚠️ Email já registrado:', email);
 
-      // Verificar se há um registro incompleto
+      // Verifica se há um registro incompleto (sem utilizadores associados)
       const empresaId = emailCheckResult.rows[0].id;
       const usuarioCheckQuery = 'SELECT id FROM usuarios WHERE empresaid = $1';
       const usuarioCheckResult = await pool.query(usuarioCheckQuery, [empresaId]);
 
       if (usuarioCheckResult.rows.length === 0) {
-        // Caso não haja usuário associado, remova o registro incompleto
-        console.log('Removendo registro incompleto da empresa:', empresaId);
+        console.log('🧹 Removendo registro incompleto da empresa:', empresaId);
         await pool.query('DELETE FROM empresas WHERE id = $1', [empresaId]);
       } else {
         return res.status(400).json({ error: 'Este email já está registrado.' });
       }
     }
 
-    // Query para inserir a empresa (ID gerado automaticamente pelo banco)
+    // 🏗️ Query para inserir a empresa (com NIF e logo)
     const empresaQuery = `
-      INSERT INTO empresas (nome, email, telefone, endereco)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO empresas (nome, email, telefone, endereco, logo, nif, criado_em)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
       RETURNING id;
     `;
-    const empresaValues = [nome_empresa, email, telefone, endereco];
+    const empresaValues = [nome_empresa, email, telefone, endereco, logo || null, nif || null];
 
-    console.log('Executando query para inserir empresa...');
+    console.log('💾 Inserindo empresa no banco de dados...');
     const empresaResult = await pool.query(empresaQuery, empresaValues);
     const createdEmpresaId = empresaResult.rows[0].id;
-    console.log('Empresa inserida com sucesso:', createdEmpresaId);
+    console.log('✅ Empresa criada com ID:', createdEmpresaId);
 
-    // Criptografa a senha do administrador
-    console.log('Criptografando senha...');
+    // 🔐 Criptografa a senha do administrador
     const hashedPassword = await bcrypt.hash(senha, 10);
 
-    // Query para inserir o usuário administrador
+    // 👤 Cria o utilizador administrador da empresa
     const usuarioQuery = `
       INSERT INTO usuarios (nome, email, senha, tipo_usuario, empresaid, token, confirmado)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -920,31 +975,20 @@ app.post('/register', async (req, res) => {
       false, // Confirmado inicialmente como falso
     ];
 
-    console.log('Executando query para inserir usuário...');
+    console.log('👤 Criando utilizador administrador...');
     const usuarioResult = await pool.query(usuarioQuery, usuarioValues);
-    console.log('Usuário inserido com sucesso:', usuarioResult.rows[0]);
+    console.log('✅ Utilizador criado com sucesso:', usuarioResult.rows[0]);
 
-    // Envia o email de confirmação
-    //const confirmationLink = `${process.env.APP_URL}/confirmar-email?token=${usuarioResult.rows[0].token}`;
-    //await transporter.sendMail({
-      //from: process.env.EMAIL_FROM,
-      //to: email,
-      //subject: 'Confirme seu email - GES-POOL',
-      //html: `<p>Olá, ${nome_empresa}!</p><p>Clique no link abaixo para confirmar seu email:</p><a href="${confirmationLink}">${confirmationLink}</a>`,
-    //});
-
-    //console.log('Email de confirmação enviado com sucesso.');
+    console.log('🎉 Registro concluído com sucesso.');
     res.status(201).json({ message: 'Registo realizado com sucesso!' });
   } catch (error) {
-    console.error('Erro ao registrar empresa e usuário:', error);
-
-    // Trata o erro de email duplicado
+    console.error('❌ Erro ao registrar empresa e utilizador:', error);
     if (error.code === '23505') {
-      console.warn('Erro: Email duplicado.');
-      return res.status(400).json({ error: 'Email já está registrado.' });
+      console.warn('⚠️ Erro: Email duplicado.');
+      return res.status(400).json({ error: 'Este email já está registrado.' });
     }
 
-    res.status(500).json({ error: 'Erro ao registrar empresa e usuário.' });
+    res.status(500).json({ error: 'Erro ao registrar empresa e utilizador.' });
   }
 });
 
@@ -970,6 +1014,7 @@ app.get('/confirmar-email', async (req, res) => {
     res.status(500).json({ error: 'Erro ao confirmar email.' });
   }
 });
+
 
 
 //Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
@@ -2128,7 +2173,7 @@ if (clienteId) {
         clienteId,
         'Parâmetro químico fora do intervalo',
         descricao,
-        empresaid
+        empresaid,
       ]);
 
       console.log(`📢 Notificação criada automaticamente (${parametro}) para o cliente ${clienteId}`);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Appearance, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ScrollView, Appearance, ActivityIndicator } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import Config from 'react-native-config';
@@ -19,41 +19,51 @@ const ListaEquipesScreen = ({ navigation }: any) => {
   const [equipes, setEquipes] = useState<Equipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmpresaid, setUserEmpresaid] = useState<number | undefined>(undefined);
+  const [empresaNome, setEmpresaNome] = useState('');
 
   // Função para buscar o empresaid do AsyncStorage
   useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
-        const empresaid = await AsyncStorage.getItem('empresaid');
+  const fetchEmpresa = async () => {
+    try {
+      console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
+      const empresaid = await AsyncStorage.getItem('empresaid');
 
-        if (empresaid) {
-          console.log('[DEBUG] Empresaid encontrado:', empresaid);
-          setUserEmpresaid(parseInt(empresaid, 10));
+      if (empresaid) {
+        console.log('[DEBUG] Empresaid encontrado:', empresaid);
+        setUserEmpresaid(parseInt(empresaid, 10));
+
+        // 🔹 Carrega o nome da empresa a partir do cache
+        const cachedNome = await AsyncStorage.getItem('empresa_nome');
+        if (cachedNome) {
+          console.log('[DEBUG] Nome da empresa carregado do cache:', cachedNome);
+          setEmpresaNome(cachedNome);
         } else {
-          console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta após confirmação.');
-          Alert.alert(
-            'Erro',
-            'Empresaid não encontrado. Faça login novamente.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  console.log('[DEBUG] Redirecionando para a tela de login...');
-                  navigation.navigate('Login');
-                },
-              },
-            ]
-          );
+          console.log('[DEBUG] Nome da empresa não encontrado no cache.');
         }
-      } catch (error) {
-        console.error('[DEBUG] Erro ao carregar empresaid:', error);
-        Alert.alert('Erro', 'Ocorreu um problema ao recuperar o empresaid.');
+      } else {
+        console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta após confirmação.');
+        Alert.alert(
+          'Erro',
+          'Empresaid não encontrado. Faça login novamente.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('[DEBUG] Redirecionando para a tela de login...');
+                navigation.navigate('Login');
+              },
+            },
+          ]
+        );
       }
-    };
+    } catch (error) {
+      console.error('[DEBUG] Erro ao carregar dados da empresa:', error);
+      Alert.alert('Erro', 'Ocorreu um problema ao recuperar as informações da empresa.');
+    }
+  };
 
-    fetchEmpresaid();
-  }, [navigation]);
+  fetchEmpresa();
+}, [navigation]);
 
   // Função para buscar equipes
   const fetchEquipes = useCallback(async () => {
@@ -106,9 +116,12 @@ const ListaEquipesScreen = ({ navigation }: any) => {
   );
   // Componente principal
   return (
+  <ScrollView contentContainerStyle={styles.scrollContainer}>
     <View style={styles.container}>
-      <Text style={styles.title}>Lista de Equipes</Text>
+      {/* 🔹 Título */}
+      <Text style={styles.title}>Lista de Equipas</Text>
 
+      {/* 🔹 Indicador de carregamento ou lista */}
       {loading ? (
         <ActivityIndicator size="large" color="#007bff" style={styles.loadingIndicator} />
       ) : (
@@ -116,11 +129,22 @@ const ListaEquipesScreen = ({ navigation }: any) => {
           data={equipes}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderEquipe}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma equipe encontrada.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>Nenhuma equipe encontrada.</Text>
+          }
+          scrollEnabled={false} // 🔹 evita conflito com o ScrollView
         />
       )}
+
+      {/* 🔹 Rodapé dinâmico */}
+      <View style={styles.footer}>
+        <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+        <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      </View>
     </View>
-  );
+  </ScrollView>
+);
+
 
 };
 
@@ -137,6 +161,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     color: '#000',
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   equipeItem: {
     backgroundColor: '#FFF',
@@ -167,10 +195,15 @@ const styles = StyleSheet.create({
     color: '#777',
   },
   detalhesButton: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     paddingVertical: 13,
     paddingHorizontal: 20,
     borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     color: '#000',
@@ -186,6 +219,28 @@ const styles = StyleSheet.create({
     marginTop: 20, // Ajusta conforme necessário
     alignSelf: 'center',
   },
+  scrollContainer: {
+  flexGrow: 1,
+  justifyContent: 'flex-start',
+  paddingBottom: 60, // 🔹 garante espaço suficiente no fim
+  backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+},
+footer: {
+  marginTop: 0,
+  marginBottom: -40,
+  alignItems: 'center',
+},
+empresaNome: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+},
+subTitle: {
+  fontSize: 12,
+  fontStyle: 'italic',
+  color: '#444',
+  marginTop: 2,
+},
 });
 
 export default ListaEquipesScreen;

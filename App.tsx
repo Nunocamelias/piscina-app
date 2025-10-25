@@ -14,7 +14,6 @@ import EditEquipeScreen from './screens/EditEquipeScreen';
 import ListasManutencoesScreen from './screens/ListasManutencoesScreen';
 import DiasDaSemanaScreen from './screens/DiasDaSemanaScreen';
 import PiscinasPorDiaScreen from './screens/PiscinasPorDiaScreen';
-import AdminHomeScreen from './screens/AdminHomeScreen';
 import EquipeHomeScreen from './screens/EquipeHomeScreen';
 import EquipesListaManutencoesScreen from './screens/EquipesListaManutencoesScreen';
 import EquipesDiasDaSemanaScreen from './screens/EquipesDiasDaSemanaScreen';
@@ -24,6 +23,8 @@ import ParametrosQuimicosScreen from './screens/ParametrosQuimicosScreen';
 import FolhaManutencaoScreen from './screens/FolhaManutencaoScreen';
 import RegisterCompanyScreen from './screens/RegisterCompanyScreen';
 import ReceberNotificacoesScreen from './screens/ReceberNotificacoesScreen';
+import InfoCompanyScreen from './screens/InfoCompanyScreen';
+import HeaderLogo from './components/HeaderLogo';
 
 
 
@@ -41,7 +42,6 @@ export type RootStackParamList = {
   ListasManutencoes: undefined;
   DiasDaSemana: { equipeId: number; equipeNome: string }; // Inclui equipeNome para consistência
   PiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string };
-  AdminHome: undefined;
   EquipeHome: { equipeId: number; equipeNome: string };
   EquipesListaManutencoes: { equipeId: number; equipeNome: string }; // Adiciona os parâmetros
   EquipesDiasDaSemana: { equipeId: number; equipeNome: string; atualizarProgressoDia?: string; atualizarProgressoStatus?: string }; // Adiciona os parâmetros
@@ -67,107 +67,323 @@ export type RootStackParamList = {
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;
+    InfoCompany: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
+const CustomHeaderTitle = () => <HeaderLogo />;
 
 const App = (): React.JSX.Element => {
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName="Login">
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{ title: 'Login', headerShown: false }}/>
-        <Stack.Screen
+  <NavigationContainer>
+    <Stack.Navigator initialRouteName="Login">
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ title: 'Login', headerShown: false }}
+      />
+
+      {/* 🔹 HomeScreen com logo no header */}
+      <Stack.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: 'GES-POOL' }}
-        />
-        <Stack.Screen
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
+      <Stack.Screen
           name="Clientes"
           component={ClientesScreen}
-          options={{ title: 'Área de Cliente' }}
-        />
-        <Stack.Screen
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
+      <Stack.Screen
           name="AddCliente"
           component={AddClienteScreen}
-          options={{ title: 'Adicionar Cliente' }}
-        />
-        <Stack.Screen
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
+      <Stack.Screen
           name="ListaClientes"
           component={ListaClientesScreen}
-          options={{ title: 'Lista de Clientes' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EditCliente"
           component={EditClienteScreen}
-          options={{ title: 'Detalhes do Cliente' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="Equipes"
           component={EquipesScreen}
-          options={{ title: 'Área de Equipes' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="AddEquipe"
           component={AddEquipeScreen}
-          options={{ title: 'Adicionar Equipe' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="ListaEquipes"
           component={ListaEquipesScreen}
-          options={{ title: 'Lista de Equipes' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EditEquipe"
           component={EditEquipeScreen}
-          options={{ title: 'Detalhes da Equipe' }}
-        />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="ListasManutencoes"
           component={ListasManutencoesScreen}
-          options={{ title: 'Listas de Manutenções' }} />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="DiasDaSemana"
           component={DiasDaSemanaScreen}
-          options={{ title: 'Dias da Semana' }} />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="PiscinasPorDia"
           component={PiscinasPorDiaScreen}
-          options={{ title: 'Piscinas por Dia' }} />
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
-          name="AdminHome"
-          component={AdminHomeScreen}
-          options={{ title: 'Administração' }}/>
+          name="InfoCompany"
+          component={InfoCompanyScreen}
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EquipeHome"
           component={EquipeHomeScreen}
-          options={{ title: 'Equipe' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EquipesListaManutencoes"
           component={EquipesListaManutencoesScreen}
-          options={{ title: 'Equipes - Lista de Manutenções' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EquipesDiasDaSemana"
           component={EquipesDiasDaSemanaScreen}
-          options={{ title: 'Dias da Semana' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="EquipesPiscinasPorDia"
           component={EquipesPiscinasPorDiaScreen}
-          options={{ title: 'Piscinas por Dia' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="Administracao"
           component={AdministracaoScreen}
-          options={{ title: 'Administração' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="ParametrosQuimicos"
           component={ParametrosQuimicosScreen}
-          options={{ title: 'Parâmetros Químicos' }}/>
-        <Stack.Screen
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
+          <Stack.Screen
           name="FolhaManutencao"
           component={FolhaManutencaoScreen}
-          options={{ title: 'Folha de Manutenção' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
         <Stack.Screen
           name="RegisterCompany"
           component={RegisterCompanyScreen}
@@ -175,7 +391,18 @@ const App = (): React.JSX.Element => {
         <Stack.Screen
           name="ReceberNotificacoes"
           component={ReceberNotificacoesScreen}
-          options={{ title: 'Notificações' }}/>
+          options={{
+          headerTitle: CustomHeaderTitle, // ✅ chama a função, não cria inline
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000' }}/>
       </Stack.Navigator>
     </NavigationContainer>
   );

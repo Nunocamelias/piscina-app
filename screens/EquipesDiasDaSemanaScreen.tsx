@@ -13,6 +13,7 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
   const [contadores, setContadores] = useState<Record<string, { total: number; concluidas: number; naoConcluidas: number }>>({});
   const [progress, setProgress] = useState<Record<string, { verde: number; vermelho: number }>>({});
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+  const [empresaNome, setEmpresaNome] = useState('');
   const isFocused = useIsFocused();
 
   const diasDaSemana = useMemo(
@@ -29,22 +30,30 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
     setProgress(inicialProgress);
   }, [diasDaSemana]);
 
-  // 🔹 Busca o empresaid do AsyncStorage
-  useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid');
-        if (empresaid) {
-          setUserEmpresaid(parseInt(empresaid, 10));
-        } else {
-          Alert.alert('Erro', 'Empresaid não encontrado.');
-        }
-      } catch (error) {
-        console.error('[DEBUG] Erro ao buscar empresaid:', error);
+  // 🔹 Busca o empresaid, o logo e o nome da empresa do AsyncStorage
+useEffect(() => {
+  const fetchEmpresaid = async () => {
+    try {
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (empresaid) {
+        setUserEmpresaid(parseInt(empresaid, 10));
+      } else {
+        Alert.alert('Erro', 'Empresaid não encontrado.');
       }
-    };
-    fetchEmpresaid();
-  }, []);
+
+      // 🔹 Carrega o logo e nome da empresa (do cache)
+      const cachedNome = await AsyncStorage.getItem('empresa_nome');
+
+      if (cachedNome) {setEmpresaNome(cachedNome);}
+
+    } catch (error) {
+      console.error('[DEBUG] Erro ao buscar dados da empresa:', error);
+    }
+  };
+
+  fetchEmpresaid();
+}, []);
+
 
 // 🔹 Busca os contadores de clientes
 const fetchContadores = useCallback(async () => {
@@ -155,44 +164,57 @@ useEffect(() => {
   }, [contadores, diasDaSemana, atualizarProgresso]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Dias da Semana - {equipeNome}</Text>
-      {diasDaSemana.map((dia) => (
-        <View key={dia} style={styles.dayContainer}>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              navigation.navigate('EquipesPiscinasPorDia', {
-                equipeId,
-                equipeNome,
-                diaSemana: dia,
-                empresaid: userEmpresaid,
-              });
-            }}
-          >
-            <Text style={styles.buttonText}>
-              {dia} - {contadores[dia]?.total || 0} clientes
-            </Text>
-          </TouchableOpacity>
+  <View style={styles.container}>
+    {/* 🔹 Título principal */}
+    <Text style={styles.title}>Dias da Semana - {equipeNome}</Text>
 
-          {/* 🔹 Wrapper para alinhar os números e a barra à esquerda */}
-          <View style={styles.progressWrapper}>
-            {/* 🔹 Texto com o progresso (ex: 2/5) */}
-            <Text style={styles.progressText}>
-              {contadores[dia]?.concluidas || 0}/{contadores[dia]?.total || 0}
-            </Text>
+    {/* 🔹 Lista de dias */}
+    {diasDaSemana.map((dia) => (
+      <View key={dia} style={styles.dayContainer}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            navigation.navigate('EquipesPiscinasPorDia', {
+              equipeId,
+              equipeNome,
+              diaSemana: dia,
+              empresaid: userEmpresaid,
+            });
+          }}>
+          <Text style={styles.buttonText}>
+            {dia} - {contadores[dia]?.total || 0} clientes
+          </Text>
+        </TouchableOpacity>
 
-            {/* 🔹 Barra de progresso */}
-            <View style={styles.progressContainer}>
-              <View style={[styles.progressBar, styles.progressVerde, { flex: progress[dia]?.verde || 0 }]} />
-              <View style={[styles.progressBar, styles.progressVermelho, { flex: progress[dia]?.vermelho || 0 }]} />
-              <View style={[styles.progressBar, styles.progressCinza, { flex: 1 - ((progress[dia]?.verde || 0) + (progress[dia]?.vermelho || 0)) }]} />
-            </View>
+        {/* 🔹 Progresso */}
+        <View style={styles.progressWrapper}>
+          <Text style={styles.progressText}>
+            {contadores[dia]?.concluidas || 0}/{contadores[dia]?.total || 0}
+          </Text>
+
+          <View style={styles.progressContainer}>
+            <View style={[styles.progressBar, styles.progressVerde, { flex: progress[dia]?.verde || 0 }]} />
+            <View style={[styles.progressBar, styles.progressVermelho, { flex: progress[dia]?.vermelho || 0 }]} />
+            <View
+              style={[
+                styles.progressBar,
+                styles.progressCinza,
+                { flex: 1 - ((progress[dia]?.verde || 0) + (progress[dia]?.vermelho || 0)) },
+              ]}
+            />
           </View>
         </View>
-      ))}
+      </View>
+    ))}
+
+    {/* 🔹 Nome da empresa e "powered by" no fundo */}
+    <View style={styles.footer}>
+      <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+      <Text style={styles.subTitle}>powered by GES-POOL</Text>
     </View>
-  );
+  </View>
+);
+
 
 
 };
@@ -203,6 +225,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    justifyContent: 'flex-start', // <- garantir que não centra verticalmente
   },
   title: {
     fontSize: 24,
@@ -210,18 +233,29 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
     color: '#000',
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   dayContainer: {
     marginBottom: 15,
   },
   button: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     padding: 12,
     borderRadius: 25,
-    borderWidth: 2,
+    borderWidth: 0,
     borderColor: '#909090',
     alignItems: 'center',
     width: '100%', // 🔹 Garante que o botão ocupa toda a largura disponível
+    marginBottom: 5,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     color: '#000',
@@ -250,13 +284,41 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     overflow: 'hidden',
     marginLeft: -10,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   progressBar: {
     height: '100%',
   },
-  progressVerde: { backgroundColor: '#4CAF50' },
-  progressVermelho: { backgroundColor: '#FF6347' },
-  progressCinza: { backgroundColor: '#909090' },
+  progressVerde: {
+    backgroundColor: '#4CAF50',
+  },
+  progressVermelho: {
+    backgroundColor: '#FF6347',
+  },
+  progressCinza: {
+    backgroundColor: '#909090',
+  },
+  footer: {
+    marginTop: 110,
+    marginBottom: 30,
+    alignItems: 'center',
+  },
+  empresaNome: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  subTitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#444',
+    marginTop: 2,
+  },
 });
 
 export default EquipesDiasDaSemanaScreen;

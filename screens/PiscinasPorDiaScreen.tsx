@@ -235,15 +235,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 15,
     textAlign: 'center',
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   addButton: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
     marginBottom: 20,
-    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
-    borderColor: '#000',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   addButtonText: {
     color: '#000',
@@ -285,20 +293,21 @@ const styles = StyleSheet.create({
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   removeButton: {
-    backgroundColor: '#ADD8E6', // Azul característico da app
+    backgroundColor: '#22b4b4ff',
     paddingVertical: 10,
-    paddingHorizontal: 15, // Botão suficiente para o texto "Desassociar"
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10, // Espaço entre o texto e o botão
-    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
-    borderColor: '#000',
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   removeButtonText: {
     color: '#000',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 14,
   },
   modalTitle: {
     fontSize: 20,

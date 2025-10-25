@@ -116,13 +116,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   button: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     padding: 15,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 20,
     alignItems: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     color: '#000',

@@ -17,6 +17,7 @@ const RegisterCompanyScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [senhaVisivel, setSenhaVisivel] = useState(false);
   const [confirmSenhaVisivel, setConfirmSenhaVisivel] = useState(false);
+  const [nif, setNif] = useState('');
 
   const navigation = useNavigation<NavigationProp<any>>(); // Solução genérica para navegação
 
@@ -62,6 +63,7 @@ const RegisterCompanyScreen = () => {
         senha: password,
         telefone: phone,
         endereco: address,
+        nif,
       });
 
       Alert.alert('Sucesso', 'Registo realizado com sucesso!');
@@ -103,6 +105,16 @@ const RegisterCompanyScreen = () => {
         value={address}
         onChangeText={setAddress}
       />
+      <TextInput
+        style={isDarkMode ? styles.inputDark : styles.inputLight}
+        placeholder="NIF"
+        placeholderTextColor={isDarkMode ? '#BBBBBB' : '#666666'}
+        keyboardType="numeric"
+        maxLength={20}
+        value={nif}
+        onChangeText={(text) => setNif(text.replace(/[^0-9]/g, ''))}
+      />
+
       <TextInput
         style={isDarkMode ? styles.inputDark : styles.inputLight}
         placeholder="Email"
@@ -172,9 +184,11 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   inputLight: {
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: '#ccc',
     padding: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
     marginBottom: 15,
     borderRadius: 25,
     backgroundColor: '#FFF',
@@ -182,11 +196,19 @@ const styles = StyleSheet.create({
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   inputDark: {
-    borderWidth: 1.2,
+    borderWidth: 0,
     borderColor: '#000',
     padding: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
     marginBottom: 15,
     borderRadius: 25,
     backgroundColor: '#333',
@@ -194,17 +216,29 @@ const styles = StyleSheet.create({
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   button: {
-    backgroundColor: '#ADD8E6',
-    paddingVertical: 11,
+    backgroundColor: '#22b4b4ff',
+    paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 25,
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
-    borderWidth: 1.2, // Moldura preta
+    borderWidth: 0, // Moldura preta
     borderColor: '#000', // Cor da moldura preta
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     fontSize: 16,
@@ -216,13 +250,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '80%',
     height: 45,
-    borderWidth: 1.2,
+    borderWidth: 0,
     marginBottom: 15,
     borderColor: '#000',
     borderRadius: 25,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    paddingVertical: 15,
     paddingHorizontal: 0,
     justifyContent: 'space-between',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   passwordInput: {
     flex: 1,

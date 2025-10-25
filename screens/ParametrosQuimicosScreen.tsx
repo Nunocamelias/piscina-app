@@ -41,31 +41,43 @@ const ParametrosQuimicosScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [parametroSelecionado, setParametroSelecionado] = useState<Parametro | null>(null);
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+  const [empresaNome, setEmpresaNome] = useState('');
 
   // Função para buscar o empresaid do AsyncStorage
   useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
-        const empresaid = await AsyncStorage.getItem('empresaid');
+  const fetchEmpresaData = async () => {
+    try {
+      console.log('[DEBUG] Tentando carregar empresaid e nome da empresa do AsyncStorage...');
 
-        if (empresaid) {
-          console.log('[DEBUG] Empresaid encontrado:', empresaid);
-          setUserEmpresaid(parseInt(empresaid, 10));
-        } else {
-          console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta.');
-          Alert.alert('Erro', 'Empresaid não encontrado. Por favor, faça login novamente.');
-          setUserEmpresaid(null); // Define como null caso não seja encontrado
-        }
-      } catch (error) {
-        console.error('[DEBUG] Erro ao carregar empresaid:', error);
-        Alert.alert('Erro', 'Não foi possível carregar o empresaid.');
-        setUserEmpresaid(null); // Define como null em caso de erro
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      const nomeEmpresa = await AsyncStorage.getItem('empresa_nome');
+
+      if (empresaid) {
+        console.log('[DEBUG] Empresaid encontrado:', empresaid);
+        setUserEmpresaid(parseInt(empresaid, 10));
+      } else {
+        console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta.');
+        Alert.alert('Erro', 'Empresaid não encontrado. Por favor, faça login novamente.');
+        setUserEmpresaid(null);
       }
-    };
 
-    fetchEmpresaid();
-  }, []);
+      if (nomeEmpresa) {
+        console.log('[DEBUG] Nome da empresa carregado:', nomeEmpresa);
+        setEmpresaNome(nomeEmpresa);
+      } else {
+        console.log('[DEBUG] Nome da empresa não encontrado no cache.');
+      }
+
+    } catch (error) {
+      console.error('[DEBUG] Erro ao carregar dados da empresa:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os dados da empresa.');
+      setUserEmpresaid(null);
+    }
+  };
+
+  fetchEmpresaData();
+}, []);
+
 
   // Função para buscar os parâmetros químicos
   const fetchParametros = useCallback(async () => {
@@ -244,11 +256,13 @@ ListFooterComponent={
     <TouchableOpacity style={styles.addButton} onPress={() => abrirModal()}>
       <Text style={styles.addButtonText}>Adicionar Parâmetro</Text>
     </TouchableOpacity>
+     <View style={styles.footer}>
+      <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+      <Text style={styles.subTitle}>powered by GES-POOL</Text>
+    </View>
   </View>
 }
 />
-
-
   {modalVisible && (
   <Modal visible={modalVisible} animationType="slide">
     <KeyboardAvoidingView
@@ -277,15 +291,25 @@ ListFooterComponent={
     }
     style={[
       styles.picker,
-      { backgroundColor: '#FFFFFF', color: '#000000' } // força texto preto e fundo branco
+      { backgroundColor: '#FFFFFF', color: '#000000' }, // força texto preto e fundo branco
     ]}
     dropdownIconColor={'#000000'}
     mode="dropdown" // 🔹 garante o estilo dropdown (não dialog)
   >
-    <Picker.Item label="Escolha um Parâmetro" value="" color="#333333" />
-    {PARAMETROS_VALIDOS.map((parametro) => (
-      <Picker.Item key={parametro} label={parametro} value={parametro} color="#000000" />
-    ))}
+    <Picker.Item
+  label="Escolha um Parâmetro"
+  value=""
+  color={isDarkMode ? '#000000' : '#000000'} // 🔹 força texto sempre visível
+/>
+{PARAMETROS_VALIDOS.map((parametro) => (
+  <Picker.Item
+    key={parametro}
+    label={parametro}
+    value={parametro}
+    color={isDarkMode ? '#FFFFFF' : '#000000'}
+  />
+))}
+
   </Picker>
 </View>
 
@@ -472,6 +496,11 @@ ListFooterComponent={
             <Text style={styles.buttonText}>Cancelar</Text>
           </TouchableOpacity>
         </View>
+         {/* 🔹 Nome da empresa e powered by no rodapé */}
+            <View style={styles.footer}>
+              <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+              <Text style={styles.subTitle}>powered by GES-POOL</Text>
+            </View>
       </ScrollView>
     </KeyboardAvoidingView>
   </Modal>
@@ -594,14 +623,21 @@ const styles = StyleSheet.create({
       alignItems: 'center',
     },
     addButton: {
-      backgroundColor: '#ADD8E6', // Azul claro
+      backgroundColor: '#22b4b4ff',
       paddingVertical: 15,
       paddingHorizontal: 40,
-      borderRadius: 25, // Cantos arredondados
-      width: '90%', // Mantém a largura fixa
-      alignItems: 'center', // Centraliza o texto dentro do botão
-      borderWidth: 1.2, // Moldura preta ao botão
-      borderColor: '#000',
+      borderRadius: 25,
+      marginBottom: 15,
+      width: '80%',
+      alignItems: 'center',
+      // 🔹 Remove o contorno preto
+      borderWidth: 0,
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     addButtonText: {
       color: '#000',
@@ -669,7 +705,7 @@ const styles = StyleSheet.create({
       borderRadius: 8,
       overflow: 'hidden',
       marginBottom: 20,
-      backgroundColor: isDarkMode ? '#FFFFFF' : '#FFFFFF',
+      backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     },
     picker: {
       backgroundColor: '#333', // 🔹 Cor do texto dentro do Picker
@@ -700,6 +736,18 @@ const styles = StyleSheet.create({
     },
     listPadding: {
       paddingBottom: 120, // Garante espaço extra na parte inferior da lista
+    },
+    empresaNome: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#000',
+      marginTop: 20,
+    },
+    subTitle: {
+      fontSize: 12,
+      fontStyle: 'italic',
+      color: '#444',
+      marginTop: 2,
     },
   });
 export default ParametrosQuimicosScreen;

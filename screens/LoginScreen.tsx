@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
     paddingHorizontal: 20,
   },
   titleLight: {
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   inputLight: {
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: '#000',
     padding: 10,
     marginBottom: 20,
@@ -158,9 +158,15 @@ const styles = StyleSheet.create({
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   inputDark: {
-    borderWidth: 1.2,
+    borderWidth: 0,
     borderColor: '#000',
     padding: 12,
     height: 45,
@@ -171,17 +177,31 @@ const styles = StyleSheet.create({
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   button: {
-    backgroundColor: '#ADD8E6',
-    paddingVertical: 11,
+    backgroundColor: '#22b4b4ff',
+    paddingVertical: 15,
     paddingHorizontal: 40,
     borderRadius: 25,
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
-    borderWidth: 1.2, // Moldura preta
-    borderColor: '#000', // Cor da moldura preta
+
+    // 🔹 Remove o contorno preto
+    borderWidth: 0,
+
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     fontSize: 16,
@@ -205,13 +225,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '80%',
     height: 45, // 🔹 Controla a altura do campo de senha
-    borderWidth: 1.2,
+    borderWidth: 0,
     marginBottom: 15,
     borderColor: '#000',
     borderRadius: 25,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 0,
     justifyContent: 'space-between',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
 
   passwordInput: {

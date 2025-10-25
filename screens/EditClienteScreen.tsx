@@ -12,32 +12,42 @@ const EditClienteScreen = ({ route, navigation }: any) => {
   const [form, setForm] = useState<any>(null);
   const [isEditable, setIsEditable] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [empresaNome, setEmpresaNome] = useState('');
 
-  // Fetch cliente data
-  useEffect(() => {
-    const fetchCliente = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid'); // Recupera o empresaid
-        if (!empresaid) {
-          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-          navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
-          return;
-        }
-
-        const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`, {
-          params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
-        });
-        setForm(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error('Erro ao buscar cliente:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os detalhes do cliente.');
-        navigation.goBack(); // Volta para a tela anterior em caso de erro
+  // Fetch cliente data + nome da empresa
+useEffect(() => {
+  const fetchCliente = async () => {
+    try {
+      const empresaid = await AsyncStorage.getItem('empresaid'); // Recupera o empresaid
+      if (!empresaid) {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+        navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
+        return;
       }
-    };
 
-    fetchCliente();
-  }, [clienteId, navigation]); // Adicione `navigation` às dependências para evitar avisos
+      // 🔹 Busca os dados do cliente
+      const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`, {
+        params: { empresaid: parseInt(empresaid, 10) }, // Inclui empresaid como parâmetro
+      });
+      setForm(response.data);
+      setLoading(false);
+
+      // 🔹 Busca também o nome da empresa (sem interferir na lógica existente)
+      const nome = await AsyncStorage.getItem('empresa_nome');
+      if (nome) {
+        setEmpresaNome(nome);
+      }
+
+    } catch (error) {
+      console.error('Erro ao buscar cliente ou nome da empresa:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os detalhes do cliente.');
+      navigation.goBack(); // Volta para a tela anterior em caso de erro
+    }
+  };
+
+  fetchCliente();
+}, [clienteId, navigation]); // Mantém as dependências originais
+
 
 
   // Atualiza o volume ao alterar os campos
@@ -423,6 +433,10 @@ if (loading || !form) {
           <Text style={styles.buttonText}>Apagar Cliente</Text>
         </TouchableOpacity>
       </View>
+      <View style={styles.footer}>
+         <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+         <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      </View>
     </ScrollView>
   );
 
@@ -450,6 +464,10 @@ const styles = StyleSheet.create({
       marginBottom: 20,
       textAlign: 'center',
       color: isDarkMode ? '#000' : '#000', // Sempre preto para contraste
+      // 🔹 Sombra igual à dos botões
+      textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+      textShadowOffset: { width: 0, height: 3 },
+      textShadowRadius: 4,
     },
     input: {
       backgroundColor: '#FFF',
@@ -459,6 +477,12 @@ const styles = StyleSheet.create({
       borderWidth: 0, // Borda mais visível
       borderColor: '#000', // Preto para melhor contraste
       color: '#000', // Texto preto
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     inputLight: {
       backgroundColor: '#FFF',
@@ -468,6 +492,12 @@ const styles = StyleSheet.create({
       borderRadius: 5,
       marginBottom: 15,
       color: '#000', // 🔥 Texto preto no modo claro
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     inputDark: {
       backgroundColor: '#FFF',
@@ -477,6 +507,12 @@ const styles = StyleSheet.create({
       borderWidth: 0,
       borderColor: '#000',
       color: '#000',
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     label: {
       fontSize: 16,
@@ -522,12 +558,10 @@ const styles = StyleSheet.create({
       fontSize: 16,
       color: '#000', // Preto no modo claro
     },
-
     checkboxLabelDark: {
       fontSize: 16,
       color: '#FFF', // Branco no modo escuro para melhor contraste
     },
-
     checkboxContainer: {
       marginVertical: 10,
       paddingHorizontal: 10,
@@ -563,11 +597,17 @@ const styles = StyleSheet.create({
       flex: 1, // Ocupa 1/3 da linha
     },
     pickerContainer: {
-      borderWidth: 1.5,
+      borderWidth: 0,
       borderColor: '#000',
       borderRadius: 5,
       overflow: 'hidden',
       backgroundColor: isDarkMode ? '#333' : '#FFF',
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     picker: {
       color: isDarkMode ? '#FFF' : '#000',
@@ -589,7 +629,6 @@ const styles = StyleSheet.create({
       color: '#000', // Preto no modo claro
       fontWeight: 'bold',
     },
-
     switchLabelDark: {
       fontSize: 16,
       color: '#222222', // Cinza escuro no modo escuro
@@ -602,7 +641,7 @@ const styles = StyleSheet.create({
         flexWrap: 'wrap', // Permite que os botões sejam quebrados para a próxima linha, se necessário
     },
     button: {
-        backgroundColor: '#ADD8E6', // Azul claro para os botões
+        backgroundColor: '#22b4b4ff', // Azul claro para os botões
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 10,
@@ -611,8 +650,14 @@ const styles = StyleSheet.create({
         margin: 5, // Espaçamento ao redor de cada botão
         flex: 1, // Faz com que os botões tenham tamanhos proporcionais
         maxWidth: '30%', // Limita a largura máxima de cada botão
-        borderWidth: 1.5, // Adiciona moldura
+        borderWidth: 0, // Adiciona moldura
         borderColor: '#000', // Cor da moldura preta
+        // 🔹 Sombra 3D leve e elegante
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4.65,
+        elevation: 10, // ← dá profundidade real no Android
     },
     buttonText: {
       color: '#000', // Preto para o texto
@@ -624,12 +669,29 @@ const styles = StyleSheet.create({
       padding: 10,
       fontSize: 16,
       color: '#000',
+
     },
     unit: {
       fontSize: 16,
       fontWeight: 'bold',
       color: '#000',
       marginLeft: 5,
+    },
+    footer: {
+      alignItems: 'center',
+      marginTop: 40,
+      marginBottom: 30,
+    },
+    empresaNome: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#000',
+    },
+    subTitle: {
+      fontSize: 12,
+      fontStyle: 'italic',
+      color: '#444',
+      marginTop: 2,
     },
   });
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput, Appearance } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, Alert, TextInput, Appearance } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import Config from 'react-native-config';
@@ -22,41 +22,48 @@ const ListaClientesScreen = ({ navigation }: any) => {
   const [searchQuery, setSearchQuery] = useState(''); // Estado para a busca
   const [loading, setLoading] = useState(true);
   const [userEmpresaid, setUserEmpresaid] = useState<number | undefined>(undefined); // Estado para armazenar o empresaid
+  const [empresaNome, setEmpresaNome] = useState('');
+
 
   // Função para buscar o empresaid do token JWT
   useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        console.log('[DEBUG] Tentando carregar o empresaid do AsyncStorage...');
-        const empresaid = await AsyncStorage.getItem('empresaid');
+  const fetchEmpresaData = async () => {
+    try {
+      console.log('[DEBUG] Tentando carregar o empresaid e nome da empresa do AsyncStorage...');
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      const nomeEmpresa = await AsyncStorage.getItem('empresa_nome');
 
-        if (empresaid) {
-          console.log('[DEBUG] Empresaid encontrado:', empresaid);
-          setUserEmpresaid(parseInt(empresaid, 10));
-        } else {
-          console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta após confirmação.');
-          Alert.alert(
-            'Erro',
-            'Empresaid não encontrado. Faça login novamente.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  console.log('[DEBUG] Redirecionando para a tela de login...');
-                  navigation.navigate('Login');
-                },
-              },
-            ]
-          );
-        }
-      } catch (error) {
-        console.error('[DEBUG] Erro ao carregar empresaid:', error);
-        Alert.alert('Erro', 'Ocorreu um problema ao recuperar o empresaid.');
+      if (empresaid) {
+        console.log('[DEBUG] Empresaid encontrado:', empresaid);
+        setUserEmpresaid(parseInt(empresaid, 10));
+      } else {
+        console.log('[DEBUG] Empresaid não encontrado. Mostrando alerta.');
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              console.log('[DEBUG] Redirecionando para a tela de login...');
+              navigation.navigate('Login');
+            },
+          },
+        ]);
       }
-    };
 
-    fetchEmpresaid();
-  }, [navigation]);
+      if (nomeEmpresa) {
+        console.log('[DEBUG] Nome da empresa carregado do cache:', nomeEmpresa);
+        setEmpresaNome(nomeEmpresa);
+      } else {
+        console.log('[DEBUG] Nome da empresa não encontrado no AsyncStorage.');
+      }
+    } catch (error) {
+      console.error('[DEBUG] Erro ao carregar dados da empresa:', error);
+      Alert.alert('Erro', 'Ocorreu um problema ao recuperar os dados da empresa.');
+    }
+  };
+
+  fetchEmpresaData();
+}, [navigation]);
+
 
 
   // Função para buscar clientes
@@ -122,34 +129,47 @@ const ListaClientesScreen = ({ navigation }: any) => {
   );
 
   return (
+  <ScrollView contentContainerStyle={styles.scrollContainer}>
     <View style={styles.container}>
-  <Text style={styles.title}>Lista de Clientes</Text>
+      {/* 🔹 Título */}
+      <Text style={styles.title}>Lista de Clientes</Text>
 
-  <TextInput
-    style={isDarkMode ? styles.searchInputDark : styles.searchInputLight}
-    placeholder="Procurar por nome ou morada"
-    placeholderTextColor={isDarkMode ? '#333' : '#666666'} // 🔥 Melhor contraste no dark mode
-    value={searchQuery}
-    onChangeText={setSearchQuery}
-  />
+      {/* 🔹 Barra de pesquisa */}
+      <TextInput
+        style={isDarkMode ? styles.searchInputDark : styles.searchInputLight}
+        placeholder="Procurar por nome ou morada"
+        placeholderTextColor={isDarkMode ? '#333' : '#666666'}
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
 
-  {loading ? (
-    <ActivityIndicator size="large" color={isDarkMode ? '#FFF' : '#0000ff'} /> // 🔥 Azul no claro, branco no escuro
-  ) : (
-    <FlatList
-      data={filteredClientes}
-      keyExtractor={(item) => item.id.toString()}
-      renderItem={renderCliente}
-      ListEmptyComponent={
-        <Text style={isDarkMode ? styles.emptyTextDark : styles.emptyTextLight}>
-          Nenhum cliente encontrado.
-        </Text>
-      }
-    />
-  )}
-</View>
+      {/* 🔹 Lista ou indicador de carregamento */}
+      {loading ? (
+        <ActivityIndicator size="large" color={isDarkMode ? '#FFF' : '#0000ff'} />
+      ) : (
+        <FlatList
+          data={filteredClientes}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderCliente}
+          ListEmptyComponent={
+            <Text style={isDarkMode ? styles.emptyTextDark : styles.emptyTextLight}>
+              Nenhum cliente encontrado.
+            </Text>
+          }
+          scrollEnabled={false} // ✅ Evita conflito com o ScrollView
+        />
+      )}
 
-  );
+      {/* 🔹 Rodapé com nome da empresa (dinâmico) */}
+      <View style={styles.footer}>
+        <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+        <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      </View>
+    </View>
+  </ScrollView>
+);
+
+
 };
 
 
@@ -166,6 +186,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
     color: isDarkMode ? '#000' : '#000', // 🔥 Mantém preto para ambos
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   searchInput: {
     backgroundColor: '#FFF',
@@ -229,10 +253,16 @@ const styles = StyleSheet.create({
     marginTop: 4, // Pequeno espaçamento abaixo do nome
   },
   detalhesButton: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     color: '#000',
@@ -244,6 +274,29 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: '#000',
   },
+  footer: {
+  marginTop: 20,
+  marginBottom: 30,
+  alignItems: 'center',
+},
+empresaNome: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+},
+subTitle: {
+  fontSize: 12,
+  fontStyle: 'italic',
+  color: '#444',
+  marginTop: 2,
+},
+scrollContainer: {
+  flexGrow: 1,
+  justifyContent: 'flex-start',
+  paddingBottom: 60, // 🔹 espaço para o rodapé visível no final
+  backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+},
+
 });
 
 export default ListaClientesScreen;

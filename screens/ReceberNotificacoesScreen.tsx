@@ -9,10 +9,13 @@ import {
   Image,
   TextInput,
   Modal,
+  Appearance,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+
+const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const ReceberNotificacoesScreen = () => {
   const [notificacoes, setNotificacoes] = useState<any[]>([]);
@@ -23,24 +26,21 @@ const ReceberNotificacoesScreen = () => {
   const [mostrarModalImagem, setMostrarModalImagem] = useState(false);
   const fetchedOnce = React.useRef(false);
 
-
-
-
   useEffect(() => {
     const fetchEmpresaid = async () => {
       const id = await AsyncStorage.getItem('empresaid');
-      if (id) setEmpresaid(parseInt(id, 10));
-      else Alert.alert('Erro', 'Empresaid não encontrado.');
+      if (id) {setEmpresaid(parseInt(id, 10));}
+      else {Alert.alert('Erro', 'Empresaid não encontrado.');}
     };
     fetchEmpresaid();
   }, []);
 
   useEffect(() => {
   const fetchNotificacoes = async () => {
-    if (!empresaid) return;
+    if (!empresaid) {return;}
 
     // ✅ Impede execução duplicada (modo Strict do React)
-    if (fetchedOnce.current) return;
+    if (fetchedOnce.current) {return;}
     fetchedOnce.current = true;
 
     try {
@@ -85,13 +85,13 @@ const ReceberNotificacoesScreen = () => {
           Alert.alert('Atenção', 'Por favor, insira o nome do responsável.');
           return;
         }
-      
+
         try {
           await axios.put(`${Config.API_URL}/notificacoes/${id}/update`, {
             atribuido_a: nome,
             empresaid,
           });
-      
+
           setNotificacoes((prev) =>
             prev.map((notificacao) =>
               notificacao.id === id
@@ -99,7 +99,7 @@ const ReceberNotificacoesScreen = () => {
                 : notificacao
             )
           );
-      
+
           Alert.alert('Sucesso', 'Responsável atualizado com sucesso!');
         } catch (error) {
           console.error('Erro ao salvar responsável:', error);
@@ -118,7 +118,7 @@ const ReceberNotificacoesScreen = () => {
             atribuido_a: novoResponsavel,
             empresaid,
           });
-      
+
           setNotificacoes((prev) =>
             prev.map((n) =>
               n.id === id
@@ -130,21 +130,21 @@ const ReceberNotificacoesScreen = () => {
           Alert.alert('Erro', 'Não foi possível atualizar a notificação.');
         }
       };
-      
+
       const apagarNotificacao = async (id: number) => {
         try {
           await axios.delete(`${Config.API_URL}/notificacoes/${id}`, {
             params: { empresaid },
           });
-      
+
           setNotificacoes((prev) => prev.filter((n) => n.id !== id));
           Alert.alert('Sucesso', 'Notificação apagada com sucesso!');
         } catch (error) {
           Alert.alert('Erro', 'Erro ao apagar notificação.');
         }
       };
-      
-      
+
+
 
       return (
         <TouchableOpacity
@@ -154,7 +154,7 @@ const ReceberNotificacoesScreen = () => {
           <Text style={styles.cliente}>{item.cliente_nome}</Text>
           <Text style={styles.mensagem}>{item.mensagem}</Text>
           <Text style={styles.status}>Status: {item.status}</Text>
-      
+
           {isExpanded && (
             <View style={styles.expandedContent}>
               <Text style={styles.detail}>
@@ -168,7 +168,7 @@ const ReceberNotificacoesScreen = () => {
                   ✅ Resolvido em: {new Date(item.data_resolucao).toLocaleString()}
                 </Text>
               )}
-      
+
               {item.anexos && item.anexos.length > 0 && (
                 <View style={styles.anexoContainer}>
                   <Text style={styles.anexoLabel}>📎 Anexos:</Text>
@@ -187,16 +187,16 @@ const ReceberNotificacoesScreen = () => {
                         resizeMode="cover"
                       />
                     </TouchableOpacity>
-                    
+
                     ))}
                   </View>
                 </View>
               )}
-      
+
               {/* Campo de responsável funcional */}
               <View style={styles.responsavelContainer}>
                 <Text style={styles.detail}>👤 Responsável:</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={styles.rowCenter}>
                   <TextInput
                     style={[styles.input, { flex: 1, marginRight: 10 }]}
                     placeholder="Nome do responsável"
@@ -211,7 +211,7 @@ const ReceberNotificacoesScreen = () => {
                   </TouchableOpacity>
                 </View>
               </View>
-      
+
               {/* Mostra o nome salvo, se existir */}
               {item.atribuido_a && (
                 <Text style={styles.detail}>
@@ -293,7 +293,7 @@ const ReceberNotificacoesScreen = () => {
           )}
         </TouchableOpacity>
       );
-      
+
   };
 
   return (
@@ -304,7 +304,7 @@ const ReceberNotificacoesScreen = () => {
         renderItem={renderItem}
         contentContainerStyle={styles.container}
       />
-  
+
       {/* Modal da imagem em ecrã completo */}
       {imagemSelecionada && (
         <Modal
@@ -330,35 +330,41 @@ const ReceberNotificacoesScreen = () => {
       )}
     </>
   );
-  
+
 };
 
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   card: {
     backgroundColor: '#FFF',
     padding: 12,
     borderRadius: 10,
     marginBottom: 10,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
-  cardPendente: { borderLeftWidth: 6, borderLeftColor: '#FFB3B3' },
-  cardResolucao: { borderLeftWidth: 6, borderLeftColor: '#FFF5CC' },
-  cardResolvido: { borderLeftWidth: 6, borderLeftColor: '#CCFFCC' },
-  cardDefault: { borderLeftWidth: 6, borderLeftColor: '#AAA' },
-  cliente: { fontWeight: 'bold', fontSize: 16 },
-  mensagem: { marginTop: 4, fontSize: 14, color: '#333' },
-  status: { marginTop: 6, fontStyle: 'italic', color: '#666' },
-  expandedContent: { marginTop: 12 },
-  detail: { fontSize: 14, color: '#444', marginBottom: 4 },
-  anexoContainer: { marginTop: 10 },
-  anexoLabel: { fontWeight: 'bold', marginBottom: 4 },
-  anexoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  anexoThumb: { width: 60, height: 60, borderRadius: 5, marginRight: 6 },
-  responsavelContainer: { marginTop: 10 },
-  input: {
+    cardPendente: { borderLeftWidth: 6, borderLeftColor: '#FFB3B3' },
+    cardResolucao: { borderLeftWidth: 6, borderLeftColor: '#FFF5CC' },
+    cardResolvido: { borderLeftWidth: 6, borderLeftColor: '#CCFFCC' },
+    cardDefault: { borderLeftWidth: 6, borderLeftColor: '#AAA' },
+    cliente: { fontWeight: 'bold', fontSize: 16 },
+    mensagem: { marginTop: 4, fontSize: 14, color: '#333' },
+    status: { marginTop: 6, fontStyle: 'italic', color: '#666' },
+    expandedContent: { marginTop: 12 },
+    detail: { fontSize: 14, color: '#444', marginBottom: 4 },
+    anexoContainer: { marginTop: 10 },
+    anexoLabel: { fontWeight: 'bold', marginBottom: 4 },
+    anexoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    anexoThumb: { width: 60, height: 60, borderRadius: 5, marginRight: 6 },
+    responsavelContainer: { marginTop: 10 },
+    input: {
     borderWidth: 1,
     borderColor: '#888',
     borderRadius: 6,
@@ -373,11 +379,17 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   actionButton: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     borderRadius: 25,
     paddingVertical: 10,
     paddingHorizontal: 20,
     alignItems: 'center',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   actionText: {
     color: '#000',
@@ -401,7 +413,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 20,
-    backgroundColor: '#FFF',
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -411,8 +423,10 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
   },
-  
-  
+  rowCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 });
 
 export default ReceberNotificacoesScreen;

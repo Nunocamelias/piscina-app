@@ -102,6 +102,7 @@ const fetchEquipe = useCallback(async () => {
 }, [equipeId, userEmpresaid, navigation]); // ✅ Adiciona `navigation` às dependências
 
 
+const [empresaNome, setEmpresaNome] = useState('');
 
 
 // 🔄 Apenas chama `fetchEquipe` quando `userEmpresaid` estiver disponível
@@ -111,7 +112,19 @@ useEffect(() => {
   }
 }, [userEmpresaid, fetchEquipe]); // ✅ Adiciona `fetchEquipe` às dependências
 
+// 🔹 Busca o nome da empresa do AsyncStorage (sem interferir na lógica principal)
+useEffect(() => {
+  const fetchEmpresaNome = async () => {
+    try {
+      const nome = await AsyncStorage.getItem('empresa_nome');
+      if (nome) {setEmpresaNome(nome);}
+    } catch (error) {
+      console.error('Erro ao buscar nome da empresa:', error);
+    }
+  };
 
+  fetchEmpresaNome();
+}, []);
 
 // 🔹 Executa `fetchEquipe` quando `userEmpresaid` estiver carregado
 useEffect(() => {
@@ -283,7 +296,7 @@ useEffect(() => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Detalhes da Equipe</Text>
+      <Text style={styles.title}>Detalhes da Equipa</Text>
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Nome da Equipe"
@@ -309,17 +322,16 @@ useEffect(() => {
         onChangeText={(value) => handleChange('nome2', value)}
       />
       <TextInput
-  style={[styles.input, !isEditable && styles.readOnly]}
-  placeholder="Matrícula"
-  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-  value={form.matricula}
-  editable={isEditable}
-  onChangeText={(value) => handleChange('matricula', value)}
-  maxLength={8} // Garante que o campo tenha no máximo 8 caracteres
-  autoCapitalize="characters" // Força letras maiúsculas no teclado
-  keyboardType="default" // Permite letras e números
-/>
-
+        style={[styles.input, !isEditable && styles.readOnly]}
+        placeholder="Matrícula"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+        value={form.matricula}
+        editable={isEditable}
+        onChangeText={(value) => handleChange('matricula', value)}
+        maxLength={8} // Garante que o campo tenha no máximo 8 caracteres
+        autoCapitalize="characters" // Força letras maiúsculas no teclado
+        keyboardType="default" // Permite letras e números
+      />
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
         placeholder="Telefone"
@@ -384,18 +396,22 @@ useEffect(() => {
     <Text style={styles.buttonText}>Voltar</Text>
   </TouchableOpacity>
   {isEditable ? (
-    <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
-      <Text style={styles.buttonText}>Salvar</Text>
-    </TouchableOpacity>
+  <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
+    <Text style={styles.buttonText}>Salvar</Text>
+  </TouchableOpacity>
   ) : (
-    <TouchableOpacity style={styles.button} onPress={() => setIsEditable(true)}>
-      <Text style={styles.buttonText}>Editar Equipe</Text>
-    </TouchableOpacity>
+  <TouchableOpacity style={styles.button} onPress={() => setIsEditable(true)}>
+    <Text style={styles.buttonText}>Editar Equipa</Text>
+  </TouchableOpacity>
   )}
   <TouchableOpacity style={styles.button} onPress={apagarEquipe}>
-    <Text style={styles.buttonText}>Apagar Equipe</Text>
+    <Text style={styles.buttonText}>Apagar Equipa</Text>
   </TouchableOpacity>
-</View>
+      </View>
+        <View style={styles.footer}>
+          <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+          <Text style={styles.subTitle}>powered by GES-POOL</Text>
+       </View>
     </ScrollView>
   );
 };
@@ -406,11 +422,19 @@ const styles = StyleSheet.create({
       backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
       flexGrow: 1,
     },
+    scrollContainer: {
+      flexGrow: 1,
+      paddingBottom: 80, // 🔹 adiciona espaço visível no fim
+    },
     title: {
       fontSize: 24,
       fontWeight: 'bold',
       marginBottom: 20,
       textAlign: 'center',
+      // 🔹 Sombra igual à dos botões
+      textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+      textShadowOffset: { width: 0, height: 3 },
+      textShadowRadius: 4,
     },
     input: {
       backgroundColor: '#FFF',
@@ -419,6 +443,12 @@ const styles = StyleSheet.create({
       marginBottom: 15,
       borderWidth: 1,
       borderColor: '#CCC',
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     readOnly: {
       backgroundColor: '#EEE',
@@ -436,60 +466,87 @@ const styles = StyleSheet.create({
       marginBottom: 15,
     },
     buttonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-evenly', // Distribui os botões uniformemente
-        marginTop: 20,
-        flexWrap: 'wrap', // Permite que os botões sejam quebrados para a próxima linha, se necessário
-      },
-      button: {
-        backgroundColor: '#ADD8E6', // Azul claro para os botões
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        margin: 5, // Espaçamento ao redor de cada botão
-        flex: 1, // Faz com que os botões tenham tamanhos proporcionais
-        maxWidth: '30%', // Limita a largura máxima de cada botão
-        borderWidth: 1.5, // Adiciona moldura
-        borderColor: '#777777', // Cor da moldura preta
-      },
-      buttonText: {
-        color: '#000', // Preto para o texto
-        fontWeight: 'bold',
-        fontSize: 16,
-      },
-      saveButton: {
-        backgroundColor: '#ADD8E6',
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        borderRadius: 10,
-        alignItems: 'center',
-        marginBottom: 15,
-        width: '100%',
-        alignSelf: 'center',
-      },
-      saveButtonText: {
+      flexDirection: 'row',
+      justifyContent: 'space-evenly', // Distribui os botões uniformemente
+      marginTop: 20,
+      flexWrap: 'wrap', // Permite que os botões sejam quebrados para a próxima linha, se necessário
+    },
+    button: {
+      backgroundColor: '#22b4b4ff', // Azul claro para os botões
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: 5, // Espaçamento ao redor de cada botão
+      flex: 1, // Faz com que os botões tenham tamanhos proporcionais
+      maxWidth: '30%', // Limita a largura máxima de cada botão
+      borderWidth: 0, // Adiciona moldura
+      borderColor: '#777777', // Cor da moldura preta
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
+    },
+    buttonText: {
+      color: '#000', // Preto para o texto
+      fontWeight: 'bold',
+      fontSize: 16,
+    },
+    saveButton: {
+      backgroundColor: '#22b4b4ff',
+      paddingVertical: 15,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      marginBottom: 15,
+      width: '100%',
+      alignSelf: 'center',
+    },
+    saveButtonText: {
       color: '#FFF',
       fontWeight: 'bold',
-      },
-      generateButton: {
-        backgroundColor: '#ADD8E6', // Azul claro
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        borderRadius: 10,
-        alignItems: 'center',
-        width: '100%', // Faz o botão ocupar toda a largura disponível
-        marginBottom: 10, // Espaço entre outros elementos
-        borderWidth: 1.5, // Adiciona moldura
-        borderColor: '#777777', // Cor da moldura preta
+    },
+    generateButton: {
+      backgroundColor: '#22b4b4ff', // Azul claro
+      paddingVertical: 15,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      width: '100%', // Faz o botão ocupar toda a largura disponível
+      marginBottom: 10, // Espaço entre outros elementos
+      borderWidth: 0, // Adiciona moldura
+      borderColor: '#777777', // Cor da moldura preta
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     generateButtonText: {
       fontSize: 16,
       fontWeight: '600',
       color: '#000',
     },
-
+    footer: {
+      alignItems: 'center',
+      marginTop: 40, // 🔹 separação do último botão
+      marginBottom: 30, // 🔹 espaço extra no fim
+    },
+    empresaNome: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#000',
+    },
+    subTitle: {
+      fontSize: 12,
+      fontStyle: 'italic',
+      color: '#444',
+      marginTop: 2,
+    },
   });
 
 export default EditEquipeScreen;

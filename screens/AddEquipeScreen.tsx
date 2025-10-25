@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, View } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,26 +23,35 @@ const AddEquipeScreen = ({ navigation }: any) => {
   });
 
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
+  const [empresaNome, setEmpresaNome] = useState('');
 
   useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid');
-        if (empresaid) {
-          setUserEmpresaid(parseInt(empresaid, 10));
-        } else {
-          Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-          navigation.navigate('Login');
-        }
-      } catch (error) {
-        console.error('Erro ao recuperar empresaid:', error);
-        Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
+  const fetchEmpresaid = async () => {
+    try {
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (empresaid) {
+        setUserEmpresaid(parseInt(empresaid, 10));
+      } else {
+        Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
         navigation.navigate('Login');
+        return; // evita continuar se não houver empresaid
       }
-    };
 
-    fetchEmpresaid();
-  }, [navigation]);
+      // 🔹 Busca o nome da empresa (sem interferir na lógica original)
+      const nome = await AsyncStorage.getItem('empresa_nome');
+      if (nome) {
+        setEmpresaNome(nome);
+      }
+    } catch (error) {
+      console.error('Erro ao recuperar empresaid ou nome:', error);
+      Alert.alert('Erro', 'Não foi possível recuperar os dados da empresa.');
+      navigation.navigate('Login');
+    }
+  };
+
+  fetchEmpresaid();
+}, [navigation]);
+
 
   type FormFields = keyof typeof form;
 
@@ -206,16 +215,15 @@ const handleChange = (field: FormFields, value: string) => {
         onChangeText={(value) => handleChange('nome2', value)}
       />
       <TextInput
-  style={styles.input}
-  placeholder="Matrícula do Veículo"
-  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-  value={form.matricula}
-  onChangeText={(value) => handleChange('matricula', value)}
-  maxLength={8} // Garante que não ultrapasse o limite
-  autoCapitalize="characters" // Força letras maiúsculas no teclado
-  keyboardType="default" // Garante que letras e números sejam aceitos
-/>
-
+        style={styles.input}
+        placeholder="Matrícula do Veículo"
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+        value={form.matricula}
+        onChangeText={(value) => handleChange('matricula', value)}
+        maxLength={8} // Garante que não ultrapasse o limite
+        autoCapitalize="characters" // Força letras maiúsculas no teclado
+        keyboardType="default" // Garante que letras e números sejam aceitos
+      />
       <TextInput
         style={styles.input}
         placeholder="Número de Telefone"
@@ -233,19 +241,19 @@ const handleChange = (field: FormFields, value: string) => {
         onEndEditing={() => {
         if (form.proxima_inspecao && form.proxima_inspecao.length === 10 && !isValidDate(form.proxima_inspecao)) {
         console.warn('A Data fornecida é inválida:', form.proxima_inspecao);
-         }
+        }
        }}
       />
       <TextInput
-         style={[styles.input, { backgroundColor: getColorForDate(form.validade_seguro) }]}
-         placeholder="Seguro Válido até (AAAA-MM-DD)"
-         placeholderTextColor="#888"
-         value={form.validade_seguro}
-         onChangeText={(value) => handleChange('validade_seguro', value)}
-         onEndEditing={() => {
-         if (form.validade_seguro && form.validade_seguro.length === 10 && !isValidDate(form.validade_seguro)) {
-         console.warn('A Data fornecida é inválida:', form.validade_seguro);
-         }
+        style={[styles.input, { backgroundColor: getColorForDate(form.validade_seguro) }]}
+        placeholder="Seguro Válido até (AAAA-MM-DD)"
+        placeholderTextColor="#888"
+        value={form.validade_seguro}
+        onChangeText={(value) => handleChange('validade_seguro', value)}
+        onEndEditing={() => {
+        if (form.validade_seguro && form.validade_seguro.length === 10 && !isValidDate(form.validade_seguro)) {
+        console.warn('A Data fornecida é inválida:', form.validade_seguro);
+        }
        }}
       />
       <TextInput
@@ -257,18 +265,22 @@ const handleChange = (field: FormFields, value: string) => {
         onChangeText={(value) => handleChange('email', value)}
       />
       <TextInput
-  style={[styles.input, styles.passwordInput]} // 🔥 Aplica um novo estilo específico para senhas
-  placeholder="Senha"
-  secureTextEntry={true}
-  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-  value={form.password}
-  onChangeText={(value) => handleChange('password', value)}
-/>
-
+        style={[styles.input, styles.passwordInput]} // 🔥 Aplica um novo estilo específico para senhas
+        placeholder="Senha"
+        secureTextEntry={true}
+        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+        value={form.password}
+        onChangeText={(value) => handleChange('password', value)}
+      />
 
       <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
         <Text style={styles.buttonText}>Salvar Equipe</Text>
       </TouchableOpacity>
+      {/* 🔹 Rodapé com nome da empresa */}
+<View style={styles.footer}>
+  <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+  <Text style={styles.subTitle}>powered by GES-POOL</Text>
+</View>
     </ScrollView>
   );
 };
@@ -285,6 +297,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     color: isDarkMode ? '#333' : '#000',
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   input: {
     backgroundColor: isDarkMode ? '#FFF' : '#FFF',
@@ -294,27 +310,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CCC',
     color: isDarkMode ? '#000' : '#000',
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   passwordInput: {
     letterSpacing: 1.5, // 🔥 Dá um espaçamento maior para parecer mais uniforme
     fontWeight: 'bold', // 🔥 Garante que os caracteres sejam mais visíveis antes de virarem bolinhas
   },
   button: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignItems: 'center',
+    paddingHorizontal: 40,
+    borderRadius: 25,
     marginBottom: 15,
-    width: '100%',
+    width: '80%',
+    alignItems: 'center',
     alignSelf: 'center',
-    borderWidth: 1.5, // Adiciona moldura
-    borderColor: '#000', // Cor da moldura preta
+    // 🔹 Remove o contorno preto
+    borderWidth: 0,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 40,
+    marginBottom: 30,
+  },
+  empresaNome: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  subTitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#444',
+    marginTop: 2,
   },
 });
 

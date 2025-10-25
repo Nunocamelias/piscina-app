@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Appearance } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Appearance, ScrollView } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
 type RootStackParamList = {
-  DiasDaSemana: { equipeId: number; equipeNome: string }; // Navega para DiasDaSemana com dados da equipe
-  Login: undefined; // Tela de Login
+  DiasDaSemana: { equipeId: number; equipeNome: string };
+  Login: undefined;
 };
 
 type ListasManutencoesScreenNavigationProp = StackNavigationProp<
@@ -23,8 +23,10 @@ const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const ListasManutencoesScreen = ({ navigation }: Props) => {
   const [equipes, setEquipes] = useState([]);
+  const [empresaNome, setEmpresaNome] = useState('');
   const [userEmpresaid, setUserEmpresaid] = useState<number | undefined>(undefined);
 
+  // 🔹 Carrega empresaid
   useEffect(() => {
     const fetchEmpresaid = async () => {
       try {
@@ -38,6 +40,10 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
             [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
           );
         }
+
+        // Carrega logo e nome da empresa do cache
+        const cachedNome = await AsyncStorage.getItem('empresa_nome');
+        if (cachedNome) {setEmpresaNome(cachedNome);}
       } catch (error) {
         console.error('Erro ao carregar empresaid:', error);
         Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
@@ -47,19 +53,15 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
     fetchEmpresaid();
   }, [navigation]);
 
+  // 🔹 Carrega lista de equipes
   useEffect(() => {
     const fetchEquipes = async () => {
-      if (!userEmpresaid) {
-        console.log('[DEBUG] Tentativa de buscar equipes sem empresaid.');
-        return;
-      }
+      if (!userEmpresaid) {return;}
 
       try {
-        console.log('[DEBUG] Buscando equipes com empresaid:', userEmpresaid);
         const response = await axios.get(`${Config.API_URL}/equipes`, {
           params: { empresaid: userEmpresaid },
         });
-        console.log('[DEBUG] Equipes recebidas:', response.data);
         setEquipes(response.data);
       } catch (error) {
         console.error('[DEBUG] Erro ao buscar equipes:', error);
@@ -98,69 +100,108 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
           })
         }
       >
-       <Text style={styles.equipeButtonText}>
-    <Text style={styles.boldText}>Nome da Equipe: </Text>
-    {item.nomeequipe + '\n'}
+        <Text style={styles.equipeButtonText}>
+          <Text style={styles.boldText}>Nome da Equipe: </Text>
+          {item.nomeequipe + '\n'}
 
-    <Text style={styles.boldText}>Técnicos: </Text>
-    {item.nome1}
-    {item.nome2 ? ` & ${item.nome2}` : ''} {'\n'}
+          <Text style={styles.boldText}>Técnicos: </Text>
+          {item.nome1}
+          {item.nome2 ? ` & ${item.nome2}` : ''} {'\n'}
 
-    <Text style={styles.boldText}>Telefone: </Text>
-    {item.telefone || 'Não informado'} {'\n'}
+          <Text style={styles.boldText}>Telefone: </Text>
+          {item.telefone || 'Não informado'} {'\n'}
 
-    <Text style={styles.boldText}>Matrícula: </Text>
-    {item.matricula || 'Não informada'} {'\n'}
+          <Text style={styles.boldText}>Matrícula: </Text>
+          {item.matricula || 'Não informada'} {'\n'}
 
-    <Text style={styles.boldText}>Próxima inspeção: </Text>
-    {formatDate(item.proxima_inspecao)} {'\n'}
+          <Text style={styles.boldText}>Próxima inspeção: </Text>
+          {formatDate(item.proxima_inspecao)} {'\n'}
 
-    <Text style={styles.boldText}>Validade do Seguro: </Text>
-    {formatDate(item.validade_seguro)}
-  </Text>
-</TouchableOpacity>
+          <Text style={styles.boldText}>Validade do Seguro: </Text>
+          {formatDate(item.validade_seguro)}
+        </Text>
+      </TouchableOpacity>
     );
   };
 
   return (
+  <ScrollView contentContainerStyle={styles.scrollContainer}>
     <View style={styles.container}>
+      {/* 🔹 Secção dos botões — centralizada */}
+          <View style={{ marginTop: 180, alignItems: 'center', width: '100%' }} />
+
+      {/* 🔹 Título */}
       <Text style={styles.title}>Listas de Manutenções</Text>
+
+      {/* 🔹 Lista dinâmica de equipes */}
       <FlatList
         data={equipes}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderEquipeItem}
         ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma equipe encontrada.</Text>}
+        scrollEnabled={false} // um único scroll
       />
+
+      {/* 🔹 Rodapé sempre com espaçamento fixo do último item */}
+      <View style={styles.footer}>
+        <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+        <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      </View>
     </View>
-  );
+  </ScrollView>
+);
+
 };
 
+// 🔹 Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
+    paddingVertical: 20,
+    paddingBottom: 80, // 🔹 espaço fixo no fim (mantém o nome visível)
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+    color: '#000',
+    marginTop: -180, // mantém posição
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
-  equipeButton: {
-    backgroundColor: '#ADD8E6', // Azul claro
-    padding: 15,
-    borderRadius: 10,
-    marginVertical: 10,
-    borderWidth: 1.2, // 🔹 Adiciona a moldura preta ao botão
-    borderColor: '#000',
+    equipeButton: {
+    backgroundColor: '#22b4b4ff',
+    paddingVertical: 18,
+    paddingHorizontal: 25,
+    borderRadius: 12,
+    marginTop: 10,
+    marginBottom: 25,   // ⬅️ aumenta a distância abaixo de cada quadro
+    width: '90%',
+    alignItems: 'center',
+    alignSelf: 'center',
+
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10,
   },
   equipeButtonText: {
-    color: '#333', // Cinza escuro para suavizar o contraste
-    fontSize: 14, // Reduzir o tamanho da fonte
-    fontWeight: '500', // Peso intermediário para suavizar
-    textAlign: 'left', // Alinha o texto à esquerda
-    lineHeight: 20, // Espaçamento entre linhas para melhorar a legibilidade
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'left',
+    lineHeight: 20,
   },
   emptyText: {
     fontSize: 16,
@@ -171,7 +212,22 @@ const styles = StyleSheet.create({
   boldText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: isDarkMode ? '#FFF' : '#000', // 🔥 Garante legibilidade no dark mode
+    color: isDarkMode ? '#FFF' : '#000',
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 60, // 🔹 distância constante do último quadro
+  },
+  empresaNome: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  subTitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#444',
+    marginTop: 2,
   },
 });
 

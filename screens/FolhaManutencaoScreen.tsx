@@ -89,7 +89,7 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   const [imagensAnexadas, setImagensAnexadas] = useState<string[]>([]);
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
   // 🔹 Função para buscar o empresaid
-const fetchEmpresaid = useCallback(async () => {
+  const fetchEmpresaid = useCallback(async () => {
   try {
     const storedEmpresaId = await AsyncStorage.getItem('empresaid');
     if (!storedEmpresaId) {
@@ -989,7 +989,7 @@ return (
           );
         }}
       >
-        <Text style={styles.buttonText}>Produto sem Stock</Text>
+        <Text style={styles.buttonText}>Sem Stock</Text>
       </TouchableOpacity>
     </View>
   )}
@@ -1023,10 +1023,9 @@ return (
           )}
       </View>
     ))
-  ) : (
-    <Text style={styles.emptyText}>Nenhum parâmetro químico encontrado.</Text>
-  )}
+  ) : null}
 </View>
+
 
 {/* Reportar Anomalias */}
 <View style={styles.section}>
@@ -1184,16 +1183,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   buttonConcluir: {
-    backgroundColor: '#ADD8E6', // Azul claro
+    backgroundColor: '#22b4b4ff', // Azul claro
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 25, // Cantos arredondados
-    borderWidth: 1.5,
-    borderColor: '#909090',
     marginBottom: 10, // Espaçamento abaixo
     width: '80%', // Botão maior
     alignItems: 'center', // Centraliza o texto dentro do botão
     alignSelf: 'center', // Centraliza o botão no ecrã
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonNaoConcluida: {
     backgroundColor: '#FF6347', // Vermelho tomate para indicar erro
@@ -1201,13 +1204,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 25,
-    borderWidth: 1.5,
-    borderColor: '#909090',
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
     alignSelf: 'center',
     marginTop: 10,
+     // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
 
   rowButtons: {
@@ -1248,26 +1255,46 @@ const styles = StyleSheet.create({
   },
   buttonAplicado: {
     backgroundColor: '#4CAF50',
-    padding: 10,
+    flex: 1,
+    height: 45,             // 🔹 altura fixa igual nos dois
     borderRadius: 5,
     marginHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center', // 🔹 garante texto centralizado verticalmente
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 5,
   },
   buttonSemEstoque: {
     backgroundColor: '#f44336',
-    padding: 10,
+    flex: 1,
+    height: 45,             // 🔹 mesma altura
     borderRadius: 5,
-    marginHorizontal: 5,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 5,
   },
   buttonValidar: {
-    backgroundColor: '#90EE90', // Verde claro
+    backgroundColor: '#4CAF50', // Verde claro
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
     marginTop: 5,
   },
   actionButtons: {
-    flexDirection: 'row',
-    marginTop: 10,
+   flexDirection: 'row',
+   justifyContent: 'space-between',
+   alignItems: 'center',
+   width: '100%',
+   alignSelf: 'center',
+   marginVertical: 10,
   },
   button: {
     backgroundColor: '#ADD8E6', // Azul claro
@@ -1300,6 +1327,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   scrollContainer: {
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     flexGrow: 1, // Garante que o conteúdo cresça verticalmente
     padding: 16, // Mesma margem interna que o container
   },
@@ -1313,12 +1341,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: '#fff',
     borderRadius: 8,
-    borderWidth: 3,
+    borderWidth: 0,
     borderColor: '#909090',
     padding: 12,
+     // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   expandedContent: {
@@ -1367,7 +1401,7 @@ const styles = StyleSheet.create({
   },
    itemContainer: {
     padding: 12,
-    backgroundColor: '#fff',
+    backgroundColor: '#D3D3D3',
     marginBottom: 8,
     borderRadius: 8,
   },
@@ -1391,7 +1425,7 @@ const styles = StyleSheet.create({
   },
 
   attachButton: {
-    backgroundColor: '#ADD8E6',
+    backgroundColor: '#22b4b4ff',
     padding: 10,
     borderRadius: 5,
     width: '50%',
@@ -1399,17 +1433,29 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 10,
     marginBottom: 20,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   attachButtonText: {
     color: '#000',
     fontWeight: 'bold',
   },
   submitButton: {
-    backgroundColor: '#32CD32',
+    backgroundColor: '#4d994dff',
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
     marginTop: 10,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   submitButtonText: {
     color: '#FFF',

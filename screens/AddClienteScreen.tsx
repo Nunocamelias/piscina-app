@@ -45,6 +45,7 @@ type FormState = {
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
+
 const AddClienteScreen = ({ navigation }: Props) => {
   const [form, setForm] = useState<FormState>({
     empresaid: null, // Inicialmente nulo até buscar do AsyncStorage
@@ -69,43 +70,53 @@ const AddClienteScreen = ({ navigation }: Props) => {
     periodicidade: '1',
     condicionantes: [],
   });
+  const [empresaNome, setEmpresaNome] = useState('');
 
-  // Recupera o empresaid do AsyncStorage
-  useEffect(() => {
-    const fetchEmpresaid = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid');
-        if (empresaid) {
-          setForm((prevForm) => ({
-            ...prevForm,
-            empresaid: parseInt(empresaid, 10),
-          }));
-        } else {
-          Alert.alert(
-            'Erro',
-            'Empresaid não encontrado. Faça login novamente.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  // Redireciona para o login com o tipo correto
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Login' as keyof RootStackParamList }],
-                  });
-                },
-              },
-            ]
-          );
+  // Recupera o empresaid e o nome da empresa do AsyncStorage
+useEffect(() => {
+  const fetchEmpresaid = async () => {
+    try {
+      const empresaid = await AsyncStorage.getItem('empresaid');
+      if (empresaid) {
+        // 🔹 Atualiza o form com o ID da empresa (mantém tua lógica atual)
+        setForm((prevForm) => ({
+          ...prevForm,
+          empresaid: parseInt(empresaid, 10),
+        }));
+
+        // 🔹 Busca também o nome da empresa
+        const nome = await AsyncStorage.getItem('empresa_nome');
+        if (nome) {
+          setEmpresaNome(nome);
         }
-      } catch (error) {
-        console.error('Erro ao recuperar empresaid:', error);
-        Alert.alert('Erro', 'Não foi possível recuperar o empresaid.');
-      }
-    };
 
-    fetchEmpresaid();
-  }, [navigation]);
+      } else {
+        Alert.alert(
+          'Erro',
+          'Empresaid não encontrado. Faça login novamente.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Redireciona para o login com o tipo correto
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' as keyof RootStackParamList }],
+                });
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao recuperar empresaid ou nome:', error);
+      Alert.alert('Erro', 'Não foi possível recuperar os dados da empresa.');
+    }
+  };
+
+  fetchEmpresaid();
+}, [navigation]);
+
 
   // Calcula o volume automaticamente
   useEffect(() => {
@@ -171,6 +182,14 @@ const AddClienteScreen = ({ navigation }: Props) => {
         Alert.alert('Erro', `O campo "${campo}" é obrigatório.`);
         return false;
       }
+    }
+
+    // 🔹 Nova validação de e-mail
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(form.email)) {
+      Alert.alert(
+      'Erro',
+      'O campo "E-mail" é inválido. Use apenas letras minúsculas e um formato válido (ex: nome@empresa.pt).');
+      return false;
     }
 
     // Validações adicionais
@@ -347,12 +366,26 @@ const AddClienteScreen = ({ navigation }: Props) => {
   </View>
 </View>
   <TextInput
-    style={styles.input}
-    placeholder="Última Substituição (AAAA-MM-DD)"
-    placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-    value={form.ultima_substituicao}
-    onChangeText={(value) => handleChange('ultima_substituicao', value)}
-  />
+  style={styles.input}
+  placeholder="Última Substituição (AAAA-MM-DD)"
+  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+  keyboardType="numeric"
+  maxLength={10}
+  value={form.ultima_substituicao}
+  onChangeText={(value) => {
+    // 🔹 Remove tudo o que não seja número
+    let formatted = value.replace(/\D/g, '');
+
+    // 🔹 Adiciona os traços automaticamente
+    if (formatted.length > 4 && formatted.length <= 6)
+      {formatted = `${formatted.slice(0, 4)}-${formatted.slice(4)}`;}
+    else if (formatted.length > 6)
+      {formatted = `${formatted.slice(0, 4)}-${formatted.slice(4, 6)}-${formatted.slice(6, 8)}`;}
+
+    handleChange('ultima_substituicao', formatted);
+  }}
+/>
+
 
 <View style={styles.switchContainer}>
   <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>
@@ -451,6 +484,10 @@ const AddClienteScreen = ({ navigation }: Props) => {
 >
   <Text style={styles.buttonText}>Salvar Cliente</Text>
 </TouchableOpacity>
+<View style={styles.footer}>
+         <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+         <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      </View>
     </ScrollView>
   );
 
@@ -468,6 +505,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
     color: isDarkMode ? '#333' : '#000', // Mantém a cor preta para legibilidade
+    // 🔹 Sombra igual à dos botões
+    textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 4,
   },
   input: {
     backgroundColor: '#FFF',
@@ -477,6 +518,12 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: '#000', // Moldura preta para destaque
     color: '#000', // Texto sempre escuro
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   labelLight: {
     fontSize: 16,
@@ -525,10 +572,14 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderWidth: 1.5,
-    borderColor: '#000', // Bordas escuras para destacar
     borderRadius: 10,
     backgroundColor: isDarkMode ? '#FFF' : '#DDD', // Cinza médio no escuro
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   switchLabelLight: {
     fontSize: 16,
@@ -547,11 +598,15 @@ const styles = StyleSheet.create({
       flexWrap: 'wrap', // Permite que os botões sejam quebrados para a próxima linha, se necessário
   },
   pickerContainer: {
-      borderWidth: 1.5,
-      borderColor: isDarkMode ? '#000' : '#555', // 🔥 Preto no dark mode, cinza no claro
       borderRadius: 5,
       overflow: 'hidden',
       backgroundColor: isDarkMode ? '#333' : '#FFF', // 🔥 Fundo mais escuro no dark mode
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
   },
   picker: {
       color: isDarkMode ? '#FFF' : '#000', // 🔥 Texto branco no dark mode, preto no claro
@@ -563,16 +618,22 @@ const styles = StyleSheet.create({
       color: isDarkMode ? '#FFF' : '#000', // 🔥 Cor do texto dentro do dropdown
   },
   button: {
-      backgroundColor: '#ADD8E6', // Azul claro padrão
-      paddingVertical: 15,
-      paddingHorizontal: 40,
-      borderRadius: 25,
-      marginBottom: 15,
-      width: '80%',
-      alignItems: 'center',
-      alignSelf: 'center',
-      borderWidth: 1.5, // Adiciona moldura
-      borderColor: '#000', // Cor da moldura preta
+    backgroundColor: '#22b4b4ff',
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 25,
+    marginBottom: 15,
+    width: '80%',
+    alignItems: 'center',
+    alignSelf: 'center',
+    // 🔹 Remove o contorno preto
+    borderWidth: 0,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10, // ← dá profundidade real no Android
   },
   buttonActive: {
       backgroundColor: '#32CD32', // Verde quando ativado
@@ -648,6 +709,22 @@ const styles = StyleSheet.create({
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
     paddingHorizontal: 5,
     width: '63%', // Mantém alinhado
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 40,
+    marginBottom: 30,
+  },
+  empresaNome: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  subTitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#444',
+    marginTop: 2,
   },
 });
 
