@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   // 🔹 Footer fixo no fundo
   footer: {
     position: 'absolute',
-    bottom: 25, // 🔹 ligeiro afastamento do fundo
+    bottom: 40, // 🔹 ligeiro afastamento do fundo
     width: '100%',
     alignItems: 'center',
   },

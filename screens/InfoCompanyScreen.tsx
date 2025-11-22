@@ -1,19 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Image,
-  Alert,
-  StyleSheet,
-  Appearance,
-  Platform,
-} from 'react-native';
+import {  View, Text, TextInput, TouchableOpacity, Image, Alert, StyleSheet, Appearance, Platform, } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
-import DocumentPicker from 'react-native-document-picker';
+import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
@@ -38,7 +28,7 @@ const InfoCompanyScreen = ({ navigation }: Props) => {
   telefone: '',
   endereco: '',
   nif: '',
-  logo: null,
+  logo: null as string | null,
 });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -106,34 +96,61 @@ useEffect(() => {
 
 
   const handleSelecionarLogo = async () => {
-    try {
-      const res = await DocumentPicker.pick({
-        type: [DocumentPicker.types.images],
-        allowMultiSelection: false,
-      });
+  try {
+    const res = await DocumentPicker.pick({
+      type: [DocumentPicker.types.images],
+      allowMultiSelection: false,
+    });
 
-      const file = Array.isArray(res) ? res[0] : res;
-      if (!file || !file.uri) {return;}
+    const file = Array.isArray(res) ? res[0] : res;
 
-      let finalUri = file.uri;
-      if (Platform.OS === 'android' && finalUri.startsWith('content://')) {
-        const filePath = `${RNFS.CachesDirectoryPath}/logo_${Date.now()}`;
-        await RNFS.copyFile(finalUri, filePath);
-        finalUri = `file://${filePath}`;
-      }
-
-      const base64Data = await RNFS.readFile(finalUri, 'base64');
-      const mimeType = file.type || 'image/jpeg';
-      const base64Uri = `data:${mimeType};base64,${base64Data}`;
-
-      setLogo(base64Uri);
-      Alert.alert('Logo atualizado com sucesso!');
-    } catch (err) {
-      if (DocumentPicker.isCancel(err)) {return;}
-      console.error('Erro ao selecionar logo:', err);
-      Alert.alert('Erro', 'Não foi possível selecionar o logo.');
+    if (!file || !file.uri) {
+      return;
     }
-  };
+
+    let finalUri = file.uri;
+
+    if (Platform.OS === 'android' && finalUri.startsWith('content://')) {
+      const filePath = `${RNFS.CachesDirectoryPath}/logo_${Date.now()}`;
+      await RNFS.copyFile(finalUri, filePath);
+      finalUri = `file://${filePath}`;
+    }
+
+    const base64Data = await RNFS.readFile(finalUri, 'base64');
+    const mimeType = file.type || 'image/jpeg';
+    const base64Uri = `data:${mimeType};base64,${base64Data}`;
+
+    // 1) atualizar state local
+    setLogo(base64Uri);
+
+    // 2) se já tens empresa carregada, grava logo na BD
+    if (empresa) {
+      const updatedData = { ...empresa, logo: base64Uri };
+
+      const response = await axios.put(
+        `${Config.API_URL}/empresas/${empresa.id}/update`,
+        updatedData
+      );
+
+      if (response.status === 200) {
+        setEmpresa(updatedData); // mantém o state alinhado
+        Alert.alert('Logo atualizado com sucesso!');
+      } else {
+        Alert.alert('Erro', 'Não foi possível atualizar o logo da empresa.');
+      }
+    }
+  } catch (err: any) {
+    if ((DocumentPicker as any).isCancel && (DocumentPicker as any).isCancel(err)) {
+      return;
+    }
+
+    console.error('Erro ao selecionar logo:', err);
+    Alert.alert('Erro', 'Não foi possível selecionar o logo.');
+  }
+};
+
+
+
 
   const handleSave = async () => {
     try {
