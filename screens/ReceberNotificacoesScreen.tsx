@@ -330,7 +330,6 @@ const ReceberNotificacoesScreen = () => {
       )}
     </>
   );
-
 };
 
 const styles = StyleSheet.create({
