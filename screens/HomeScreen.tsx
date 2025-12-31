@@ -41,35 +41,36 @@ const HomeScreen = ({ navigation }: any) => {
     }, [empresaId])
   );
 
-  // 🔹 Busca informações da empresa (nome e logo)
-  const fetchEmpresa = async (empresaid: number) => {
-    try {
-      // Tenta carregar do cache primeiro
-      const cachedLogo = await AsyncStorage.getItem('empresa_logo');
-      const cachedNome = await AsyncStorage.getItem('empresa_nome');
+  // 🔹 Busca informações da empresa (apenas nome, sem logo em AsyncStorage)
+const fetchEmpresa = async (empresaid: number) => {
+  try {
+    // Carrega só o NOME do cache (é pequeno, não há stress)
+    const cachedNome = await AsyncStorage.getItem('empresa_nome');
 
-      if (cachedLogo && cachedNome) {
-        setEmpresaNome(cachedNome);
-        console.log('⚡ Logo e nome carregados do cache');
-      }
-
-      // Depois busca dados atualizados do servidor
-      const response = await axios.get(`${Config.API_URL}/empresas/${empresaid}`);
-      if (response.data) {
-        const { nome, logo } = response.data;
-
-        setEmpresaNome(nome);
-
-        // Atualiza o cache local
-        await AsyncStorage.setItem('empresa_nome', nome);
-        if (logo) {await AsyncStorage.setItem('empresa_logo', logo);}
-
-        console.log('💾 Logo e nome atualizados no cache');
-      }
-    } catch (error) {
-      console.error('Erro ao buscar informações da empresa:', error);
+    if (cachedNome) {
+      setEmpresaNome(cachedNome);
+      console.log('⚡ Nome da empresa carregado do cache');
     }
-  };
+
+    // Depois busca dados atualizados do servidor
+    const response = await axios.get(`${Config.API_URL}/empresas/${empresaid}`);
+    if (response.data) {
+      const { nome } = response.data;
+
+      setEmpresaNome(nome);
+
+      // Atualiza o cache local só com o nome
+      await AsyncStorage.setItem('empresa_nome', nome);
+
+      console.log('💾 Nome da empresa atualizado no cache');
+    }
+  } catch (error) {
+    // Só log normal para não aparecer ecrã vermelho
+    console.log('Falha ao buscar informações da empresa (HomeScreen):', error);
+  }
+};
+
+
 
   // 🔹 Busca notificações pendentes
   const fetchNotificacoesPendentes = async (empresaid: number) => {
@@ -105,7 +106,7 @@ const HomeScreen = ({ navigation }: any) => {
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('Equipes')}>
-        <Text style={styles.buttonText}>Área de Equipes</Text>
+        <Text style={styles.buttonText}>Área de Equipas</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

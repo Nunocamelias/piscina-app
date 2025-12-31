@@ -11,43 +11,48 @@ type RootStackParamList = {
   EquipesListaManutencoes: { equipeId: number; equipeNome: string };
 };
 
-type Props = StackScreenProps<RootStackParamList, 'EquipeHome'>;
+// 👇 solução simples: não tipar a navegação a fundo neste ecrã
+type Props = StackScreenProps<any, any>;
 
 const EquipeHomeScreen = ({ navigation, route }: Props) => {
-  const { equipeId, equipeNome } = route.params;
+  const { equipeId, equipeNome } = (route?.params || {}) as {
+  equipeId: number;
+  equipeNome: string;
+};
+
   const [empresaNome, setEmpresaNome] = useState('');
 
-  useEffect(() => {
-    const fetchEmpresa = async () => {
-      try {
-        const cachedLogo = await AsyncStorage.getItem('empresa_logo');
-        const cachedNome = await AsyncStorage.getItem('empresa_nome');
+ useEffect(() => {
+  const fetchEmpresa = async () => {
+    try {
+      const cachedNome = await AsyncStorage.getItem('empresa_nome');
 
-        if (cachedLogo && cachedNome) {
-          setEmpresaNome(cachedNome);
-          console.log('⚡ Logo e nome carregados do cache');
-        }
-
-        const storedEmpresaid = await AsyncStorage.getItem('empresaid');
-        if (storedEmpresaid) {
-          const empresaIdNum = parseInt(storedEmpresaid, 10);
-          const response = await axios.get(`${Config.API_URL}/empresas/${empresaIdNum}`);
-
-          if (response.data) {
-            const { nome, logo } = response.data;
-            setEmpresaNome(nome);
-            await AsyncStorage.setItem('empresa_nome', nome);
-            if (logo) {await AsyncStorage.setItem('empresa_logo', logo);}
-            console.log('💾 Logo e nome atualizados no cache');
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao buscar informações da empresa:', error);
+      if (cachedNome) {
+        setEmpresaNome(cachedNome);
+        console.log('⚡ Nome da empresa (equipa) carregado do cache');
       }
-    };
 
-    fetchEmpresa();
-  }, []);
+      const storedEmpresaid = await AsyncStorage.getItem('empresaid');
+      if (storedEmpresaid) {
+        const empresaIdNum = parseInt(storedEmpresaid, 10);
+        const response = await axios.get(`${Config.API_URL}/empresas/${empresaIdNum}`);
+
+        if (response.data) {
+          const { nome } = response.data;
+          setEmpresaNome(nome);
+          await AsyncStorage.setItem('empresa_nome', nome);
+          console.log('💾 Nome da empresa (equipa) atualizado no cache');
+        }
+      }
+    } catch (error) {
+      console.log('Falha ao buscar informações da empresa (EquipeHomeScreen):', error);
+    }
+  };
+
+  fetchEmpresa();
+}, []);
+
+
 
   return (
     <View style={styles.container}>
@@ -70,6 +75,18 @@ const EquipeHomeScreen = ({ navigation, route }: Props) => {
           }>
           <Text style={styles.buttonText}>Manutenções - Semanal</Text>
         </TouchableOpacity>
+        {/* 🔹 NOVO BOTÃO: Notificações da equipa */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() =>
+           navigation.navigate('ReceberNotificacoes', {
+          filtro: 'equipa',
+          equipeId,
+         })
+      }
+>
+  <Text style={styles.buttonText}>Notificações dos meus clientes</Text>
+</TouchableOpacity>
       </View>
 
       {/* 🔹 Nome da empresa e "powered by" fixos no fundo */}

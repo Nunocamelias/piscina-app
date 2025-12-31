@@ -319,7 +319,7 @@ app.get('/clientes/:id', async (req, res) => {
   }
 });
   // Endpoint DELETE para apagar cliente
-  app.delete('/clientes/:id', async (req, res) => {
+app.delete('/clientes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid como filtro
 
@@ -343,8 +343,8 @@ app.get('/clientes/:id', async (req, res) => {
       console.error('Erro ao apagar cliente:', error);
       res.status(500).send('Erro ao apagar cliente.');
     }
-  });
-  app.post('/equipes', async (req, res) => {
+});
+app.post('/equipes', async (req, res) => {
     try {
       const {
         empresaid,
@@ -410,10 +410,10 @@ app.get('/clientes/:id', async (req, res) => {
 
       res.status(500).json({ error: 'Erro ao salvar equipe.' });
     }
-  });
+});
 
   // Endpoint GET para buscar todas as equipes de uma empresa
-  app.get('/equipes', async (req, res) => {
+app.get('/equipes', async (req, res) => {
     const { empresaid } = req.query;
 
     if (!empresaid) {
@@ -438,9 +438,9 @@ app.get('/clientes/:id', async (req, res) => {
       console.error('[DEBUG] Erro ao buscar equipes:', error);
       res.status(500).json({ error: 'Erro ao buscar equipes.' });
     }
-  });
+});
 
-  app.get('/equipes/:id', async (req, res) => {
+app.get('/equipes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid como filtro
 
@@ -465,7 +465,7 @@ app.get('/clientes/:id', async (req, res) => {
       console.error('Erro ao buscar equipe:', error);
       res.status(500).send('Erro ao buscar equipe.');
     }
-  });
+});
 
   // Endpoint PUT para atualizar uma equipe
 app.put('/equipes/:id', async (req, res) => {
@@ -545,7 +545,7 @@ app.put('/equipes/:id', async (req, res) => {
 
 
 
-  app.delete('/equipes/:id', async (req, res) => {
+app.delete('/equipes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid na query string
 
@@ -584,10 +584,10 @@ app.put('/equipes/:id', async (req, res) => {
       console.error('Erro ao excluir equipe:', error);
       res.status(500).send('Erro ao excluir equipe.');
     }
-  });
+});
 
-  // Rota para buscar clientes associados a um dia específico da equipe
-  app.get('/clientes-por-dia', async (req, res) => {
+// Rota para buscar clientes associados a um dia específico da equipe
+app.get('/clientes-por-dia', async (req, res) => {
     const { equipeId, diaSemana, empresaid } = req.query;
 
     if (!equipeId || !diaSemana || !empresaid) {
@@ -627,10 +627,10 @@ app.put('/equipes/:id', async (req, res) => {
       console.error('Erro ao buscar clientes:', error);
       res.status(500).json({ error: 'Erro ao buscar clientes.' });
     }
-  });
+});
 
-   // Rota para associar um cliente a uma equipe em um dia específico
-   app.post('/associar-cliente', async (req, res) => {
+// Rota para associar um cliente a uma equipe em um dia específico
+app.post('/associar-cliente', async (req, res) => {
     const { clienteId, equipeId, diaSemana, empresaid } = req.body;
 
     console.log('[DEBUG] Dados recebidos:', { clienteId, equipeId, diaSemana, empresaid });
@@ -675,11 +675,11 @@ app.put('/equipes/:id', async (req, res) => {
       console.error('[DEBUG] Erro ao associar cliente:', error);
       res.status(500).json({ error: 'Erro ao associar cliente.' });
     }
-  });
+});
 
 
-    // Rota para desassociar um cliente de um dia específico
-    app.delete('/desassociar-cliente', async (req, res) => {
+// Rota para desassociar um cliente de um dia específico
+app.delete('/desassociar-cliente', async (req, res) => {
       const { clienteId, equipeId, diaSemana, empresaid } = req.body;
 
       if (!clienteId || !equipeId || !diaSemana || !empresaid) {
@@ -704,9 +704,9 @@ app.put('/equipes/:id', async (req, res) => {
         console.error('Erro ao desassociar cliente:', error);
         res.status(500).json({ error: 'Erro ao desassociar cliente.' });
       }
-    });
+});
 
-    app.get('/associados/:equipeId/:diaSemana', async (req, res) => {
+app.get('/associados/:equipeId/:diaSemana', async (req, res) => {
       const { equipeId, diaSemana } = req.params;
       const { empresaid } = req.query;
 
@@ -735,9 +735,9 @@ app.put('/equipes/:id', async (req, res) => {
         console.error('Erro ao buscar associados:', error);
         res.status(500).send('Erro ao buscar associados.');
       }
-    });
+});
 
-    app.post('/associados', async (req, res) => {
+app.post('/associados', async (req, res) => {
       const { equipeId, clienteId, diaSemana, empresaid } = req.body;
 
       console.log('[DEBUG] Dados recebidos:', { equipeId, clienteId, diaSemana, empresaid });
@@ -799,33 +799,33 @@ app.put('/equipes/:id', async (req, res) => {
         console.error('[DEBUG] Erro ao associar cliente:', error);
         res.status(500).send('Erro ao associar cliente.');
       }
-    });
+});
 
 
 app.delete('/associados/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const query = 'DELETE FROM associados WHERE id = $1 RETURNING *;';
-    const result = await pool.query(query, [id]);
-    if (result.rowCount === 0) {
-      return res.status(404).send('Associação não encontrada.');
-    }
-    res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error('Erro ao desassociar cliente:', error);
-    res.status(500).send('Erro ao desassociar cliente.');
-  }
-});
+      const { id } = req.params;
+      try {
+        const query = 'DELETE FROM associados WHERE id = $1 RETURNING *;';
+        const result = await pool.query(query, [id]);
+      if (result.rowCount === 0) {
+         return res.status(404).send('Associação não encontrada.');
+       }
+       res.status(200).json(result.rows[0]);
+     } catch (error) {
+       console.error('Erro ao desassociar cliente:', error);
+       res.status(500).send('Erro ao desassociar cliente.');
+     }
+ });
 // Endpoint para buscar clientes disponíveis
 app.get('/clientes-disponiveis', async (req, res) => {
-  const { diaSemana, empresaid } = req.query;
+     const { diaSemana, empresaid } = req.query;
 
-  if (!diaSemana || !empresaid) {
-    return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
-  }
+     if (!diaSemana || !empresaid) {
+       return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
+     }
 
-  try {
-    const query = `
+     try {
+     const query = `
       SELECT 
         c.id, 
         c.nome, 
@@ -855,13 +855,13 @@ app.get('/clientes-disponiveis', async (req, res) => {
 });
 // Rota para obter contadores de clientes por dia da semana para uma equipe específica
 app.get('/contador-clientes', async (req, res) => {
-  const { equipeId, empresaid } = req.query;
+     const { equipeId, empresaid } = req.query;
 
-  if (!equipeId || !empresaid) {
-    return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
-  }
+     if (!equipeId || !empresaid) {
+       return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
+     }
 
-  try {
+     try {
     const query = `
       SELECT 
         a.diasemana,
@@ -1016,8 +1016,7 @@ app.get('/confirmar-email', async (req, res) => {
 });
 
 
-
-//Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
+// Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
 app.post('/login', async (req, res) => {
   const { email, senha } = req.body;
 
@@ -1028,86 +1027,154 @@ app.post('/login', async (req, res) => {
   try {
     const query = `
       SELECT 
-        u.id AS userId, 
-        u.nome, 
-        u.equipeid AS equipeId, 
-        u.senha, 
-        u.empresaid 
-      FROM usuarios u 
-      WHERE u.email = $1;
+        u.id,
+        u.nome,
+        u.email,
+        u.equipeid,
+        u.senha,
+        u.empresaid,
+        u.tipo_usuario
+      FROM usuarios u
+      WHERE LOWER(u.email) = LOWER($1)
+      LIMIT 1;
     `;
 
-    const result = await pool.query(query, [email]);
+    const result = await pool.query(query, [String(email).trim()]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
     const user = result.rows[0];
-    const isPasswordValid = await bcrypt.compare(senha, user.senha);
 
+    const isPasswordValid = await bcrypt.compare(senha, user.senha);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Credenciais inválidas.' });
     }
 
     if (!user.empresaid) {
-      return res.status(400).json({ error: 'Usuário não associado a uma empresa válida.' });
+      return res
+        .status(400)
+        .json({ error: 'Usuário não associado a uma empresa válida.' });
     }
 
-    // Determinar o tipo de usuário com base em equipeId
-    const tipoUsuario = user.equipeid ? 'equipe' : 'admin';
+    // ✅ Tipo de utilizador
+    let tipoUsuario = user.tipo_usuario;
 
+    // Compatibilidade com utilizadores antigos (sem tipo_usuario preenchido)
+    if (!tipoUsuario) {
+      tipoUsuario = user.equipeid ? 'equipe' : 'admin';
+    }
+
+    // ✅ Token com id REAL
     const token = jwt.sign(
-      { id: user.userId, tipo_usuario: tipoUsuario, empresaid: user.empresaid },
-      process.env.JWT_SECRET || 'secreto', // Use variável de ambiente
+      { id: user.id, tipo_usuario: tipoUsuario, empresaid: user.empresaid },
+      process.env.JWT_SECRET || 'secreto',
       { expiresIn: '1h' }
     );
 
-    res.json({
+    // ✅ Response com id REAL + mapeamento consistente
+    return res.json({
       token,
       user: {
-        id: user.userId,
+        id: user.id,                 // ✅ agora vem sempre
         nome: user.nome,
-        tipo_usuario: tipoUsuario, // Calculado dinamicamente
-        equipeId: user.equipeid,
+        tipo_usuario: tipoUsuario,
+        equipeId: user.equipeid,     // ✅ mapeado do nome real da coluna
         empresaid: user.empresaid,
       },
     });
   } catch (error) {
     console.error('Erro ao fazer login:', error);
-    res.status(500).json({ error: 'Erro ao fazer login.' });
+    return res.status(500).json({ error: 'Erro ao fazer login.' });
   }
 });
 
-
+// ✅ Criar utilizador (POST /usuarios)
 app.post('/usuarios', async (req, res) => {
-  const { nome, email, senha, equipeid, empresaid } = req.body;
-
-  if (!nome || !email || !senha || !empresaid) {
-    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
-  }
-
-  // Determina o tipo de usuário com base no valor de equipeid
-  const tipo_usuario = equipeid ? 'equipe' : 'admin';
-
-  // Remova caracteres nulos
-  const sanitizedNome = nome.replace(/\0/g, '');
-  const sanitizedEmail = email.replace(/\0/g, '');
-
   try {
-    const hashedPassword = await bcrypt.hash(senha, 10);
+    const {
+      nome,
+      email,
+      senha,
+      equipeid,
+      empresaid,
+      tipo_usuario, // <- vem do frontend (AddEquipeScreen)
+    } = req.body;
+
+    // ✅ Validação mínima
+    if (!nome || !email || !senha || !empresaid) {
+      return res.status(400).json({
+        error: 'Nome, email, senha e empresaid são obrigatórios.',
+      });
+    }
+
+    // 🔹 Normalizar valores base
+    const sanitizedNome = String(nome).replace(/\0/g, '').trim();
+    const emailLimpo = String(email).replace(/\0/g, '').trim().toLowerCase();
+
+    // 🔹 Normalizar equipeid (pode vir '', undefined, null, '3', 3)
+    const equipeIdFinal =
+      equipeid === undefined || equipeid === null || equipeid === ''
+        ? null
+        : Number(equipeid);
+
+    // 🔹 Tipos permitidos na app
+    const tiposPermitidos = [
+      'admin',
+      'equipa_manutencao',
+      'equipa_tecnica',
+      'orcamentacao',
+      'contabilidade',
+      'equipe', // compatibilidade
+    ];
+
+    // 🔹 Definir tipo final
+    let tipoFinal;
+
+    if (tipo_usuario && tiposPermitidos.includes(tipo_usuario)) {
+      tipoFinal = tipo_usuario;
+    } else {
+      // 🔙 Compatibilidade com utilizadores antigos:
+      // se tiver equipeid assume equipa_manutencao, senão admin
+      tipoFinal = equipeIdFinal ? 'equipa_manutencao' : 'admin';
+    }
+
+    // ✅ Hash da senha
+    const hashedPassword = await bcrypt.hash(String(senha), 10);
+
     const query = `
       INSERT INTO usuarios (nome, email, senha, tipo_usuario, equipeid, empresaid)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, nome, email, tipo_usuario, equipeid, empresaid;
     `;
-    const values = [sanitizedNome, sanitizedEmail, hashedPassword, tipo_usuario, equipeid || null, empresaid];
+
+    const values = [
+      sanitizedNome,
+      emailLimpo,
+      hashedPassword,
+      tipoFinal,
+      equipeIdFinal,
+      Number(empresaid),
+    ];
 
     const result = await pool.query(query, values);
-    res.status(201).json({ message: 'Usuário criado com sucesso!', usuario: result.rows[0] });
+
+    return res.status(201).json({
+      message: 'Usuário criado com sucesso!',
+      usuario: result.rows[0],
+    });
   } catch (error) {
-    console.error('Erro ao criar usuário:', error);
-    res.status(500).json({ error: 'Erro ao criar usuário.' });
+    console.error('Erro ao criar utilizador:', error);
+
+    // 🔹 Tratamento específico para email duplicado
+    if (error && error.code === '23505') {
+      return res.status(400).json({
+        error: 'Já existe um utilizador registado com este email.',
+      });
+    }
+
+    return res.status(500).json({ error: 'Erro ao criar utilizador.' });
   }
 });
 
@@ -1126,7 +1193,10 @@ app.get('/usuarios', async (req, res) => {
       FROM usuarios
       WHERE equipeid = $1 AND empresaid = $2;
     `;
-    const result = await pool.query(query, [equipeid, empresaid]);
+    const result = await pool.query(query, [
+      Number(equipeid),
+      Number(empresaid),
+    ]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
@@ -1139,56 +1209,123 @@ app.get('/usuarios', async (req, res) => {
   }
 });
 
+// 🔹 Lista de usuários por empresa (para dropdowns, notificações, etc.)
+app.get('/usuarios-empresa', async (req, res) => {
+  try {
+    const { empresaid, tipo } = req.query;
 
-// Endpoint PUT para atualizar um usuário
+    if (!empresaid) {
+      return res.status(400).json({ error: 'O parâmetro empresaid é obrigatório.' });
+    }
+
+    let query = `
+      SELECT 
+        id,
+        nome,
+        email,
+        tipo_usuario,
+        equipeid,
+        empresaid
+      FROM usuarios
+      WHERE empresaid = $1
+    `;
+    const values = [Number(empresaid)];
+
+    // 🔹 Se vier ?tipo=tecnico ou ?tipo=admin, filtra
+    if (tipo) {
+      query += ' AND tipo_usuario = $2';
+      values.push(tipo);
+    }
+
+    query += ' ORDER BY nome ASC';
+
+    const result = await pool.query(query, values);
+
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao buscar usuários da empresa:', error);
+    return res.status(500).json({ error: 'Erro ao buscar usuários.' });
+  }
+});
+
+
+// Endpoint PUT para atualizar um usuário (versão robusta)
 app.put('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
   const { nome, email, senha, tipo_usuario, equipeid, empresaid } = req.body;
 
   if (!id || !nome || !email || !tipo_usuario || !empresaid) {
-    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+    return res.status(400).json({
+      error: 'id, nome, email, tipo_usuario e empresaid são obrigatórios.',
+    });
+  }
+
+  // Tipos permitidos (+ compat)
+  const tiposPermitidos = [
+    'admin',
+    'equipa_manutencao',
+    'equipa_tecnica',
+    'orcamentacao',
+    'contabilidade',
+    'equipe',
+  ];
+
+  if (!tiposPermitidos.includes(tipo_usuario)) {
+    return res.status(400).json({ error: 'tipo_usuario inválido.' });
   }
 
   try {
-    // Gera o hash da senha, se fornecida
-    const hashedPassword = senha ? await bcrypt.hash(senha, 10) : null;
+    const emailLimpo = String(email).replace(/\0/g, '').trim().toLowerCase();
+    const nomeLimpo = String(nome).replace(/\0/g, '').trim();
 
-    // Constrói dinamicamente o SQL, dependendo da presença de `senha`
-    const senhaValuePart = hashedPassword ? [hashedPassword] : [];
+    const equipeIdFinal =
+      equipeid === undefined || equipeid === null || equipeid === ''
+        ? null
+        : Number(equipeid);
 
-    const query = `
-  UPDATE usuarios
-  SET
-    nome = $1,
-    email = $2,
-    ${senha ? 'senha = $3,' : ''} 
-    tipo_usuario = $4,
-    equipeid = $5
-  WHERE id = $6 AND empresaid = $7
-  RETURNING *;
-`;
+    const values = [];
+    let idx = 1;
 
-    // Monta os valores dinamicamente, dependendo da presença de `senha`
-    const values = [
-      nome,
-      email,
-      ...senhaValuePart,
-      tipo_usuario,
-      equipeid || null,
-      id,
-      empresaid,
-    ].filter((v) => v !== undefined); // Remove valores `undefined` para evitar erros no SQL
+    let query = 'UPDATE usuarios SET ';
+    query += `nome = $${idx++}, `;
+    values.push(nomeLimpo);
+
+    query += `email = $${idx++}, `;
+    values.push(emailLimpo);
+
+    // senha opcional
+    if (senha && String(senha).trim().length > 0) {
+      const hashedPassword = await bcrypt.hash(String(senha), 10);
+      query += `senha = $${idx++}, `;
+      values.push(hashedPassword);
+    }
+
+    query += `tipo_usuario = $${idx++}, `;
+    values.push(tipo_usuario);
+
+    query += `equipeid = $${idx++} `;
+    values.push(equipeIdFinal);
+
+    query += `WHERE id = $${idx++} AND empresaid = $${idx++} RETURNING id, nome, email, tipo_usuario, equipeid, empresaid;`;
+    values.push(Number(id), Number(empresaid));
 
     const result = await pool.query(query, values);
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado ou não pertence à empresa.' });
+      return res.status(404).json({
+        error: 'Usuário não encontrado ou não pertence à empresa.',
+      });
     }
 
-    res.status(200).json(result.rows[0]);
+    return res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error('Erro ao atualizar usuário:', error);
-    res.status(500).json({ error: 'Erro ao atualizar usuário.' });
+
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Email já existe.' });
+    }
+
+    return res.status(500).json({ error: 'Erro ao atualizar usuário.' });
   }
 });
 
@@ -2372,7 +2509,7 @@ app.get('/ultima-manutencao-parametros', async (req, res) => {
   }
 });
 
-app.get('/notificacoes', async (req, res) => {
+app.get('/notificacoes', async (req, res) => { 
   const { empresaid } = req.query;
 
   if (!empresaid) {
@@ -2389,15 +2526,40 @@ app.get('/notificacoes', async (req, res) => {
         n.status,
         n.data_criacao,
         n.data_resolucao,
-        n.atribuido_a,
-        c.nome AS cliente_nome,
-        c.morada AS cliente_morada,
-        c.email AS cliente_email,
-        e.nomeequipe AS equipe_nome
+        n.data_atualizacao_status,
+        n.valor_servico_extra,
+        n.fatura_paga,
+        n.tecnico_id,
+        n.criador_id,
+        n.responsavel_id,
+        n.etapa_atual,
+        n.orcamento_obrigatorio,
+        n.orcamento_aprovado,
+        n.detalhes_fluxo,
+        n.valor_orcamento,
+        n.referencia_orcamento,
+        n.em_garantia,
+
+        c.nome        AS cliente_nome,
+        c.morada      AS cliente_morada,
+        c.telefone    AS cliente_telefone,
+        c.email       AS cliente_email,
+        c.google_maps AS cliente_google_maps,
+
+
+        e.nomeequipe AS equipe_nome,
+
+        u_resp.nome    AS responsavel_nome,
+        u_criador.nome AS criador_nome,
+        u_tec.nome     AS tecnico_nome,
+        u_resp.tipo_usuario AS responsavel_tipo
       FROM notificacoes n
-      LEFT JOIN clientes c ON n.cliente_id = c.id
-      LEFT JOIN associados a ON a.clienteid = c.id
-      LEFT JOIN equipes e ON a.equipeid = e.id
+      LEFT JOIN clientes   c ON n.cliente_id    = c.id
+      LEFT JOIN associados a ON a.clienteid     = c.id
+      LEFT JOIN equipes    e ON a.equipeid      = e.id
+      LEFT JOIN usuarios   u_resp    ON u_resp.id    = n.responsavel_id
+      LEFT JOIN usuarios   u_criador ON u_criador.id = n.criador_id
+      LEFT JOIN usuarios   u_tec     ON u_tec.id     = n.tecnico_id
       WHERE n.cliente_id IS NOT NULL 
         AND n.empresaid = $1
       ORDER BY n.data_criacao DESC;
@@ -2406,14 +2568,19 @@ app.get('/notificacoes', async (req, res) => {
     const result = await pool.query(notificacoesQuery, [Number(empresaid)]);
 
     if (result.rows.length === 0) {
-      return res.status(200).json([]); // ✅ Retorna um array vazio em vez de 404
+      return res.status(200).json([]);
     }
 
-    // 🔹 Remove duplicadas com base no ID antes de enviar
     const unicas = Array.from(new Map(result.rows.map(n => [n.id, n])).values());
-    console.log('📥 Notificações carregadas (únicas):', unicas);
 
-    res.status(200).json(unicas);
+    const resposta = unicas.map(n => ({
+      ...n,
+      atribuido_a: n.responsavel_nome || null,
+    }));
+
+    console.log('📥 Notificações carregadas (únicas):', resposta);
+
+    res.status(200).json(resposta);
   } catch (error) {
     console.error('❌ Erro ao buscar notificações:', error);
     res.status(500).json({ error: 'Erro ao buscar notificações.' });
@@ -2422,122 +2589,268 @@ app.get('/notificacoes', async (req, res) => {
 
 
 app.post('/notificacoes', async (req, res) => {
-  //console.log('📥 Dados recebidos no backend:', JSON.stringify(req.body, null, 2));
+  const {
+    cliente_id,
+    clienteId,
+    assunto: assuntoOriginal,
+    parametro,
+    mensagem,
+    empresaid,
+    anexos,
+    valor_servico_extra,
 
-  const { cliente_id, clienteId, assunto, parametro, mensagem, empresaid, anexos, valor_servico_extra } = req.body;
-    console.log('📨 Nova notificação recebida:');
-  //console.log('Cliente ID:', cliente_id);
-  //console.log('Assunto:', assunto);
-  //console.log('Mensagem:', mensagem);
-  //console.log('Empresa ID:', empresaid);
-  //console.log('Anexos recebidos:', anexos ? anexos.map((a) => a.slice(0, 60) + '...') : 'Nenhum');
-  //console.log('Valor serviço extra:', valor_servico_extra);
+    // ✅ aceita ambos
+    criador_id,            // novo (frontend atual)
+    usuario_id,            // antigo (compatibilidade)
 
-  const clienteFinal = cliente_id || clienteId;
+    tecnico_id,
+    responsavel_id,
+    etapa_atual,
+    orcamento_obrigatorio,
+    orcamento_aprovado,
+  } = req.body;
 
-  // 🛠️ Validação dos dados recebidos
-  if (!clienteFinal || !mensagem || !empresaid) {
-    console.warn('⚠️ Campos obrigatórios ausentes:', { cliente_id, clienteId, mensagem, empresaid });
-    return res.status(400).json({ error: 'Todos os campos obrigatórios devem ser fornecidos.' });
+  const toIntOrNull = (v) => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const clienteFinal = toIntOrNull(cliente_id ?? clienteId);
+  const empresaFinal = toIntOrNull(empresaid);
+
+  const criadorId = toIntOrNull(criador_id ?? usuario_id);
+  const tecnicoIdFinal = toIntOrNull(tecnico_id);
+  const responsavelBody = toIntOrNull(responsavel_id);
+
+  console.log('📨 Nova notificação recebida (payload simplificado):', {
+    cliente_id: clienteFinal,
+    assuntoOriginal,
+    parametro,
+    empresaid: empresaFinal,
+    criador_id,
+    usuario_id,
+    criadorIdFinal: criadorId,
+  });
+
+  if (!clienteFinal || !mensagem || !empresaFinal) {
+    console.warn('⚠️ Campos obrigatórios ausentes:', {
+      cliente_id, clienteId, mensagem, empresaid
+    });
+    return res.status(400).json({ error: 'cliente_id (ou clienteId), mensagem e empresaid são obrigatórios.' });
   }
 
   try {
-    // **🔹 Ajuste:** `parametro` pode ser opcional (usado para distinguir entre notificações de parâmetros químicos e relatórios de anomalias)
-    const assunto = parametro ? parametro : 'Relatório de Anomalia';
+    const assuntoFinal =
+      assuntoOriginal || (parametro ? `Alerta parâmetro: ${parametro}` : 'Relatório de Anomalia');
 
-    // **🔹 Ajuste:** Conversão dos anexos para JSONB válido
-    const anexosJson = anexos && anexos.length > 0 ? JSON.stringify(anexos) : null;
+    const anexosJson = Array.isArray(anexos) && anexos.length > 0 ? JSON.stringify(anexos) : null;
+
+    let valorExtra = 0;
+    if (valor_servico_extra !== undefined && valor_servico_extra !== null && String(valor_servico_extra).trim() !== '') {
+      const n = Number(String(valor_servico_extra).replace(',', '.'));
+      valorExtra = Number.isFinite(n) ? n : 0;
+    }
+
+    const etapaInicial = etapa_atual || 'admin';
+
+    const orcObrig = (typeof orcamento_obrigatorio === 'boolean') ? orcamento_obrigatorio : false;
+    const orcAprov = (typeof orcamento_aprovado === 'boolean') ? orcamento_aprovado : null;
+
+    // ✅ não atribuir automaticamente ao criador
+    const responsavelInicial = responsavelBody; // pode ser null
 
     const query = `
-      INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid, anexos, valor_servico_extra)
-      VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+      INSERT INTO notificacoes (
+        cliente_id,
+        assunto,
+        mensagem,
+        status,
+        data_criacao,
+        empresaid,
+        anexos,
+        valor_servico_extra,
+        fatura_paga,
+        tecnico_id,
+        criador_id,
+        responsavel_id,
+        etapa_atual,
+        orcamento_obrigatorio,
+        orcamento_aprovado
+      )
+      VALUES (
+        $1,  $2,  $3, 
+        'pendente', 
+        NOW(), 
+        $4,  $5,  $6,
+        FALSE,
+        $7,  $8,  $9,
+        $10, $11, $12
+      )
       RETURNING *;
     `;
 
     const values = [
-      clienteFinal,
-      assunto,
-      mensagem,
-      empresaid,
-      anexosJson, // Envio correto para JSONB
-      valor_servico_extra ? parseFloat(valor_servico_extra) : 0,
+      clienteFinal,          // $1
+      assuntoFinal,          // $2
+      mensagem,              // $3
+      empresaFinal,          // $4
+      anexosJson,            // $5
+      valorExtra,            // $6
+      tecnicoIdFinal,        // $7
+      criadorId,             // $8 ✅ agora preenche
+      responsavelInicial,    // $9
+      etapaInicial,          // $10
+      orcObrig,              // $11
+      orcAprov,              // $12
     ];
 
-    console.log('📤 Query para o banco de dados:', query);
-    console.log('🔹 Valores enviados para o banco de dados:', values);
+    console.log('🔹 Valores enviados:', values);
 
     const result = await pool.query(query, values);
 
-    if (result.rowCount === 0) {
-      return res.status(200).json({ message: 'Notificação já existe e está pendente.' });
-    }
-
-    res.status(201).json({ message: 'Notificação criada com sucesso!', notificacao: result.rows[0] });
-
+    res.status(201).json({
+      message: 'Notificação criada com sucesso!',
+      notificacao: result.rows[0],
+    });
   } catch (error) {
     console.error('❌ Erro ao criar notificação:', error);
-
-    // 🛠️ Melhor diagnóstico do erro
-    if (error.code) {
-      console.error(`🚨 Código de erro SQL: ${error.code}`);
-    }
-
+    if (error.code) console.error(`🚨 Código de erro SQL: ${error.code}`);
     res.status(500).json({ error: 'Erro ao criar notificação.' });
   }
 });
 
 app.put('/notificacoes/:id/status', async (req, res) => {
   const { id } = req.params;
-  const { status, empresaid } = req.body;
+  const {
+    status,
+    empresaid,
+    etapa_atual,
+    responsavel_id,
+    valor_servico_extra,
+    fatura_paga,
+    orcamento_obrigatorio,
+    orcamento_aprovado,
+    detalhes_fluxo,
+  } = req.body;
 
-  if (!status || !empresaid) {
-    return res.status(400).json({ error: 'Os campos status e empresaid são obrigatórios.' });
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (
+    status === undefined &&
+    etapa_atual === undefined &&
+    responsavel_id === undefined &&
+    valor_servico_extra === undefined &&
+    fatura_paga === undefined &&
+    orcamento_obrigatorio === undefined &&
+    orcamento_aprovado === undefined &&
+    detalhes_fluxo === undefined
+  ) {
+    return res.status(400).json({ error: 'Nada para atualizar.' });
   }
 
   try {
-    const query = `
-      UPDATE notificacoes
-      SET status = $1, data_atualizacao_status = NOW()
-      WHERE id = $2 AND empresaid = $3
-      RETURNING *;
-    `;
-    const values = [status, id, empresaid];
+    const campos = {};
 
-    const result = await pool.query(query, values);
+    if (status !== undefined) {
+      campos.status = status;
+    }
+
+    if (etapa_atual !== undefined) {
+      campos.etapa_atual = etapa_atual;
+    }
+
+    if (responsavel_id !== undefined) {
+      campos.responsavel_id =
+        responsavel_id === null ? null : Number(responsavel_id);
+    }
+
+    if (valor_servico_extra !== undefined) {
+      campos.valor_servico_extra =
+        valor_servico_extra === null
+          ? null
+          : parseFloat(valor_servico_extra);
+    }
+
+    if (fatura_paga !== undefined) {
+      campos.fatura_paga = !!fatura_paga;
+    }
+
+    if (orcamento_obrigatorio !== undefined) {
+      campos.orcamento_obrigatorio = !!orcamento_obrigatorio;
+    }
+
+    if (orcamento_aprovado !== undefined) {
+      campos.orcamento_aprovado =
+        typeof orcamento_aprovado === 'boolean'
+          ? orcamento_aprovado
+          : null;
+    }
+
+    if (detalhes_fluxo !== undefined) {
+      const texto = String(detalhes_fluxo).trim();
+      campos.detalhes_fluxo = texto.length > 0 ? texto : null;
+    }
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    if (result.rowCount === 0) {
+      return res
+        .status(404)
+        .json({
+          error: 'Notificação não encontrada ou não pertence à empresa.',
+        });
+    }
+
+    return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar status da notificação:', error);
+    return res
+      .status(500)
+      .json({ error: 'Erro ao atualizar status da notificação.' });
+  }
+});
+
+app.put('/notificacoes/:id/responsavel', async (req, res) => {
+  const { id } = req.params;
+  const { responsavel_id, empresaid } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (responsavel_id === undefined || responsavel_id === null) {
+    return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        UPDATE notificacoes
+        SET responsavel_id = $1,
+            data_atualizacao_status = NOW()
+        WHERE id = $2 AND empresaid = $3
+        RETURNING *;
+      `,
+      [Number(responsavel_id), Number(id), Number(empresaid)]
+    );
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Notificação não encontrada ou não pertence à empresa.' });
     }
 
-    res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error('Erro ao atualizar status da notificação:', error);
-    res.status(500).json({ error: 'Erro ao atualizar status da notificação.' });
-  }
-});
-app.put('/notificacoes/:id/responsavel', async (req, res) => {
-  const { id } = req.params;
-  const { atribuido_a, empresaid } = req.body;
-
-  if (!atribuido_a) {
-    return res.status(400).json({ error: 'Nome do responsável é obrigatório.' });
-  }
-
-  try {
-    await pool.query(
-      'UPDATE notificacoes SET atribuido_a = $1 WHERE id = $2 AND empresaid = $3',
-      [atribuido_a, id, empresaid]
-    );
-
-    res.json({ message: 'Responsável atualizado com sucesso!' });
+    res.json({ message: 'Responsável atualizado com sucesso!', notificacao: result.rows[0] });
   } catch (error) {
     console.error('Erro ao atualizar responsável:', error);
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
+
 app.put('/notificacoes/:id/update', async (req, res) => {
   const { id } = req.params;
-  const { status, atribuido_a, empresaid } = req.body;
+  const { status, responsavel_id, empresaid } = req.body;
 
   try {
     if (!empresaid) {
@@ -2548,40 +2861,41 @@ app.put('/notificacoes/:id/update', async (req, res) => {
     const values = [];
     let count = 1;
 
-    if (status) {
+    if (status !== undefined) {
       query += `status = $${count}, `;
       values.push(status);
       count++;
     }
 
-    if (atribuido_a !== undefined) { // ✅ Garante que o campo pode ser vazio ("")
-      query += `atribuido_a = $${count}, `;
-      values.push(atribuido_a);
+    if (responsavel_id !== undefined) {
+      query += `responsavel_id = $${count}, `;
+      values.push(responsavel_id === null ? null : Number(responsavel_id));
       count++;
     }
 
-    // 🔹 Remover a última vírgula e espaço extra
+    // timestamp
+    query += `data_atualizacao_status = NOW(), `;
     query = query.trim().replace(/,$/, '');
     query += ` WHERE id = $${count} AND empresaid = $${count + 1}`;
 
-    values.push(Number(id), Number(empresaid)); // ✅ Garante que são números
+    values.push(Number(id), Number(empresaid));
 
-    console.log('🛠️ SQL Query:', query, 'Valores:', values); // 🔹 Debug opcional
+    console.log('🛠️ SQL /notificacoes/:id/update:', query, 'Valores:', values);
 
     const result = await pool.query(query, values);
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Notificação não encontrada ou sem permissão para editar.' });
+      return res
+        .status(404)
+        .json({ error: 'Notificação não encontrada ou sem permissão para editar.' });
     }
 
     res.json({ message: 'Notificação atualizada com sucesso!' });
-
   } catch (error) {
     console.error('❌ Erro ao atualizar notificação:', error);
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
-
 
 app.delete('/notificacoes/:id', async (req, res) => {
   const { id } = req.params;
@@ -2607,6 +2921,1117 @@ app.delete('/notificacoes/:id', async (req, res) => {
   } catch (error) {
     console.error('Erro ao apagar notificação:', error);
     res.status(500).json({ error: 'Erro ao apagar notificação.' });
+  }
+});
+
+// ------------------------------------------------------
+// 🔧 Helper para atualizar campos de workflow
+// ------------------------------------------------------
+async function atualizarWorkflowNotificacao(id, empresaid, camposExtras = {}) {
+  // 1) tira campos undefined (evita updates estranhos)
+  const entries = Object.entries(camposExtras).filter(
+    ([, v]) => v !== undefined
+  );
+
+  if (entries.length === 0) {
+    throw new Error('atualizarWorkflowNotificacao: nenhum campo para atualizar.');
+  }
+
+  // (opcional) log limpo, uma vez só
+  console.log('🧩 camposExtras keys:', entries.map(([k]) => k));
+
+  const sets = [];
+  const values = [];
+  let idx = 1;
+
+  for (const [campoRaw, valor] of entries) {
+    // 2) “sanitizar” nome do campo (se por acidente vier com vírgula)
+    const campo = String(campoRaw).trim().replace(/,+$/, '');
+
+    sets.push(`${campo} = $${idx}`);
+    values.push(valor);
+    idx++;
+  }
+
+  // 3) timestamp SEMPRE no fim, mas como mais um item do join
+  sets.push(`data_atualizacao_status = NOW()`);
+
+  const query = `
+    UPDATE notificacoes
+    SET ${sets.join(', ')}
+    WHERE id = $${idx} AND empresaid = $${idx + 1}
+    RETURNING *;
+  `;
+
+  values.push(Number(id), Number(empresaid));
+
+  console.log('🛠️ SQL workflow:', query, 'Valores:', values);
+
+  return pool.query(query, values);
+}
+
+// 🔹 Registar passo de fluxo de uma notificação (histórico)
+// Vai guardar cada "passagem da bola": de quem → para que área, com que estado e mensagem.
+async function registarPassoFluxo({
+  notificacaoId,
+  empresaid,
+  de_user_id,
+  de_tipo,
+  para_tipo,
+  status,
+  etapa,
+  mensagem,
+}) {
+  try {
+    const query = `
+      INSERT INTO notificacoes_fluxo
+        (notificacao_id, empresaid, de_user_id, de_tipo, para_tipo, status, etapa, mensagem)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+    `;
+
+    const values = [
+      Number(notificacaoId),
+      Number(empresaid),
+      de_user_id ? Number(de_user_id) : null,
+      de_tipo || null,
+      para_tipo || null,
+      status || null,
+      etapa || null,
+      mensagem || null,
+    ];
+
+    await pool.query(query, values);
+  } catch (error) {
+    console.error('❌ Erro ao registar passo de fluxo da notificação:', error);
+    // Não mandamos erro para o cliente aqui para não estragar a ação principal.
+  }
+}
+
+// 🟡 ADMIN → Enviar técnico para diagnóstico (Modelo B: atribui responsavel_id)
+app.post('/notificacoes/:id/enviar-tecnico-diagnostico', async (req, res) => {
+  console.log('📨 BODY:', req.body);
+
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!responsavel_id) return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+
+  try {
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    const tipo = u.rows[0].tipo_usuario;
+    const allowed = ['equipa_tecnica', 'equipa_manutencao', 'equipe'];
+    if (!allowed.includes(tipo)) {
+      return res.status(400).json({
+        error: 'O responsável escolhido não é técnico (equipa_tecnica/equipa_manutencao).',
+      });
+    }
+
+    const msg = detalhes_fluxo?.trim?.() ? String(detalhes_fluxo).trim() : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'em_diagnostico',
+      etapa_atual: 'diagnostico',
+      responsavel_id: Number(responsavel_id),
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Notificação não encontrada.' });
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'admin',
+      para_tipo: 'tecnico',
+      status: 'em_diagnostico',
+      etapa: 'diagnostico',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Notificação enviada para técnico para diagnóstico.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/enviar-tecnico-diagnostico:', error);
+    return res.status(500).json({ error: 'Erro ao enviar notificação para diagnóstico.' });
+  }
+});
+
+// 🧪 Técnico conclui DIAGNÓSTICO → devolver à ADMIN
+app.post('/notificacoes/:id/diagnostico-admin', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!responsavel_id) return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+
+  try {
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'admin') {
+      return res.status(400).json({ error: 'O responsável escolhido não é admin.' });
+    }
+
+    const msg = detalhes_fluxo?.trim?.() ? String(detalhes_fluxo).trim() : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'diagnostico_concluido',
+      etapa_atual: 'admin',
+      responsavel_id: Number(responsavel_id), // ✅ fix Modelo B
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Notificação não encontrada.' });
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'equipa_tecnica',
+      para_tipo: 'admin',
+      status: 'diagnostico_concluido',
+      etapa: 'admin',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Diagnóstico concluído e devolvido à Administração.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/diagnostico-admin:', error);
+    return res.status(500).json({ error: 'Erro ao marcar diagnóstico concluído (admin).' });
+  }
+});
+
+// 🧪 Técnico conclui DIAGNÓSTICO → enviar para ORÇAMENTAÇÃO
+app.post('/notificacoes/:id/diagnostico-orcamento', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!responsavel_id) return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+
+  try {
+    // validar que é orçamentação
+    const u = await pool.query(
+      `SELECT id, tipo_usuario FROM usuarios WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+    if (u.rows[0].tipo_usuario !== 'orcamentacao') {
+      return res.status(400).json({ error: 'O responsável escolhido não é de Orçamentação.' });
+    }
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'aguardar_orcamento',
+      etapa_atual: 'orcamento',
+      em_garantia: false,
+      responsavel_id: Number(responsavel_id), // ✅ aqui está o fix
+      detalhes_fluxo: detalhes_fluxo || null,
+    });
+
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Notificação não encontrada.' });
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'equipa_tecnica',
+      para_tipo: 'orcamentacao',
+      status: 'aguardar_orcamento',
+      etapa: 'orcamento',
+      mensagem: detalhes_fluxo?.trim() || null,
+    });
+
+    return res.status(200).json({
+      message: 'Diagnóstico concluído e notificação enviada para Orçamentação.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/diagnostico-orcamento:', error);
+    return res.status(500).json({ error: 'Erro ao marcar diagnóstico concluído (orçamentação).' });
+  }
+});
+
+// 🚐 ADMIN → Enviar para TÉCNICO (garantia) (Modelo B: atribui responsavel_id + histórico)
+app.post('/notificacoes/:id/enviar-tecnico-garantia', async (req, res) => {
+  console.log('📨 BODY:', req.body);
+
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (!responsavel_id) {
+    return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+  }
+
+  try {
+    // ✅ validar responsável (existe + pertence à empresa + é técnico)
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    const tipo = u.rows[0].tipo_usuario;
+    const allowed = ['equipa_tecnica', 'equipa_manutencao', 'equipe'];
+    if (!allowed.includes(tipo)) {
+      return res.status(400).json({
+        error: 'O responsável escolhido não é técnico (equipa_tecnica/equipa_manutencao).',
+      });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'em_resolucao',
+      etapa_atual: 'tecnico',
+      em_garantia: true,
+      responsavel_id: Number(responsavel_id), // ✅ Modelo B
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null, // ✅ agora vem do frontend
+      de_tipo: de_tipo || 'admin',
+      para_tipo: 'tecnico',
+      status: 'em_resolucao',
+      etapa: 'tecnico',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Notificação enviada para Técnico (garantia).',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/enviar-tecnico-garantia:', error);
+    return res.status(500).json({ error: 'Erro ao enviar para técnico (garantia).' });
+  }
+});
+
+// 🔵 Admin envia para Orçamentação (Modelo B: atribui responsavel_id)
+app.post('/notificacoes/:id/enviar-orcamento', async (req, res) => {
+  console.log('📨 BODY:', req.body);
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (!responsavel_id) {
+    return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+  }
+
+  try {
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'orcamentacao') {
+      return res.status(400).json({ error: 'O responsável escolhido não é de Orçamentação.' });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'aguardar_orcamento',
+      etapa_atual: 'orcamento',
+      orcamento_obrigatorio: true,
+      em_garantia: false,
+      responsavel_id: Number(responsavel_id), // ✅ Modelo B
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'admin',
+      para_tipo: 'orcamentacao',
+      status: 'aguardar_orcamento',
+      etapa: 'orcamento',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Notificação enviada para orçamentação.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/enviar-orcamento:', error);
+    return res.status(500).json({ error: 'Erro ao enviar para orçamentação.' });
+  }
+});
+
+// 📤 Orçamentação marca "Orçamento enviado ao cliente"
+app.post('/notificacoes/:id/orcamento-enviado', async (req, res) => {
+  const { id } = req.params;
+  const {
+    empresaid,
+    detalhes_fluxo,
+    valor_orcamento,
+    referencia_orcamento,
+    de_user_id,
+    de_tipo,
+  } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  try {
+    let valorNumero = null;
+    if (valor_orcamento !== undefined && valor_orcamento !== null && valor_orcamento !== '') {
+      const limpo = String(valor_orcamento).replace(',', '.');
+      const parsed = parseFloat(limpo);
+      if (!isNaN(parsed)) valorNumero = parsed;
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const campos = {
+      status: 'aguardar_resposta_cliente',
+      etapa_atual: 'orcamento',
+      detalhes_fluxo: msg,
+      referencia_orcamento:
+        referencia_orcamento && String(referencia_orcamento).trim().length > 0
+          ? String(referencia_orcamento).trim()
+          : null,
+    };
+
+    if (valorNumero !== null) campos.valor_orcamento = valorNumero;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'orcamentacao',
+      para_tipo: 'cliente',
+      status: 'aguardar_resposta_cliente',
+      etapa: 'orcamento',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Orçamento marcado como enviado ao cliente.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/orcamento-enviado:', error);
+    return res.status(500).json({ error: 'Erro ao marcar orçamento como enviado.' });
+  }
+});
+
+// ⏳ Orçamentação marca "Aguardar resposta do fornecedor (falta valor)"
+app.post('/notificacoes/:id/orcamento-aguardar-fornecedor', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  try {
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'aguardar_resposta_fornecedor',
+      etapa_atual: 'orcamento',
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'orcamentacao',
+      para_tipo: 'fornecedor',
+      status: 'aguardar_resposta_fornecedor',
+      etapa: 'orcamento',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Notificação marcada como a aguardar resposta do fornecedor.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/orcamento-aguardar-fornecedor:', error);
+    return res.status(500).json({
+      error: 'Erro ao marcar como a aguardar resposta do fornecedor.',
+    });
+  }
+});
+
+// 🟠 Marcar orçamento APROVADO (Modelo B: escolhe e atribui o Técnico)
+app.post('/notificacoes/:id/orcamento-aprovado', async (req, res) => {
+  const { id } = req.params;
+
+  console.log('🟠 /orcamento-aprovado body:', {
+    id,
+    empresaid: req.body.empresaid,
+    responsavel_id: req.body.responsavel_id,
+    detalhes_fluxo: req.body.detalhes_fluxo,
+    de_user_id: req.body.de_user_id,
+    de_tipo: req.body.de_tipo,
+  });
+
+  const {
+    empresaid,
+    responsavel_id,
+    detalhes_fluxo,
+    de_user_id,
+    de_tipo,
+    valor_orcamento,
+    referencia_orcamento,
+  } = req.body;
+
+  if (!empresaid) {
+    console.warn('400: empresaid em falta', req.body);
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (!responsavel_id) {
+    console.warn('400: responsavel_id em falta', req.body);
+    return res.status(400).json({
+      error: 'responsavel_id (técnico) é obrigatório ao aprovar orçamento.',
+    });
+  }
+
+  try {
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    const tipo = u.rows[0].tipo_usuario;
+    const allowed = ['equipa_tecnica', 'equipa_manutencao', 'equipe']; // ok
+    if (!allowed.includes(tipo)) {
+      return res.status(400).json({
+        error: `O responsável escolhido não é técnico. tipo_usuario=${tipo}`,
+      });
+    }
+
+    let valorNumero = null;
+    if (valor_orcamento !== undefined && valor_orcamento !== null && valor_orcamento !== '') {
+      const limpo = String(valor_orcamento).replace(',', '.');
+      const parsed = parseFloat(limpo);
+      if (!isNaN(parsed)) valorNumero = parsed;
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const campos = {
+      status: 'orcamento_aprovado',
+      etapa_atual: 'tecnico',
+      orcamento_aprovado: true,
+      responsavel_id: Number(responsavel_id),
+      detalhes_fluxo: msg,
+    };
+
+    if (valorNumero !== null) campos.valor_orcamento = valorNumero;
+
+    if (referencia_orcamento !== undefined) {
+      campos.referencia_orcamento =
+        referencia_orcamento && String(referencia_orcamento).trim().length > 0
+          ? String(referencia_orcamento).trim()
+          : null;
+    }
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'orcamentacao',
+      para_tipo: 'tecnico',
+      status: 'orcamento_aprovado',
+      etapa: 'tecnico',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Orçamento aprovado e enviado para Técnico.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('🔥 ERRO /orcamento-aprovado:', error);
+    console.error('🔥 STACK:', error?.stack);
+    return res.status(500).json({
+      error: 'Erro ao marcar orçamento aprovado.',
+      detalhe: String(error?.message || error),
+    });
+  }
+});
+
+// ❌ Orçamentação → Orçamento recusado → devolve à ADMIN (Modelo B: atribui responsavel_id da Admin)
+app.post('/notificacoes/:id/orcamento-recusado', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, detalhes_fluxo, de_user_id, de_tipo, responsavel_id } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  // ✅ Modelo B: volta à Admin, então tem de ficar atribuído a um Admin
+  const adminIdFinal = responsavel_id ?? de_user_id;
+  if (!adminIdFinal) {
+    return res.status(400).json({
+      error: 'responsavel_id (admin) ou de_user_id é obrigatório ao devolver à Administração.',
+    });
+  }
+
+  try {
+    // ✅ validar se adminIdFinal é mesmo admin e da empresa
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(adminIdFinal), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável admin inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'admin') {
+      return res.status(400).json({ error: 'O responsável escolhido não é admin.' });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : 'Orçamento recusado pelo cliente.';
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'orcamento_recusado',
+      etapa_atual: 'admin',
+      orcamento_aprovado: false,
+      responsavel_id: Number(adminIdFinal), // ✅ Modelo B (fix)
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'orcamentacao',
+      para_tipo: 'admin',
+      status: 'orcamento_recusado',
+      etapa: 'admin',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Orçamento recusado e devolvido à Administração.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/orcamento-recusado:', error);
+    return res.status(500).json({ error: 'Erro ao marcar orçamento recusado.' });
+  }
+});
+
+// 🟡 Técnico marca reparação concluída (Modelo B: atribui responsável de Contabilidade)
+app.post('/notificacoes/:id/reparado', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, tecnico_id, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  if (!responsavel_id) {
+    return res.status(400).json({
+      error: 'responsavel_id é obrigatório para enviar para Contabilidade.',
+    });
+  }
+
+  try {
+    // 🔹 Saber se é garantia
+    const q = await pool.query(
+      'SELECT em_garantia FROM notificacoes WHERE id = $1 AND empresaid = $2',
+      [Number(id), Number(empresaid)]
+    );
+
+    if (q.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    // ✅ Validar responsável contabilidade
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'contabilidade') {
+      return res.status(400).json({
+        error: 'O responsável escolhido não é do tipo contabilidade.',
+      });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const campos = {
+      status: 'reparado',
+      etapa_atual: 'contabilidade',               // ✅ etapa consistente
+      responsavel_id: Number(responsavel_id),     // ✅ Modelo B
+      detalhes_fluxo: msg,
+    };
+
+    // Se quiseres manter tecnico_id na notificação
+    if (tecnico_id != null) campos.tecnico_id = Number(tecnico_id);
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : (tecnico_id ? Number(tecnico_id) : null),
+      de_tipo: de_tipo || 'tecnico',
+      para_tipo: 'contabilidade',
+      status: 'reparado',
+      etapa: 'contabilidade',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Reparação marcada como concluída e enviada para Contabilidade.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/reparado:', error);
+    return res.status(500).json({ error: 'Erro ao marcar reparação.' });
+  }
+});
+
+// 🟢 CONTABILIDADE → Serviço em garantia / concluir processo (Modelo B)
+app.post('/notificacoes/:id/concluir-garantia', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  try {
+    // 1) Buscar estado atual (garantia + responsavel atual)
+    const chk = await pool.query(
+      'SELECT em_garantia, responsavel_id FROM notificacoes WHERE id = $1 AND empresaid = $2',
+      [Number(id), Number(empresaid)]
+    );
+
+    if (chk.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    if (!chk.rows[0].em_garantia) {
+      return res.status(400).json({
+        error: 'Esta notificação NÃO está marcada como garantia. Use faturação normal.',
+      });
+    }
+
+    // 2) Resolver responsável: body > BD
+    const responsavelFinal = responsavel_id ? Number(responsavel_id) : chk.rows[0].responsavel_id;
+
+    if (!responsavelFinal) {
+      return res.status(400).json({ error: 'responsavel_id em falta (não existe responsável atual na notificação).' });
+    }
+
+    // 3) Validar que é contabilidade
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavelFinal), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'contabilidade') {
+      return res.status(400).json({
+        error: 'O responsável escolhido (ou atual) não é do tipo contabilidade.',
+      });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const campos = {
+      status: 'concluido_garantia',
+      etapa_atual: 'concluido',
+      fatura_paga: false,
+      valor_servico_extra: null,
+      responsavel_id: Number(responsavelFinal),
+      detalhes_fluxo: msg,
+    };
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'contabilidade',
+      para_tipo: 'concluido',
+      status: 'concluido_garantia',
+      etapa: 'concluido',
+      mensagem: msg || 'Serviço concluído em garantia.',
+    });
+
+    return res.status(200).json({
+      message: 'Processo concluído em garantia.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/concluir-garantia:', error);
+    return res.status(500).json({ error: 'Erro ao concluir notificação em garantia.' });
+  }
+});
+
+// ⏳ Contabilidade marca "Aguardar os dados do cliente para faturar" (Modelo B)
+app.post('/notificacoes/:id/contabilidade-aguardar-dados-cliente', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  try {
+    // 1) Buscar estado atual (garantia + responsavel atual)
+    const chk = await pool.query(
+      'SELECT em_garantia, responsavel_id FROM notificacoes WHERE id = $1 AND empresaid = $2',
+      [Number(id), Number(empresaid)]
+    );
+
+    if (chk.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+
+    if (chk.rows[0].em_garantia) {
+      return res.status(400).json({
+        error: 'Esta notificação está marcada como GARANTIA. Não deve faturar.',
+      });
+    }
+
+    // 2) Resolver responsável: body > BD
+    const responsavelFinal = responsavel_id ? Number(responsavel_id) : chk.rows[0].responsavel_id;
+
+    if (!responsavelFinal) {
+      return res.status(400).json({ error: 'responsavel_id em falta (não existe responsável atual na notificação).' });
+    }
+
+    // 3) Validar que é contabilidade
+    const u = await pool.query(
+      `SELECT id, nome, tipo_usuario
+       FROM usuarios
+       WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavelFinal), Number(empresaid)]
+    );
+
+    if (u.rowCount === 0) {
+      return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    }
+
+    if (u.rows[0].tipo_usuario !== 'contabilidade') {
+      return res.status(400).json({
+        error: 'O responsável escolhido (ou atual) não é do tipo contabilidade.',
+      });
+    }
+
+    const detalhe =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const campos = {
+      status: 'aguardar_dados_cliente_fatura',
+      etapa_atual: 'aguardar_faturacao',
+      detalhes_fluxo: detalhe,
+      fatura_paga: false,
+      responsavel_id: Number(responsavelFinal),
+    };
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, campos);
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'contabilidade',
+      para_tipo: 'contabilidade',
+      status: 'aguardar_dados_cliente_fatura',
+      etapa: 'aguardar_faturacao',
+      mensagem: detalhe,
+    });
+
+    return res.status(200).json({
+      message: 'Marcado como a aguardar dados do cliente para faturar.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/contabilidade-aguardar-dados-cliente:', error);
+    return res.status(500).json({ error: 'Erro ao marcar a aguardar dados do cliente.' });
+  }
+});
+
+// 💶 Contabilidade marca fatura ENVIADA
+app.post('/notificacoes/:id/fatura-enviada', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!responsavel_id) return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+
+  try {
+    // ✅ validar responsável contabilidade
+    const u = await pool.query(
+      `SELECT id, tipo_usuario FROM usuarios WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+    if (u.rowCount === 0) return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    if (u.rows[0].tipo_usuario !== 'contabilidade') {
+      return res.status(400).json({ error: 'O responsável escolhido não é do tipo contabilidade.' });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'fatura_enviada',
+      etapa_atual: 'aguardar_pagamento',
+      fatura_paga: false,
+      responsavel_id: Number(responsavel_id), // ✅ Modelo B
+      detalhes_fluxo: msg,
+    });
+
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Notificação não encontrada.' });
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'contabilidade',
+      para_tipo: 'contabilidade',
+      status: 'fatura_enviada',
+      etapa: 'aguardar_pagamento',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Fatura marcada como enviada.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/fatura-enviada:', error);
+    return res.status(500).json({ error: 'Erro ao marcar fatura enviada.' });
+  }
+});
+
+// ✅ Pagamento confirmado — processo concluído
+app.post('/notificacoes/:id/pago', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!responsavel_id) return res.status(400).json({ error: 'responsavel_id é obrigatório.' });
+
+  try {
+    const u = await pool.query(
+      `SELECT id, tipo_usuario FROM usuarios WHERE id = $1 AND empresaid = $2`,
+      [Number(responsavel_id), Number(empresaid)]
+    );
+    if (u.rowCount === 0) return res.status(400).json({ error: 'Responsável inválido para esta empresa.' });
+    if (u.rows[0].tipo_usuario !== 'contabilidade') {
+      return res.status(400).json({ error: 'O responsável escolhido não é do tipo contabilidade.' });
+    }
+
+    const msg =
+      detalhes_fluxo && String(detalhes_fluxo).trim().length > 0
+        ? String(detalhes_fluxo).trim()
+        : null;
+
+    const result = await atualizarWorkflowNotificacao(id, empresaid, {
+      status: 'pago',
+      etapa_atual: 'concluido',
+      fatura_paga: true,
+      responsavel_id: Number(responsavel_id),
+      detalhes_fluxo: msg,
+      data_resolucao: new Date(), // opcional; só se tiveres a coluna
+    });
+
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Notificação não encontrada.' });
+
+    await registarPassoFluxo({
+      notificacaoId: id,
+      empresaid,
+      de_user_id: de_user_id ? Number(de_user_id) : null,
+      de_tipo: de_tipo || 'contabilidade',
+      para_tipo: 'concluido',
+      status: 'pago',
+      etapa: 'concluido',
+      mensagem: msg,
+    });
+
+    return res.status(200).json({
+      message: 'Pagamento confirmado e notificação concluída.',
+      notificacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro em /notificacoes/:id/pago:', error);
+    return res.status(500).json({ error: 'Erro ao marcar como pago.' });
+  }
+});
+
+// 📜 Histórico de fluxo de uma notificação
+app.get('/notificacoes/:id/historico', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid } = req.query;
+
+  if (!empresaid) {
+    return res
+      .status(400)
+      .json({ error: 'O parâmetro empresaid é obrigatório.' });
+  }
+
+  try {
+    const query = `
+      SELECT 
+        h.id,
+        h.de_user_id,
+        h.de_tipo,
+        h.para_tipo,
+        h.status,
+        h.etapa,
+        h.mensagem,
+        h.created_at,
+        u.nome AS de_nome
+      FROM notificacoes_fluxo h
+      LEFT JOIN usuarios u ON u.id = h.de_user_id
+      WHERE h.notificacao_id = $1
+        AND h.empresaid = $2
+      ORDER BY h.created_at ASC;
+    `;
+
+    const values = [Number(id), Number(empresaid)];
+    const result = await pool.query(query, values);
+
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico da notificação:', error);
+    return res.status(500).json({ error: 'Erro ao buscar histórico.' });
   }
 });
 

@@ -24,6 +24,9 @@ import FolhaManutencaoScreen from './screens/FolhaManutencaoScreen';
 import RegisterCompanyScreen from './screens/RegisterCompanyScreen';
 import ReceberNotificacoesScreen from './screens/ReceberNotificacoesScreen';
 import InfoCompanyScreen from './screens/InfoCompanyScreen';
+import EquipeTecHomeScreen from './screens/EquipeTecHomeScreen';
+import OrcamentacaoHomeScreen from './screens/OrcamentacaoHomeScreen';
+import ContabilidadeHomeScreen from './screens/ContabilidadeHomeScreen';
 import HeaderLogo from './components/HeaderLogo';
 
 
@@ -68,6 +71,9 @@ export type RootStackParamList = {
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;
     InfoCompany: undefined;
+    EquipeTecHome: { equipeId: number; equipeNome: string };   // novas equipas técnicas
+    OrcamentacaoHome: undefined;
+    ContabilidadeHome: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -369,7 +375,7 @@ const App = (): React.JSX.Element => {
           },
           headerTitleAlign: 'center',
           headerTintColor: '#000' }}/>
-          <Stack.Screen
+        <Stack.Screen
           name="FolhaManutencao"
           component={FolhaManutencaoScreen}
           options={{
@@ -403,6 +409,60 @@ const App = (): React.JSX.Element => {
           },
           headerTitleAlign: 'center',
           headerTintColor: '#000' }}/>
+                <Stack.Screen
+        name="OrcamentacaoHome"
+        component={OrcamentacaoHomeScreen}
+        options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+            backgroundColor: '#22b4b4ff',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4.65,
+            elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000',
+        }}
+      />
+
+      <Stack.Screen
+        name="ContabilidadeHome"
+        component={ContabilidadeHomeScreen}
+        options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+            backgroundColor: '#22b4b4ff',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4.65,
+            elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000',
+        }}
+      />
+
+      <Stack.Screen
+        name="EquipeTecHome"
+        component={EquipeTecHomeScreen}
+        options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+            backgroundColor: '#22b4b4ff',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4.65,
+            elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000',
+        }}
+      />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

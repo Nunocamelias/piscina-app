@@ -8,35 +8,33 @@ const HeaderLogo: React.FC = () => {
   const [logo, setLogo] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadLogo = async () => {
+    const loadLogoFromApi = async () => {
       try {
-        // 1️⃣ Buscar o ID da empresa guardado no login
+        // Buscar o ID da empresa guardado no login
         const storedEmpresaid = await AsyncStorage.getItem('empresaid');
         if (!storedEmpresaid) {
-          console.warn('Empresaid não encontrado no AsyncStorage');
+          console.log('Sem empresaid — não posso buscar o logo.');
           return;
         }
 
-        // 2️⃣ Pedir os dados da empresa ao backend
-        const response = await axios.get(
-          `${Config.API_URL}/empresas/${storedEmpresaid}`
-        );
+        const empresaIdNum = parseInt(storedEmpresaid, 10);
 
-        if (response.status === 200 && response.data) {
-          const logoFromApi = response.data.logo || null;
-          setLogo(logoFromApi);
+        // Chamada ao backend (buscar logo direto do servidor)
+        const response = await axios.get(`${Config.API_URL}/empresas/${empresaIdNum}`);
+
+        if (response.data && response.data.logo) {
+          setLogo(response.data.logo);
         } else {
-          console.warn('Nenhum dado de empresa recebido ao carregar o logo');
+          console.log('Empresa sem logo definido.');
         }
       } catch (error) {
-        console.error('Erro ao carregar o logo do header:', error);
+        console.log('Erro ao carregar logo no Header:', error);
       }
     };
 
-    loadLogo();
+    loadLogoFromApi();
   }, []);
 
-  // Se ainda não há logo, não mostra nada (evita erros de renderização)
   if (!logo) return null;
 
   return (
@@ -52,5 +50,6 @@ const HeaderLogo: React.FC = () => {
 };
 
 export default HeaderLogo;
+
 
 

@@ -212,10 +212,6 @@ useFocusEffect(
   }, [clienteId, diaSemana, empresaid, fetchDadosManutencao]) // ✅ Agora inclui `fetchDadosManutencao`
 );
 
-
-
-
-
 const registrarStatusParametro = async (
   parametro: Parametro,
   status: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel',
@@ -556,66 +552,86 @@ const handleAnexarFoto = async () => {
 
 
   const handleEnviarRelatorio = async () => {
-    if (!anomaliaDescricao.trim()) {
-      Alert.alert('Erro', 'Por favor, descreva a anomalia antes de enviar.');
-      return;
-    }
+  if (!anomaliaDescricao.trim()) {
+    Alert.alert('Erro', 'Por favor, descreva a anomalia antes de enviar.');
+    return;
+  }
 
-    let empresaidFinal = userEmpresaid;
+  // ✅ 1) empresaid
+  let empresaidFinal: number | null = userEmpresaid ?? null;
 
-    // 🔹 Se `userEmpresaid` for `null`, buscar do AsyncStorage
-    if (!empresaidFinal) {
-      try {
-        const storedEmpresaid = await AsyncStorage.getItem('empresaid');
-        if (storedEmpresaid) {
-          empresaidFinal = parseInt(storedEmpresaid, 10);
-        }
-      } catch (error) {
-        console.error('❌ Erro ao buscar empresaid do AsyncStorage:', error);
-      }
-    }
-
-    // Se ainda assim for `null`, não envia
-    if (!empresaidFinal) {
-      Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-      return;
-    }
-
-    const dadosEnvio = {
-      cliente_id: clienteId,
-      assunto: 'Relatório de Anomalia',
-      mensagem: anomaliaDescricao,
-      empresaid: empresaidFinal, // 🔹 Agora sempre tem um valor válido
-      anexos: imagensAnexadas.length > 0 ? imagensAnexadas : [],
-      valor_servico_extra: valorServicoExtra !== '' ? parseFloat(valorServicoExtra) : null,
-    };
-
-    console.log('📩 Enviando relatório com os seguintes dados:', dadosEnvio);
-
+  if (!empresaidFinal) {
     try {
-      const response = await axios.post(`${Config.API_URL}/notificacoes`, dadosEnvio);
-
-      if (response.status === 201) {
-        Alert.alert('Sucesso', 'Relatório enviado com sucesso!');
-        setAnomaliaDescricao('');
-        setValorServicoExtra('');
-        setImagensAnexadas([]); // Limpa os anexos
-        setIsReportExpanded(false);
-      } else {
-        Alert.alert('Erro', 'Não foi possível enviar o relatório.');
+      const storedEmpresaid = await AsyncStorage.getItem('empresaid');
+      if (storedEmpresaid && storedEmpresaid !== 'undefined') {
+        const parsed = parseInt(storedEmpresaid, 10);
+        empresaidFinal = Number.isNaN(parsed) ? null : parsed;
       }
-    } catch (error: unknown) {
-      console.error('❌ Erro ao enviar relatório:', error);
-
-      if (axios.isAxiosError(error)) {
-        Alert.alert('Erro', error.response?.data?.error || 'Erro ao enviar relatório.');
-      } else if (error instanceof Error) {
-        Alert.alert('Erro', error.message || 'Ocorreu um erro inesperado.');
-      } else {
-        Alert.alert('Erro', 'Erro desconhecido ao enviar relatório.');
-      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar empresaid do AsyncStorage:', error);
     }
+  }
+
+  if (!empresaidFinal) {
+    Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+    return;
+  }
+
+  // ✅ 2) criador_id (userId)
+  let criadorIdFinal: number | null = null;
+
+  try {
+    const storedUserId = await AsyncStorage.getItem('userId');
+    if (storedUserId && storedUserId !== 'undefined') {
+      const parsed = parseInt(storedUserId, 10);
+      criadorIdFinal = Number.isNaN(parsed) ? null : parsed;
+    }
+  } catch (error) {
+    console.error('❌ Erro ao buscar userId do AsyncStorage:', error);
+  }
+
+  if (!criadorIdFinal) {
+    Alert.alert('Erro', 'UserId não encontrado. Faça login novamente.');
+    return;
+  }
+
+  const dadosEnvio = {
+    cliente_id: clienteId,
+    assunto: 'Relatório de Anomalia',
+    mensagem: anomaliaDescricao,
+    empresaid: empresaidFinal,
+    anexos: imagensAnexadas.length > 0 ? imagensAnexadas : [],
+    valor_servico_extra:
+      valorServicoExtra !== '' ? parseFloat(valorServicoExtra) : null,
+    criador_id: criadorIdFinal,
   };
+
+  console.log('📩 Enviando relatório com os seguintes dados:', dadosEnvio);
+
+  try {
+    const response = await axios.post(`${Config.API_URL}/notificacoes`, dadosEnvio);
+
+    if (response.status === 201) {
+      Alert.alert('Sucesso', 'Relatório enviado com sucesso!');
+      setAnomaliaDescricao('');
+      setValorServicoExtra('');
+      setImagensAnexadas([]); // Limpa os anexos
+      setIsReportExpanded(false);
+    } else {
+      Alert.alert('Erro', 'Não foi possível enviar o relatório.');
+    }
+  } catch (error: unknown) {
+    console.error('❌ Erro ao enviar relatório:', error);
+
+    if (axios.isAxiosError(error)) {
+      Alert.alert('Erro', error.response?.data?.error || 'Erro ao enviar relatório.');
+    } else if (error instanceof Error) {
+      Alert.alert('Erro', error.message || 'Ocorreu um erro inesperado.');
+    } else {
+      Alert.alert('Erro', 'Erro desconhecido ao enviar relatório.');
+    }
+  }
+};
 
   // Lógica para alterar cor baseado na data
   const isManutencaoAtrasada = (dataProxima: string) => {
@@ -886,6 +902,7 @@ return (
                 await axios.post(`${Config.API_URL}/notificacoes`, {
                   clienteId,
                   parametro: item.parametro,
+                  assunto: `Alerta parâmetro não ajustável: ${item.parametro}`,
                   mensagem: 'Não é possível diminuir este parâmetro. Ação necessária.',
                   empresaid: parsedEmpresaid,
                 });

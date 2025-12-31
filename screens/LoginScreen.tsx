@@ -13,50 +13,111 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [senhaVisivel, setSenhaVisivel] = useState(false); // Estado para alternar visibilidade da senha
 
   const handleLogin = async () => {
-    try {
-      console.log('Iniciando login com:', { email, senha });
+  try {
+    const emailLimpo = email.trim().toLowerCase();
+    console.log('Iniciando login com:', { email: emailLimpo, senha });
 
-      // 🔹 Validação do email antes de enviar o login
-      if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$/.test(email)) {
-        Alert.alert('Erro', 'Insira um email válido.');
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$/.test(emailLimpo)) {
+      Alert.alert('Erro', 'Insira um email válido.');
+      return;
+    }
+
+    const response = await axios.post(`${Config.API_URL}/login`, {
+      email: emailLimpo,
+      senha,
+    });
+
+    const { token, user } = response.data;
+    console.log('✅ LOGIN user recebido:', user);
+    console.log('✅ LOGIN user.id:', user?.id, 'typeof:', typeof user?.id);
+
+    if (!user.empresaid) {
+      throw new Error('Empresaid não encontrado no servidor.');
+    }
+
+    // Guardar info base
+    await AsyncStorage.setItem('authToken', token);
+    await AsyncStorage.setItem('empresaid', String(user.empresaid));
+    await AsyncStorage.setItem('tipo_usuario', user.tipo_usuario || '');
+    await AsyncStorage.setItem('userId', String(user.id));
+    await AsyncStorage.setItem('userNome', user.nome || '');
+
+    console.log('🧪 STORAGE (logo após setItem):', {
+    empresaid: await AsyncStorage.getItem('empresaid'),
+    tipo_usuario: await AsyncStorage.getItem('tipo_usuario'),
+    userId: await AsyncStorage.getItem('userId'),
+    userNome: await AsyncStorage.getItem('userNome'),
+   });
+
+    const userType = user.tipo_usuario;
+    const equipeId = user.equipeId;
+
+    // 🔁 Roteamento por tipo de utilizador
+    if (userType === 'admin') {
+      navigation.navigate('Home');
+      return;
+    }
+
+    // 🔹 Equipas de manutenção (EquipaHome)
+    if (userType === 'equipa_manutencao' || userType === 'equipe') {
+      if (!equipeId) {
+        Alert.alert('Erro', 'ID da equipe não encontrado para este utilizador.');
         return;
       }
 
-      const response = await axios.post(`${Config.API_URL}/login`, { email, senha });
-      const { token, user } = response.data;
-
-      if (!user.empresaid) {
-        throw new Error('Empresaid não encontrado no servidor.');
-      }
-
-      await AsyncStorage.setItem('authToken', token);
-      await AsyncStorage.setItem('empresaid', user.empresaid.toString());
-
-      const userType = user.tipo_usuario;
-      const equipeId = user.equipeId;
-
-      if (userType === 'admin') {
-        navigation.navigate('Home');
-      } else if (userType === 'equipe') {
-        if (!equipeId) {
-          Alert.alert('Erro', 'ID da equipe não encontrado.');
-          return;
-        }
-        navigation.navigate('EquipeHome', {
-          equipeId: user.equipeId,
-          equipeNome: user.nome,
-        });
-      } else {
-        Alert.alert('Erro', 'Tipo de usuário desconhecido.');
-      }
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        Alert.alert('Erro', error.response?.data?.error || 'Credenciais inválidas.');
-      } else {
-        Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
-      }
+      navigation.navigate('EquipeHome', {
+        equipeId: equipeId,
+        equipeNome: user.nome,
+      });
+      return;
     }
-  };
+
+    // 🔹 Equipas técnicas (EquipeTecHome)
+    if (userType === 'equipa_tecnica') {
+      if (!equipeId) {
+        Alert.alert('Erro', 'ID da equipa técnica não encontrado para este utilizador.');
+        return;
+      }
+
+      navigation.navigate('EquipeTecHome', {
+        equipeId: equipeId,
+        equipeNome: user.nome,
+      });
+      return;
+    }
+
+    // 🔹 Orçamentação
+    if (userType === 'orcamentacao') {
+  navigation.navigate('OrcamentacaoHome', {
+    userId: user.id,
+    userNome: user.nome,
+  });
+  return;
+}
+
+
+    // 🔹 Contabilidade
+    if (userType === 'contabilidade') {
+  navigation.navigate('ContabilidadeHome', {
+    userId: user.id,
+    userNome: user.nome,
+  });
+  return;
+}
+
+
+    // Se cair aqui, é porque veio um tipo não previsto
+    Alert.alert('Erro', `Tipo de utilizador desconhecido: ${userType || 'indefinido'}`);
+  } catch (error) {
+    console.log('ERRO NO LOGIN:', error);
+
+    if (axios.isAxiosError(error)) {
+      Alert.alert('Erro', error.response?.data?.error || 'Credenciais inválidas.');
+    } else {
+      Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
+    }
+  }
+};
 
   return (
     <View style={styles.container}>

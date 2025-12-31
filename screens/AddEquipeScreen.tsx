@@ -5,8 +5,10 @@ import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
 import { Appearance } from 'react-native';
+import { Picker } from '@react-native-picker/picker'; // ⬅️ NOVO
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
+type TipoUsuario = 'admin' | 'equipa_manutencao' | 'equipa_tecnica' | 'orcamentacao' | 'contabilidade';
 
 
 const AddEquipeScreen = ({ navigation }: any) => {
@@ -24,6 +26,7 @@ const AddEquipeScreen = ({ navigation }: any) => {
 
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState('');
+  const [tipoUsuario, setTipoUsuario] = useState<TipoUsuario>('equipa_manutencao');
 
   useEffect(() => {
   const fetchEmpresaid = async () => {
@@ -93,22 +96,40 @@ const handleChange = (field: FormFields, value: string) => {
   };
 
   const salvarEquipe = async () => {
-    if (!validatePassword(form.password)) {
-      Alert.alert(
-        'Erro',
-        'A senha deve ter pelo menos 8 caracteres, incluindo uma letra, um número e um caractere especial.'
-      );
-      return;
-    }
 
-    // Valida o empresaid antes de prosseguir
-    if (!userEmpresaid || isNaN(Number(userEmpresaid))) {
-      console.error('Empresaid inválido ou ausente:', userEmpresaid);
-      Alert.alert('Erro', 'O ID da empresa não foi encontrado. Por favor, faça login novamente.');
-      return;
-    }
+  // 1️⃣ Password válida?
+  if (!validatePassword(form.password)) {
+    Alert.alert(
+      'Erro',
+      'A senha deve ter pelo menos 8 caracteres, incluindo uma letra, um número e um caractere especial.'
+    );
+    return;
+  }
 
-    try {
+  // 2️⃣ Validar nome
+  if (!form.nomeequipe.trim()) {
+    Alert.alert('Erro', 'Insira o nome.');
+    return;
+  }
+
+  // 3️⃣ Criar email limpo
+  const emailLimpo = form.email.trim().toLowerCase();
+
+  // 4️⃣ Validar email (AQUI!)
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$/.test(emailLimpo)) {
+    Alert.alert('Erro', 'Insira um email válido.');
+    return;
+  }
+
+  // 5️⃣ Validar empresaid
+  if (!userEmpresaid || isNaN(Number(userEmpresaid))) {
+    Alert.alert('Erro', 'O ID da empresa não foi encontrado. Por favor, faça login novamente.');
+    return;
+  }
+
+  try {
+    // 👉 Caso 1: Equipa de manutenção / equipa técnica
+    if (tipoUsuario === 'equipa_manutencao' || tipoUsuario === 'equipa_tecnica') {
       const payloadEquipe = {
         nomeequipe: form.nomeequipe,
         nome1: form.nome1,
@@ -117,18 +138,16 @@ const handleChange = (field: FormFields, value: string) => {
         telefone: form.telefone,
         proxima_inspecao: form.proxima_inspecao,
         validade_seguro: form.validade_seguro,
-        empresaid: Number(userEmpresaid), // Converte para número, se necessário
+        empresaid: Number(userEmpresaid),
       };
 
-      console.debug('🔍 Payload enviado para /equipes:', payloadEquipe);
-
+      console.debug(' Payload enviado para /equipes: 🔍', payloadEquipe);
       const responseEquipe = await axios.post(`${Config.API_URL}/equipes`, payloadEquipe);
-      console.debug('✅ Resposta do backend para /equipes:', responseEquipe.data);
+      console.debug(' Resposta do backend para /equipes: ✅', responseEquipe.data);
 
-      const equipeId = responseEquipe.data.equipe?.id; // 🚨 Verifica se realmente retorna um ID
-
+      const equipeId = responseEquipe.data.equipe?.id;
       if (!equipeId) {
-        console.error('❌ ERRO: Não foi retornado um ID de equipe.');
+        console.error(' ERRO: Não foi retornado um ID de equipe. ❌');
         Alert.alert('Erro', 'Erro ao criar equipe. ID não foi gerado.');
         return;
       }
@@ -139,25 +158,45 @@ const handleChange = (field: FormFields, value: string) => {
         senha: form.password,
         equipeid: equipeId,
         empresaid: Number(userEmpresaid),
+        tipo_usuario: tipoUsuario, // ⬅️ MUITO IMPORTANTE
       };
 
-      console.debug('🔍 Payload enviado para /usuarios:', payloadUsuario);
-
+      console.debug(' Payload enviado para /usuarios: 🔍', payloadUsuario);
       const responseUsuario = await axios.post(`${Config.API_URL}/usuarios`, payloadUsuario);
-      console.debug('✅ Resposta do backend para /usuarios:', responseUsuario.data);
+      console.debug(' Resposta do backend para /usuarios: ✅', responseUsuario.data);
 
-      Alert.alert('Sucesso', 'Equipe e credenciais adicionadas com sucesso!');
+      Alert.alert('Sucesso', 'Equipa e credenciais adicionadas com sucesso!');
       navigation.goBack();
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error('Erro do backend:', error.response?.data);
-        Alert.alert('Erro', error.response?.data?.error || 'Erro ao salvar dados.');
-      } else {
-        console.error('Erro inesperado:', error);
-        Alert.alert('Erro', 'Ocorreu um erro inesperado.');
-      }
+      return;
     }
-  };
+
+    // 👉 Caso 2: Admin / Orçamentação / Contabilidade (NÃO cria equipa)
+    const payloadUsuario = {
+      nome: form.nomeequipe,         // aqui é o nome do utilizador
+      email: form.email,
+      senha: form.password,
+      equipeid: null,               // sem equipa associada
+      empresaid: Number(userEmpresaid),
+      tipo_usuario: tipoUsuario,    // 'admin', 'orcamentacao', 'contabilidade', etc.
+    };
+
+    console.debug(' Payload enviado para /usuarios (sem equipe): 🔍', payloadUsuario);
+    const responseUsuario = await axios.post(`${Config.API_URL}/usuarios`, payloadUsuario);
+    console.debug(' Resposta do backend para /usuarios: ✅', responseUsuario.data);
+
+    Alert.alert('Sucesso', 'Utilizador criado com sucesso!');
+    navigation.goBack();
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('Erro do backend:', error.response?.data);
+      Alert.alert('Erro', error.response?.data?.error || 'Erro ao salvar dados.');
+    } else {
+      console.error('Erro inesperado:', error);
+      Alert.alert('Erro', 'Ocorreu um erro inesperado.');
+    }
+  }
+};
+
 
   const isValidDate = (date: string): boolean => {
     // Ignorar se a string estiver incompleta
@@ -191,98 +230,146 @@ const handleChange = (field: FormFields, value: string) => {
 
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Adicionar Equipe</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Nome da Equipe"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.nomeequipe}
-        onChangeText={(value) => handleChange('nomeequipe', value)}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Nome 1"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.nome1}
-        onChangeText={(value) => handleChange('nome1', value)}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Nome 2"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.nome2}
-        onChangeText={(value) => handleChange('nome2', value)}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Matrícula do Veículo"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.matricula}
-        onChangeText={(value) => handleChange('matricula', value)}
-        maxLength={8} // Garante que não ultrapasse o limite
-        autoCapitalize="characters" // Força letras maiúsculas no teclado
-        keyboardType="default" // Garante que letras e números sejam aceitos
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Número de Telefone"
-        keyboardType="phone-pad"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.telefone}
-        onChangeText={(value) => handleChange('telefone', value)}
-      />
-      <TextInput
-        style={[styles.input, { backgroundColor: getColorForDate(form.proxima_inspecao) }]}
-        placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
-        placeholderTextColor="#888"
-        value={form.proxima_inspecao}
-        onChangeText={(value) => handleChange('proxima_inspecao', value)}
-        onEndEditing={() => {
-        if (form.proxima_inspecao && form.proxima_inspecao.length === 10 && !isValidDate(form.proxima_inspecao)) {
-        console.warn('A Data fornecida é inválida:', form.proxima_inspecao);
-        }
-       }}
-      />
-      <TextInput
-        style={[styles.input, { backgroundColor: getColorForDate(form.validade_seguro) }]}
-        placeholder="Seguro Válido até (AAAA-MM-DD)"
-        placeholderTextColor="#888"
-        value={form.validade_seguro}
-        onChangeText={(value) => handleChange('validade_seguro', value)}
-        onEndEditing={() => {
-        if (form.validade_seguro && form.validade_seguro.length === 10 && !isValidDate(form.validade_seguro)) {
-        console.warn('A Data fornecida é inválida:', form.validade_seguro);
-        }
-       }}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="E-mail"
-        keyboardType="email-address"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.email}
-        onChangeText={(value) => handleChange('email', value)}
-      />
-      <TextInput
-        style={[styles.input, styles.passwordInput]} // 🔥 Aplica um novo estilo específico para senhas
-        placeholder="Senha"
-        secureTextEntry={true}
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        value={form.password}
-        onChangeText={(value) => handleChange('password', value)}
-      />
+  <ScrollView contentContainerStyle={styles.container}>
+    <Text style={styles.title}>Adicionar Utilizador / Equipa</Text>
 
-      <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
-        <Text style={styles.buttonText}>Salvar Equipe</Text>
-      </TouchableOpacity>
-      {/* 🔹 Rodapé com nome da empresa */}
-<View style={styles.footer}>
-  <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-  <Text style={styles.subTitle}>powered by GES-POOL</Text>
-</View>
-    </ScrollView>
-  );
+    {/* Picker do tipo de utilizador */}
+    <View style={[styles.input, { paddingHorizontal: 0, paddingVertical: 0 }]}>
+      <Picker
+        selectedValue={tipoUsuario}
+        onValueChange={(value) => setTipoUsuario(value as TipoUsuario)}
+      >
+        <Picker.Item label="Equipa de manutenção" value="equipa_manutencao" />
+        <Picker.Item label="Equipa técnica" value="equipa_tecnica" />
+        <Picker.Item label="Administração" value="admin" />
+        <Picker.Item label="Orçamentação" value="orcamentacao" />
+        <Picker.Item label="Contabilidade" value="contabilidade" />
+      </Picker>
+    </View>
+
+    {/* Nome (serve para equipa ou utilizador) */}
+    <TextInput
+      style={styles.input}
+      placeholder={
+        tipoUsuario === 'equipa_manutencao' || tipoUsuario === 'equipa_tecnica'
+          ? 'Nome da Equipa'
+          : 'Nome do Utilizador'
+      }
+      placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+      value={form.nomeequipe}
+      onChangeText={(value) => handleChange('nomeequipe', value)}
+    />
+
+    {/* Campos só para equipas (nomes, matrícula, datas, etc.) */}
+    {(tipoUsuario === 'equipa_manutencao' || tipoUsuario === 'equipa_tecnica') && (
+      <>
+        <TextInput
+          style={styles.input}
+          placeholder="Nome 1"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+          value={form.nome1}
+          onChangeText={(value) => handleChange('nome1', value)}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Nome 2"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+          value={form.nome2}
+          onChangeText={(value) => handleChange('nome2', value)}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Matrícula do Veículo"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+          value={form.matricula}
+          onChangeText={(value) => handleChange('matricula', value)}
+          maxLength={8}
+          autoCapitalize="characters"
+          keyboardType="default"
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Número de Telefone"
+          keyboardType="phone-pad"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+          value={form.telefone}
+          onChangeText={(value) => handleChange('telefone', value)}
+        />
+
+        <TextInput
+          style={[styles.input, { backgroundColor: getColorForDate(form.proxima_inspecao) }]}
+          placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
+          placeholderTextColor="#888"
+          value={form.proxima_inspecao}
+          onChangeText={(value) => handleChange('proxima_inspecao', value)}
+          onEndEditing={() => {
+            if (
+              form.proxima_inspecao &&
+              form.proxima_inspecao.length === 10 &&
+              !isValidDate(form.proxima_inspecao)
+            ) {
+              console.warn('A Data fornecida é inválida:', form.proxima_inspecao);
+            }
+          }}
+        />
+
+        <TextInput
+          style={[styles.input, { backgroundColor: getColorForDate(form.validade_seguro) }]}
+          placeholder="Seguro Válido até (AAAA-MM-DD)"
+          placeholderTextColor="#888"
+          value={form.validade_seguro}
+          onChangeText={(value) => handleChange('validade_seguro', value)}
+          onEndEditing={() => {
+            if (
+              form.validade_seguro &&
+              form.validade_seguro.length === 10 &&
+              !isValidDate(form.validade_seguro)
+            ) {
+              console.warn('A Data fornecida é inválida:', form.validade_seguro);
+            }
+          }}
+        />
+      </>
+    )}
+
+    {/* Email – comum a todos os tipos */}
+    <TextInput
+      style={styles.input}
+      placeholder="E-mail"
+      keyboardType="email-address"
+      placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+      value={form.email}
+      onChangeText={(value) => handleChange('email', value)}
+    />
+
+    {/* Password – comum a todos os tipos */}
+    <TextInput
+      style={[styles.input, styles.passwordInput]}
+      placeholder="Senha"
+      secureTextEntry
+      placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+      value={form.password}
+      onChangeText={(value) => handleChange('password', value)}
+    />
+
+    <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
+      <Text style={styles.buttonText}>
+        {tipoUsuario === 'equipa_manutencao' || tipoUsuario === 'equipa_tecnica'
+          ? 'Salvar Equipa'
+          : 'Salvar Utilizador'}
+      </Text>
+    </TouchableOpacity>
+
+    {/* Rodapé com nome da empresa */}
+    <View style={styles.footer}>
+      <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
+      <Text style={styles.subTitle}>powered by GES-POOL</Text>
+    </View>
+  </ScrollView>
+);
 };
 
 const styles = StyleSheet.create({
