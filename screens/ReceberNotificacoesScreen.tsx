@@ -4,6 +4,8 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 import { Picker } from '@react-native-picker/picker';
+import ImageViewing from "react-native-image-viewing";
+
 
 type Notificacao = {
   id: number;
@@ -1367,26 +1369,30 @@ const renderItem = ({ item }: { item: Notificacao }) => {
   if (mostrarVistaMini(item)) {
     return (
       <TouchableOpacity
-        onPress={() =>
-          setExpandedId(expandedId === item.id ? null : item.id)
-        }
-        style={[
-          styles.card,
-          {
-            backgroundColor: '#FFF5CC', // Amarelo esbatido = modo leitura
-            borderWidth: 1,
-          },
-        ]}
-      >
-        <Text style={styles.cliente}>{item.cliente_nome}</Text>
-        {item.assunto ? <Text style={styles.cliente}>{item.assunto}</Text> : null}
-        <Text style={[styles.mensagem, { width: '100%' }]}>{item.mensagem}</Text>
-        <Text style={styles.status}>{formatarEmResponsavel(item)}</Text>
-        <Text style={styles.status}>Status: {formatarStatus(item.status)}</Text>
-        <Text style={styles.viewOnlyText}>
-          (Modo de leitura — esta notificação não está atribuída a si)
-        </Text>
-      </TouchableOpacity>
+  onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}
+  style={[
+    styles.card,
+    {
+      backgroundColor: '#FFF5CC',
+      borderWidth: 1,
+    },
+  ]}
+>
+  {/* Header: Cliente + ID à direita */}
+  <View style={styles.cardTopRow}>
+    <Text style={styles.cliente}>{item.cliente_nome}</Text>
+    <Text style={styles.notifId}>#{item.id}</Text>
+  </View>
+
+  {item.assunto ? <Text style={styles.cliente}>{item.assunto}</Text> : null}
+  <Text style={[styles.mensagem, { width: '100%' }]}>{item.mensagem}</Text>
+  <Text style={styles.status}>{formatarEmResponsavel(item)}</Text>
+  <Text style={styles.status}>Status: {formatarStatus(item.status)}</Text>
+  <Text style={styles.viewOnlyText}>
+    (Modo de leitura — esta notificação não está atribuída a si)
+  </Text>
+</TouchableOpacity>
+
     );
   }
 
@@ -1428,20 +1434,23 @@ const renderItem = ({ item }: { item: Notificacao }) => {
         </View>
 
         <View style={styles.cardHeaderRight}>
-          <Text style={[styles.chip, styles.chipStatus]}>
-            {formatarStatus(item.status)}
-          </Text>
+  <Text style={styles.notifId}>Nº{item.id}</Text>
 
-          {(() => {
-        const etapaLabel = item.em_garantia ? 'garantia' : item.etapa_atual;
+  <Text style={[styles.chip, styles.chipStatus]}>
+    {formatarStatus(item.status)}
+  </Text>
 
-       return etapaLabel ? (
-         <Text style={[styles.chip, styles.chipEtapa]}>
-           {etapaLabel}
-        </Text>
-       ) : null;
-      })()}
-        </View>
+  {(() => {
+    const etapaLabel = item.em_garantia ? 'garantia' : item.etapa_atual;
+
+    return etapaLabel ? (
+      <Text style={[styles.chip, styles.chipEtapa]}>
+        {etapaLabel}
+      </Text>
+    ) : null;
+  })()}
+</View>
+
       </View>
 
       {isExpanded && (
@@ -1788,26 +1797,12 @@ const renderItem = ({ item }: { item: Notificacao }) => {
 
       {/* Modal da imagem em ecrã completo */}
       {imagemSelecionada && (
-        <Modal
-          visible={mostrarModalImagem}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setMostrarModalImagem(false)}
-        >
-          <View style={styles.modalContainer}>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setMostrarModalImagem(false)}
-            >
-              <Text style={styles.modalCloseText}>✖ Fechar</Text>
-            </TouchableOpacity>
-            <Image
-              source={{ uri: imagemSelecionada }}
-              style={styles.modalImage}
-              resizeMode="contain"
-            />
-          </View>
-        </Modal>
+        <ImageViewing
+  images={imagemSelecionada ? [{ uri: imagemSelecionada }] : []}
+  imageIndex={0}
+  visible={mostrarModalImagem}
+  onRequestClose={() => setMostrarModalImagem(false)}
+/>
       )}
     </>
   );
@@ -2061,7 +2056,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0066CC', // azul discreto, se quiseres
   },
-
+  cardTopRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+notifId: {
+  fontSize: 12,
+  fontWeight: '700',
+  color: '#666',
+  paddingLeft: 10,
+},
 });
 
 export default ReceberNotificacoesScreen;

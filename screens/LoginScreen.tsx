@@ -4,8 +4,10 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 import Icon from 'react-native-vector-icons/Ionicons';
+import DeviceInfo from 'react-native-device-info';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
+const appVersion = DeviceInfo.getVersion();      // ex: "0.9.1"
 
 const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [email, setEmail] = useState('');
@@ -166,6 +168,9 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
           Novo Registo de Empresa
         </Text>
       </TouchableOpacity>
+      <Text style={styles.versionText}>
+        V{appVersion}
+        </Text>
     </View>
   );
 };
@@ -321,6 +326,14 @@ const styles = StyleSheet.create({
   eyeText: {
     fontSize: 18, // 🔹 Ajusta o tamanho do ícone de olho
   },
+  versionText: {
+    position: 'absolute',
+    bottom: 20,          // 👈 aqui controlas a altura
+    alignSelf: 'center',
+    fontSize: 12,
+    color: '#666',
+    opacity: 0.8,
+},
 });
 
 export default LoginScreen;

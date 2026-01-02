@@ -543,8 +543,6 @@ app.put('/equipes/:id', async (req, res) => {
   }
 });
 
-
-
 app.delete('/equipes/:id', async (req, res) => {
     const { id } = req.params;
     const { empresaid } = req.query; // Inclui o empresaid na query string
@@ -588,45 +586,47 @@ app.delete('/equipes/:id', async (req, res) => {
 
 // Rota para buscar clientes associados a um dia específico da equipe
 app.get('/clientes-por-dia', async (req, res) => {
-    const { equipeId, diaSemana, empresaid } = req.query;
+  const { equipeId, diaSemana, empresaid } = req.query;
 
-    if (!equipeId || !diaSemana || !empresaid) {
-      return res.status(400).json({ error: 'EquipeId, diaSemana e empresaid são obrigatórios.' });
-    }
+  if (!equipeId || !diaSemana || !empresaid) {
+    return res.status(400).json({ error: 'EquipeId, diaSemana e empresaid são obrigatórios.' });
+  }
 
-    try {
-      const query = `
-        SELECT DISTINCT ON (c.id) 
-          c.id, 
-          c.nome, 
-          c.morada, 
-          c.telefone, 
-          c.info_acesso,
-          c.google_maps,
-          c.volume,
-          c.tanque_compensacao,
-          c.cobertura,
-          c.bomba_calor,
-          c.equipamentos_especiais,
-          c.ultima_substituicao,
-          COALESCE(m.status, 'pendente') AS status
-        FROM associados a
-        JOIN clientes c ON a.clienteId = c.id
-        LEFT JOIN manutencoes m 
-          ON m.cliente_id = c.id 
-          AND m.dia_semana = $2
-        WHERE a.equipeId = $1 
-          AND a.diaSemana = $2
-          AND c.empresaid = $3
-        ORDER BY c.id, m.data_manutencao DESC;
-      `;
-      const values = [equipeId, diaSemana, empresaid];
-      const result = await pool.query(query, values);
-      res.status(200).json(result.rows);
-    } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
-      res.status(500).json({ error: 'Erro ao buscar clientes.' });
-    }
+  try {
+    const query = `
+      SELECT DISTINCT ON (c.id) 
+        c.id, 
+        c.nome, 
+        c.morada, 
+        c.telefone, 
+        c.info_acesso,
+        c.google_maps,
+        c.volume,
+        c.tanque_compensacao,
+        c.cobertura,
+        c.bomba_calor,
+        c.equipamentos_especiais,
+        c.ultima_substituicao,
+        COALESCE(m.status, 'pendente') AS status,
+        m.motivo
+      FROM associados a
+      JOIN clientes c ON a.clienteId = c.id
+      LEFT JOIN manutencoes m 
+        ON m.cliente_id = c.id 
+        AND m.dia_semana = $2
+        AND m.empresaid = $3
+      WHERE a.equipeId = $1 
+        AND a.diaSemana = $2
+        AND c.empresaid = $3
+      ORDER BY c.id, m.data_manutencao DESC;
+    `;
+    const values = [equipeId, diaSemana, empresaid];
+    const result = await pool.query(query, values);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar clientes:', error);
+    res.status(500).json({ error: 'Erro ao buscar clientes.' });
+  }
 });
 
 // Rota para associar um cliente a uma equipe em um dia específico
@@ -676,7 +676,6 @@ app.post('/associar-cliente', async (req, res) => {
       res.status(500).json({ error: 'Erro ao associar cliente.' });
     }
 });
-
 
 // Rota para desassociar um cliente de um dia específico
 app.delete('/desassociar-cliente', async (req, res) => {
@@ -801,7 +800,6 @@ app.post('/associados', async (req, res) => {
       }
 });
 
-
 app.delete('/associados/:id', async (req, res) => {
       const { id } = req.params;
       try {
@@ -896,7 +894,6 @@ app.get('/contador-clientes', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar contadores de clientes.' });
   }
 });
-
 
 //Esse endpoint permitirá adicionar novos usuários ao sistema
 
@@ -1014,7 +1011,6 @@ app.get('/confirmar-email', async (req, res) => {
     res.status(500).json({ error: 'Erro ao confirmar email.' });
   }
 });
-
 
 // Este endpoint verificará as credenciais do usuário e retornará o tipo de usuário
 app.post('/login', async (req, res) => {
@@ -1178,8 +1174,6 @@ app.post('/usuarios', async (req, res) => {
   }
 });
 
-
-
 app.get('/usuarios', async (req, res) => {
   const { equipeid, empresaid } = req.query;
 
@@ -1247,7 +1241,6 @@ app.get('/usuarios-empresa', async (req, res) => {
     return res.status(500).json({ error: 'Erro ao buscar usuários.' });
   }
 });
-
 
 // Endpoint PUT para atualizar um usuário (versão robusta)
 app.put('/usuarios/:id', async (req, res) => {
@@ -1328,7 +1321,6 @@ app.put('/usuarios/:id', async (req, res) => {
     return res.status(500).json({ error: 'Erro ao atualizar usuário.' });
   }
 });
-
 
 app.get('/clientes-por-equipe', async (req, res) => {
   const { equipeId, empresaid } = req.query;
@@ -1568,7 +1560,6 @@ app.put('/manutencoes/:clienteId/confirmar-periodica', async (req, res) => {
   }
 });
 
-
 app.get('/parametros-quimicos', async (req, res) => {
   const { ativo, empresaid } = req.query;
 
@@ -1592,7 +1583,6 @@ app.get('/parametros-quimicos', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar parâmetros químicos.' });
   }
 });
-
 
 app.get('/parametros-quimicos/:id', async (req, res) => {
   const { id } = req.params;
@@ -1669,7 +1659,6 @@ app.post('/parametros-quimicos', async (req, res) => {
   }
 });
 
-
 app.put('/parametros-quimicos/:id', async (req, res) => {
   const { id } = req.params;
   const { empresaid, ...parametrosAtualizados } = req.body;
@@ -1723,7 +1712,6 @@ app.put('/parametros-quimicos/:id', async (req, res) => {
   }
 });
 
-
 app.delete('/parametros-quimicos/:id', async (req, res) => {
   const { id } = req.params;
   const { empresaid } = req.query;
@@ -1751,7 +1739,7 @@ app.delete('/parametros-quimicos/:id', async (req, res) => {
 
 app.put('/manutencoes/:id', async (req, res) => {
   const { id } = req.params;
-  const { status, parametros, empresaid } = req.body;
+  const { status, parametros, empresaid, motivo } = req.body;
 
   console.log('📥 Dados recebidos no PUT /manutencoes/:id:', req.body);
 
@@ -1760,36 +1748,55 @@ app.put('/manutencoes/:id', async (req, res) => {
   }
 
   if (!status || !['concluida', 'pendente', 'nao_concluida'].includes(status)) {
-    return res.status(400).json({ error: 'Status inválido. Status permitidos: concluida, pendente, nao_concluida.' });
+    return res.status(400).json({
+      error: 'Status inválido. Status permitidos: concluida, pendente, nao_concluida.',
+    });
   }
 
-  // **Recusa a atualização se houver parâmetros sem `valor_atual`**
-  const parametrosInvalidos = parametros?.some((parametro) =>
-    parametro.valor_atual === null ||
-    parametro.valor_atual === undefined ||
-    parametro.valor_atual === ''
-  );
+  // ✅ Só exige parâmetros quando for "concluida"
+  if (status === 'concluida') {
+    const parametrosInvalidos = parametros?.some((parametro) =>
+      parametro.valor_atual === null ||
+      parametro.valor_atual === undefined ||
+      parametro.valor_atual === ''
+    );
 
-  if (parametrosInvalidos) {
-    return res.status(400).json({ error: 'Todos os parâmetros devem ser preenchidos antes de concluir a manutenção.' });
+    if (parametrosInvalidos) {
+      return res.status(400).json({
+        error: 'Todos os parâmetros devem ser preenchidos antes de concluir a manutenção.',
+      });
+    }
   }
 
   try {
-    // **Atualiza o status da manutenção**
+    // ✅ Atualiza status + motivo (quando nao_concluida) + data_manutencao
     const updateManutencaoQuery = `
-      UPDATE manutencoes
-      SET status = $1
-      WHERE id = $2 AND empresaid = $3
-      RETURNING *;
-    `;
-    const manutencaoResult = await pool.query(updateManutencaoQuery, [status, id, empresaid]);
+  UPDATE manutencoes
+  SET 
+    status = $1::varchar,
+    motivo = CASE 
+      WHEN $1::varchar = 'nao_concluida' THEN $4::text
+      ELSE motivo
+    END
+  WHERE id = $2 AND empresaid = $3
+  RETURNING *;
+`;
+
+
+    const manutencaoResult = await pool.query(updateManutencaoQuery, [
+      status,
+      id,
+      empresaid,
+      motivo ?? null,
+    ]);
 
     if (manutencaoResult.rowCount === 0) {
       return res.status(400).json({ error: 'Erro ao atualizar status da manutenção.' });
     }
 
-    console.log(`🔄 Manutenção ${id} atualizada para status: ${status}`);
+    console.log(`🔄 Manutenção ${id} atualizada para status: ${status} (motivo=${motivo ?? 'null'})`);
 
+    // ✅ Só atualiza parâmetros quando "concluida"
     if (status === 'concluida') {
       console.log('📊 Atualizando parâmetros para manutenção:', id);
 
@@ -1821,10 +1828,10 @@ app.put('/manutencoes/:id', async (req, res) => {
       }
     }
 
-    res.status(200).json({ message: 'Manutenção concluída com sucesso!' });
+    return res.status(200).json({ message: 'Manutenção atualizada com sucesso!', manutencao: manutencaoResult.rows[0] });
   } catch (error) {
     console.error('❌ Erro ao atualizar manutenção:', error);
-    res.status(500).json({ error: 'Erro ao atualizar manutenção.' });
+    return res.status(500).json({ error: 'Erro ao atualizar manutenção.' });
   }
 });
 
@@ -1970,7 +1977,6 @@ app.put('/manutencoes/:id/parametros', async (req, res) => {
   }
 });
 
-
 app.post('/reset-status', async (req, res) => {
   const { empresaid } = req.body;
 
@@ -2086,8 +2092,6 @@ app.post('/reset-status', async (req, res) => {
   }
 });
 
-
-
 app.get('/ultima-manutencao', async (req, res) => {
   const { clienteId, diaSemana, empresaid } = req.query;
 
@@ -2190,7 +2194,6 @@ app.get('/ultima-manutencao', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar ou criar manutenção.' });
   }
 });
-
 
 // 🔹 Regista parâmetros de manutenção e gera notificação automática se necessário
 app.post('/manutencoes_parametros', async (req, res) => {
@@ -2330,7 +2333,6 @@ if (clienteId) {
   }
 });
 
-
 app.get('/manutencoes_parametros', async (req, res) => {
   const { manutencao_id, empresaid } = req.query;
 
@@ -2369,7 +2371,6 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
     res.status(500).json({ error: 'Erro ao buscar parâmetros da manutenção.' });
   }
 });
-
 
 app.post('/manutencoes/concluir', async (req, res) => {
   const { cliente_id, equipe_id, dia_semana, parametros, status, empresaid } = req.body;
@@ -2586,7 +2587,6 @@ app.get('/notificacoes', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar notificações.' });
   }
 });
-
 
 app.post('/notificacoes', async (req, res) => {
   const {

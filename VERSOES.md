@@ -1,4 +1,10 @@
 # 📘 Histórico de Versões — GESPOOL APP
+## 🟢 v0.9.0-notificacoes — 2025-12-31
+- Workflow completo de notificações (automáticas e manuais)
+- Suporte a assunto + mensagem
+- Mini-card e card completo estabilizados
+- Homes de Orçamentação, Contabilidade e Equipa Técnica
+- Build Android OK (debug)
 
 ## 🔵 Versão atual — pronta para commit
 - **Branch:** versao-estavel-gespool

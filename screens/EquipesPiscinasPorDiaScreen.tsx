@@ -22,9 +22,23 @@ type Cliente = {
   equipamentos_especiais: boolean;
   ultima_substituicao: string;
   status?: string;
+  motivo?: string | null;
 };
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
+
+const motivoIcon = (motivo?: string | null) => {
+  switch (motivo) {
+    case 'torneira_aberta':
+      return '🚰';
+    case 'motor_manual':
+      return '⏱️';
+    case 'cliente_ausente':
+      return '🚪';
+    default:
+      return '❗';
+  }
+};
 
 const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => {
   const { equipeId, equipeNome, diaSemana, empresaid } = route.params; // Recebe o empresaid
@@ -89,8 +103,6 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
     }
   };
 
-
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
@@ -133,7 +145,12 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
                 })
               }
             >
-              <Text style={styles.clientName}>{item.nome}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.clientName}>{item.nome}</Text>
+                {item.status === 'nao_concluida' && (
+                <Text style={styles.motivoIcon}>{motivoIcon(item.motivo)}</Text>
+                )}
+              </View>
               <Text style={styles.clientDetails}>Morada: {item.morada}</Text>
               <Text style={styles.clientDetails}>Telefone: {item.telefone}</Text>
             </TouchableOpacity>
@@ -219,6 +236,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  cardHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+motivoIcon: {
+  fontSize: 22,
+  marginLeft: 10,
+},
 });
 
 export default EquipesPiscinasPorDiaScreen;

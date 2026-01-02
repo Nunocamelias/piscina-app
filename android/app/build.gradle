@@ -75,6 +75,12 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+import groovy.json.JsonSlurper
+
+def packageJson = new JsonSlurper().parse(
+        file('../../package.json')
+)
+
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -86,8 +92,8 @@ android {
         applicationId "com.gespoolapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName packageJson.version
     }
     signingConfigs {
         debug {

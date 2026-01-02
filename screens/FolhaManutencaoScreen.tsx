@@ -704,41 +704,51 @@ const handleAnexarFoto = async () => {
     }
   };
 
-  const marcarNaoConcluida = async () => {
-    if (!manutencaoAtual || !manutencaoAtual.id) {
-      console.error('Manutenção atual inválida ou não encontrada:', manutencaoAtual);
-      Alert.alert('Erro', 'Manutenção atual não encontrada!');
-      return;
+  const marcarNaoConcluidaComMotivo = () => {
+  Alert.alert(
+    'Motivo da Não Conclusão',
+    'Escolhe a razão:',
+    [
+      { text: '🚰 Piscina a encher / torneira aberta', onPress: () => marcarNaoConcluida('torneira_aberta') },
+      { text: '⏱️ Motor em manual', onPress: () => marcarNaoConcluida('motor_manual') },
+      { text: '🚪 Cliente não estava / sem acesso', onPress: () => marcarNaoConcluida('cliente_ausente') },
+      { text: 'Cancelar', style: 'cancel' },
+    ]
+  );
+};
+
+  const marcarNaoConcluida = async (motivoEscolhido: string) => {
+  if (!manutencaoAtual?.id) {
+    Alert.alert('Erro', 'Manutenção atual não encontrada!');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${Config.API_URL}/manutencoes/${manutencaoAtual.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'nao_concluida',
+        motivo: motivoEscolhido, // ✅ usa a coluna existente "motivo"
+        empresaid,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Erro ao registrar manutenção não concluída.');
     }
 
-    try {
-      // Atualizar manutenção no backend para "não concluída"
-      const response = await fetch(`${Config.API_URL}/manutencoes/${manutencaoAtual.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'nao_concluida', // Novo status para indicar que a manutenção não foi feita
-          empresaid,
-        }),
-      });
+    setManutencaoAtual((prev) =>
+      prev ? { ...prev, status: 'nao_concluida', motivo: motivoEscolhido } : prev
+    );
 
-      if (!response.ok) {
-        const responseData = await response.json();
-        throw new Error(responseData.error || 'Erro ao registrar manutenção não concluída.');
-      }
-
-      // Atualiza o estado da manutenção para "não concluída"
-      setManutencaoAtual((prev) => (prev ? { ...prev, status: 'nao_concluida' } : prev));
-
-      Alert.alert('Aviso', 'Manutenção marcada como não concluída.');
-
-      // Retorna para a tela anterior e sinaliza o cliente como "não concluído" (vermelho)
-      navigation.goBack();
-    } catch (error) {
-      console.error('Erro ao marcar manutenção como não concluída:', error);
-      Alert.alert('Erro', 'Não foi possível registrar a manutenção como não concluída.');
-    }
-  };
+    navigation.goBack();
+  } catch (e) {
+    console.error('Erro ao marcar manutenção como não concluída:', e);
+    Alert.alert('Erro', 'Não foi possível registrar a manutenção como não concluída.');
+  }
+};
 
 
 
@@ -1161,26 +1171,26 @@ return (
 </TouchableOpacity>
 
 
-        {/* 🔹 Novo Botão "Manutenção Não Concluída" */}
-  <TouchableOpacity
-    style={[
-      styles.buttonNaoConcluida,
-      manutencaoAtual?.status === 'nao_concluida' && styles.opacityHalf,
-    ]}
-    disabled={manutencaoAtual?.status === 'nao_concluida'}
-    onPress={() => {
-      Alert.alert(
-        'Marcar como Não Concluída',
-        'Tem certeza de que esta manutenção não foi concluída?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Confirmar', onPress: marcarNaoConcluida },
-        ]
-      );
-    }}
-  >
-    <Text style={styles.buttonText}>Manutenção Não Concluída</Text>
-  </TouchableOpacity>
+        {/* 🔹 Botão "Manutenção Não Concluída" */}
+<TouchableOpacity
+  style={[
+    styles.buttonNaoConcluida,
+    manutencaoAtual?.status === 'nao_concluida' && styles.opacityHalf,
+  ]}
+  disabled={manutencaoAtual?.status === 'nao_concluida'}
+  onPress={() => {
+    Alert.alert(
+      'Marcar como Não Concluída',
+      'Tem certeza de que esta manutenção não foi concluída?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Confirmar', onPress: () => marcarNaoConcluidaComMotivo() },
+      ]
+    );
+  }}
+>
+  <Text style={styles.buttonText}>Manutenção Não Concluída</Text>
+</TouchableOpacity>
 </View>
 
     }
