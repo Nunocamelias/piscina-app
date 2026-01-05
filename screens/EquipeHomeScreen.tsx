@@ -6,11 +6,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 
 
-type RootStackParamList = {
-  EquipeHome: { equipeId: number; equipeNome: string };
-  EquipesListaManutencoes: { equipeId: number; equipeNome: string };
-};
-
 // 👇 solução simples: não tipar a navegação a fundo neste ecrã
 type Props = StackScreenProps<any, any>;
 
@@ -140,7 +135,7 @@ const styles = StyleSheet.create({
     elevation: 10, // ← dá profundidade real no Android
   },
   buttonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#000',
   },

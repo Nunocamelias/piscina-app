@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   },
   versionText: {
     position: 'absolute',
-    bottom: 20,          // 👈 aqui controlas a altura
+    bottom: 30,          // 👈 aqui controlas a altura
     alignSelf: 'center',
     fontSize: 12,
     color: '#666',

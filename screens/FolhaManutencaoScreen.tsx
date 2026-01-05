@@ -8,6 +8,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import moment from 'moment';
+import { calcularISL, sugerirAlvosPorISL, type ISLResultado } from '../utils/isl';
+
+
 
 export const getAccessibleUri = async (uri: string): Promise<string | null> => {
   if (uri.startsWith('content://')) {
@@ -44,6 +47,7 @@ type Parametro = {
   bloqueado?: boolean;
   status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel';
   notificacaoEnviada?: boolean;
+  requeridoHoje?: boolean;
 };
 
 type ItemManutencao = {
@@ -73,6 +77,7 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
     cobertura,
     bomba_calor,
     equipamentos_especiais,
+    eletrolise_sal,
     ultima_substituicao,
   } = route.params as any;
 
@@ -87,7 +92,27 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   const [anomaliaDescricao, setAnomaliaDescricao] = useState('');
   const [valorServicoExtra, setValorServicoExtra] = useState('');
   const [imagensAnexadas, setImagensAnexadas] = useState<string[]>([]);
+  const [islExpanded, setIslExpanded] = useState(false);
+  const [islPH, setIslPH] = useState('');
+  const [islAlc, setIslAlc] = useState('');
+  const [islDur, setIslDur] = useState('');
+  const [islTemp, setIslTemp] = useState('');
+  const [islTds, setIslTds] = useState(''); // opcional
+  const [islSugestao, setIslSugestao] = useState<{ phAlvo: number; alcAlvo: number } | null>(null);
+  const [islUltimoRegisto, setIslUltimoRegisto] = useState<{
+  created_at: string;
+  ph: number;
+  alcalinidade: number;
+  dureza: number;
+  temperatura: number;
+  tds?: number;
+  isl: number;
+  indicacao: string;
+} | null>(null);
+
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
+
+
   // 🔹 Função para buscar o empresaid
   const fetchEmpresaid = useCallback(async () => {
   try {
@@ -113,6 +138,89 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
 useEffect(() => {
   fetchEmpresaid();
 }, [fetchEmpresaid]); // ✅ Agora está correto
+
+const [islResultado, setIslResultado] = useState<null | {
+  isl: number;
+  D: number; A: number; T: number; S: number;
+  indicacao: string;
+}>(null);
+
+const onCalcularISL = () => {
+  const res = calcularISL({
+    pH: islPH,
+    alcalinidade: islAlc,
+    dureza: islDur,
+    temperatura: islTemp,
+    tds: islTds ? islTds : 0,
+  });
+
+  if (!Number.isFinite(res.isl)) {
+    Alert.alert('Erro', 'Preenche pH, Alcalinidade, Dureza e Temperatura para calcular o ISL.');
+    return;
+  }
+
+  setIslResultado(res);
+  setIslSugestao(sugerirAlvosPorISL(res.isl));
+};
+
+const onGuardarISL = async () => {
+  try {
+    if (!empresaid || !clienteId || !islResultado) {
+      Alert.alert('Erro', 'Faltam dados para guardar o ISL.');
+      return;
+    }
+
+    const payload = {
+      empresaid,
+      cliente_id: clienteId,
+      manutencao_id: manutencaoAtual?.id ?? null,
+      ph: Number(islPH),
+      alcalinidade: Number(islAlc),
+      dureza: Number(islDur),
+      temperatura: Number(islTemp),
+      tds: islTds ? Number(islTds) : null,
+      isl: islResultado.isl,
+      indicacao: islResultado.indicacao,
+    };
+
+    console.log('📤 A gravar ISL:', payload);
+
+    const resp = await fetch(`${Config.API_URL}/isl`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await resp.json().catch(() => null);
+    console.log('📥 Resposta /isl:', resp.status, data);
+
+    if (!resp.ok) {
+      throw new Error(data?.error || 'Erro ao guardar ISL.');
+    }
+
+    // ✅ Atualiza o estado local para a UI mostrar já o “último ISL”
+    const createdAt =
+      data?.created_at || data?.registo?.created_at || new Date().toISOString();
+
+    setIslUltimoRegisto({
+      created_at: createdAt,
+      ph: Number(islPH),
+      alcalinidade: Number(islAlc),
+      dureza: Number(islDur),
+      temperatura: Number(islTemp),
+      tds: islTds ? Number(islTds) : undefined,
+      isl: islResultado.isl,
+      indicacao: islResultado.indicacao,
+    });
+
+    Alert.alert('Sucesso', 'ISL guardado com sucesso!');
+  } catch (e: any) {
+    console.error('❌ Erro ao guardar ISL:', e?.message || e);
+    Alert.alert('Erro', e?.message || 'Não foi possível guardar o ISL.');
+  }
+};
+
+
 
 // 🔹 Função para buscar os parâmetros químicos
 const fetchParametros = useCallback(async () => {
@@ -146,58 +254,116 @@ useEffect(() => {
 }, [userEmpresaid, fetchParametros]); // ✅ Agora o ESLint não reclama
 
   //  FUNÇÃO DE CARREGAMENTO DA MANUTENÇÃO (Coloque antes do useFocusEffect)
-  const fetchDadosManutencao = useCallback(async () => {
-    if (!clienteId || !diaSemana || !empresaid) {
-      console.warn('⚠️ Cliente ID, Dia da Semana ou Empresaid não definidos.');
-      return;
+const fetchDadosManutencao = useCallback(async () => {
+  if (!clienteId || !diaSemana || !empresaid) {
+    console.warn('⚠️ Cliente ID, Dia da Semana ou Empresaid não definidos.');
+    return;
+  }
+
+  try {
+    console.log('📡 Buscando dados do cliente...');
+    const clienteResponse = await fetch(
+      `${Config.API_URL}/clientes/${clienteId}?empresaid=${empresaid}`
+    );
+
+    if (!clienteResponse.ok) {
+      throw new Error('Erro ao buscar dados do cliente.');
     }
+
+    const clienteData = await clienteResponse.json();
+    setCliente(clienteData);
+    console.log('✅ Dados do cliente carregados:', clienteData);
+
+    // ✅ Buscar último ISL do cliente (independente da manutenção)
     try {
-      console.log('📡 Buscando dados do cliente...');
-      const clienteResponse = await fetch(`${Config.API_URL}/clientes/${clienteId}?empresaid=${empresaid}`);
-      if (!clienteResponse.ok) {
-        throw new Error('Erro ao buscar dados do cliente.');
-      }
-      const clienteData = await clienteResponse.json();
-      setCliente(clienteData);
-      console.log('✅ Dados do cliente carregados:', clienteData);
-      console.log('📡 Buscando dados de manutenção...');
-      const manutencaoResponse = await fetch(
-        `${Config.API_URL}/manutencao-atual?clienteId=${clienteId}&diaSemana=${diaSemana}&empresaid=${empresaid}`
+      console.log('📡 Buscando último ISL do cliente...');
+      const islResp = await fetch(
+        `${Config.API_URL}/isl/ultimo?empresaid=${empresaid}&cliente_id=${clienteId}`
       );
-      if (!manutencaoResponse.ok) {
+
+      if (islResp.ok) {
+  const islData = await islResp.json();
+
+  setIslUltimoRegisto(islData || null);
+
+  // ✅ Recalcula a sugestão SEM precisar guardar na DB
+  if (islData?.isl !== undefined && islData?.isl !== null) {
+    const sugestao = sugerirAlvosPorISL(Number(islData.isl));
+    setIslSugestao(sugestao);
+  } else {
+    setIslSugestao(null);
+  }
+
+  console.log('✅ Último ISL carregado:', islData);
+} else {
+  console.warn('⚠️ Falha ao buscar ISL. Status:', islResp.status);
+  setIslUltimoRegisto(null);
+  setIslSugestao(null);
+}
+
+    } catch (e) {
+  console.warn('⚠️ Erro ao buscar ISL:', e);
+  setIslUltimoRegisto(null);
+  setIslSugestao(null);
+}
+
+    console.log('📡 Buscando dados de manutenção...');
+    const manutencaoResponse = await fetch(
+      `${Config.API_URL}/manutencao-atual?clienteId=${clienteId}&diaSemana=${diaSemana}&empresaid=${empresaid}`
+    );
+
+    if (!manutencaoResponse.ok) {
       throw new Error('Erro ao buscar dados da manutenção.');
-      }
-      const manutencaoData = await manutencaoResponse.json();
-      setManutencaoAtual(manutencaoData.manutencao || null);
-      console.log('✅ Dados da manutenção carregados:', manutencaoData.manutencao);
-      if (manutencaoData.manutencao?.id && Array.isArray(manutencaoData.parametros)) {
-        const parametrosAtivos = manutencaoData.parametros.map((parametro: any) => ({
+    }
+
+    const manutencaoData = await manutencaoResponse.json();
+    setManutencaoAtual(manutencaoData.manutencao || null);
+    console.log('✅ Dados da manutenção carregados:', manutencaoData.manutencao);
+
+    if (manutencaoData.manutencao?.id && Array.isArray(manutencaoData.parametros)) {
+      const parametrosAtivos = manutencaoData.parametros.map((parametro: any) => {
+        const nome = String(parametro.parametro || '').trim();
+
+        const requeridoHoje = nome === 'pH' || nome === 'Cloro Livre em ppm';
+
+        return {
           ...parametro,
-          bloqueado: ['aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel'].includes(parametro.status),
+          requeridoHoje, // ✅ NOVO
+          bloqueado: ['aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel'].includes(
+            parametro.status
+          ),
           resultado:
             parametro.status === 'nao ajustavel'
-              ? { resultado: 'Foi solicitada assistência à administração com sucesso', quantidade: 0, produto: null }
-              : parametro.resultado || null, // ✅ Mantém a mensagem correta se for "nao ajustavel"
-        }));
-        setParametrosQuimicos(parametrosAtivos);
-        console.log('✅ Parâmetros químicos ativos carregados:', parametrosAtivos);
-      } else {
-        console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
-        setParametrosQuimicos([]);
-      }
-    } catch (error) {
-      console.error(
-        '❌ Erro ao processar os parâmetros químicos:',
-        error instanceof Error ? error.message : String(error)
-      );
-      Alert.alert(
-        'Erro',
-        error instanceof Error
-          ? error.message
-          : 'Não foi possível carregar os dados. Verifique a conexão e tente novamente.'
-      );
+              ? {
+                  resultado: 'Foi solicitada assistência à administração com sucesso',
+                  quantidade: 0,
+                  produto: null,
+                }
+              : parametro.resultado || null,
+        };
+      });
+
+      setParametrosQuimicos(parametrosAtivos);
+      console.log('✅ Parâmetros químicos ativos carregados:', parametrosAtivos);
+    } else {
+      console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
+      setParametrosQuimicos([]);
     }
-  }, [clienteId, diaSemana, empresaid]);// ✅ Memoiza a função e evita recriações desnecessárias
+  } catch (error) {
+    console.error(
+      '❌ Erro ao processar os parâmetros químicos:',
+      error instanceof Error ? error.message : String(error)
+    );
+
+    Alert.alert(
+      'Erro',
+      error instanceof Error
+        ? error.message
+        : 'Não foi possível carregar os dados. Verifique a conexão e tente novamente.'
+    );
+  }
+}, [clienteId, diaSemana, empresaid]);
+
 
 useFocusEffect(
   useCallback(() => {
@@ -385,8 +551,6 @@ const registrarStatusParametro = async (
   };
 };
 
-
-
 const getCorData = (data: string) => {
   if (!data) {
     return '#FFF';// Branco por padrão
@@ -549,8 +713,6 @@ const handleAnexarFoto = async () => {
   }
 };
 
-
-
   const handleEnviarRelatorio = async () => {
   if (!anomaliaDescricao.trim()) {
     Alert.alert('Erro', 'Por favor, descreva a anomalia antes de enviar.');
@@ -642,67 +804,94 @@ const handleAnexarFoto = async () => {
 
 
   const concluirManutencao = async () => {
-    if (!manutencaoAtual || !manutencaoAtual.id) {
-      console.error('❌ Manutenção atual inválida ou não encontrada:', manutencaoAtual);
-      Alert.alert('Erro', 'Manutenção atual não encontrada!');
-      return;
-    }
-    // 🔹 Filtrar apenas os parâmetros ativos (que precisam de validação)
-    const parametrosAtivos = parametrosQuimicos.filter(
-      (parametro) => parametro.status !== 'nao ajustavel' // Parâmetros não ajustáveis não precisam de validação
+  if (!manutencaoAtual || !manutencaoAtual.id) {
+    console.error('❌ Manutenção atual inválida ou não encontrada:', manutencaoAtual);
+    Alert.alert('Erro', 'Manutenção atual não encontrada!');
+    return;
+  }
+
+  // ✅ 1) Só validar o que é requerido HOJE
+  const parametrosParaValidar = parametrosQuimicos.filter(
+    (p) => p.requeridoHoje && p.status !== 'nao ajustavel'
+  );
+
+  console.log('📌 Parâmetros para validar (requeridosHoje):', parametrosParaValidar);
+
+  // ✅ 2) Validação forte: tem de ter valor_atual + status final
+  const faltas = parametrosParaValidar.filter((p) => {
+    const valorVazio =
+      p.valor_atual === undefined ||
+      p.valor_atual === null ||
+      String(p.valor_atual).trim() === '';
+
+    const statusOk =
+      p.status === 'aplicado' ||
+      p.status === 'sem estoque' ||
+      p.status === 'nao necessario' ||
+      p.status === 'nao ajustavel';
+
+    return valorVazio || !statusOk;
+  });
+
+  if (faltas.length > 0) {
+    const nomes = faltas.map((p) => `• ${p.parametro}`).join('\n');
+    Alert.alert(
+      'Erro',
+      `Faltam parâmetros obrigatórios para concluir hoje:\n\n${nomes}\n\n(Preenche o valor atual e valida o parâmetro.)`
     );
-    console.log('📊 Parâmetros ativos:', parametrosAtivos);
-    // 🔹 Verificar se todos os parâmetros ativos passaram por um dos botões de validação
-    const parametrosValidados = parametrosAtivos.filter(
-      (parametro) =>
-        parametro.status === 'aplicado' ||
-        parametro.status === 'sem estoque' ||
-        parametro.status === 'nao necessario'
+    return;
+  }
+
+  // ✅ 3) Enviar para o backend apenas os que foram validados (podes enviar todos, mas assim fica limpo)
+  const parametrosParaEnviar = parametrosQuimicos
+    .filter(
+      (p) =>
+        p.status === 'aplicado' ||
+        p.status === 'sem estoque' ||
+        p.status === 'nao necessario' ||
+        p.status === 'nao ajustavel'
+    )
+    .map((p) => ({
+      parametro: p.parametro,
+      valor_atual: p.valor_atual,
+      produto_usado: p.resultado?.produto || null,
+      quantidade_usada: p.resultado?.quantidade || 0,
+    }));
+
+  try {
+    const response = await fetch(`${Config.API_URL}/manutencoes/${manutencaoAtual.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'concluida',
+        parametros: parametrosParaEnviar,
+        empresaid,
+      }),
+    });
+
+    if (!response.ok) {
+      const responseData = await response.json();
+      throw new Error(responseData.error || 'Erro ao concluir manutenção.');
+    }
+
+    setManutencaoAtual((prev) => (prev ? { ...prev, status: 'concluida' } : prev));
+
+    setParametrosQuimicos((prev) =>
+      prev.map((p) => ({
+        ...p,
+        bloqueado: true,
+      }))
     );
-    console.log('✅ Parâmetros validados:', parametrosValidados);
-    if (parametrosValidados.length !== parametrosAtivos.length) {
-      Alert.alert(
-        'Erro',
-        'Todos os parâmetros ativos devem ser validados antes de concluir a manutenção.'
-      );
-      return;
-    }
-    try {
-      // 🔹 Atualizar manutenção no backend
-      const response = await fetch(`${Config.API_URL}/manutencoes/${manutencaoAtual.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'concluida',
-          parametros: parametrosValidados.map((parametro) => ({
-            parametro: parametro.parametro,
-            valor_atual: parametro.valor_atual,
-            produto_usado: parametro.resultado?.produto || null,
-            quantidade_usada: parametro.resultado?.quantidade || 0,
-          })),
-          empresaid, // Envia o ID da empresa para validação no backend
-        }),
-      });
-      if (!response.ok) {
-        const responseData = await response.json();
-        throw new Error(responseData.error || 'Erro ao concluir manutenção.');
-      }
-      // ✅ Atualiza o estado da manutenção para "concluida"
-      setManutencaoAtual((prev) => (prev ? { ...prev, status: 'concluida' } : prev));
-      // ✅ Bloqueia todos os parâmetros após a conclusão
-      setParametrosQuimicos((prev) =>
-        prev.map((parametro) => ({
-          ...parametro,
-          bloqueado: true, // Agora não pode mais ser editado
-        }))
-      );
-      Alert.alert('Sucesso', 'Manutenção concluída com sucesso!');
-      navigation.goBack();
-    } catch (error) {
-      console.error('❌ Erro ao concluir manutenção:', error);
-      Alert.alert('Erro', 'Não foi possível concluir a manutenção.');
-    }
-  };
+
+    Alert.alert('Sucesso', 'Manutenção concluída com sucesso!');
+    navigation.goBack();
+  } catch (error) {
+    console.error('❌ Erro ao concluir manutenção:', error);
+    Alert.alert('Erro', 'Não foi possível concluir a manutenção.');
+  }
+};
+
+
 
   const marcarNaoConcluidaComMotivo = () => {
   Alert.alert(
@@ -780,7 +969,142 @@ return (
             )}
           </View>
 
-         {/* Parâmetros Químicos */}
+         {/* Índice de Saturação (Langelier) */} 
+<View style={styles.section}>
+  <TouchableOpacity onPress={() => setIslExpanded(!islExpanded)}>
+    <Text style={styles.sectionTitle}>Índice de Saturação (Langelier)</Text>
+  </TouchableOpacity>
+
+  {islExpanded && (
+    <View style={styles.expandedContent}>
+      {/* pH */}
+      <Text style={styles.label}>pH</Text>
+      <View style={styles.parametroLinha}>
+        <TextInput
+          style={[styles.input, styles.inputPequeno]}
+          placeholder="Ex: 7.2"
+          keyboardType="decimal-pad"
+          value={islPH}
+          onChangeText={(t) =>
+            setIslPH(
+              t
+                .replace(',', '.')
+                .replace(/[^0-9.]/g, '')
+                .replace(/(\..*?)\..*/g, '$1')
+            )
+          }
+          placeholderTextColor="#888"
+        />
+      </View>
+
+      {/* Alcalinidade */}
+      <Text style={styles.label}>Alcalinidade (ppm)</Text>
+      <View style={styles.parametroLinha}>
+        <TextInput
+          style={[styles.input, styles.inputPequeno]}
+          placeholder="Ex: 100"
+          keyboardType="numeric"
+          value={islAlc}
+          onChangeText={(t) => setIslAlc(t.replace(/[^0-9]/g, ''))}
+          placeholderTextColor="#888"
+        />
+      </View>
+
+      {/* Dureza */}
+      <Text style={styles.label}>Dureza (ppm)</Text>
+      <View style={styles.parametroLinha}>
+        <TextInput
+          style={[styles.input, styles.inputPequeno]}
+          placeholder="Ex: 250"
+          keyboardType="numeric"
+          value={islDur}
+          onChangeText={(t) => setIslDur(t.replace(/[^0-9]/g, ''))}
+          placeholderTextColor="#888"
+        />
+      </View>
+
+      {/* Temperatura */}
+      <Text style={styles.label}>Temperatura (°C)</Text>
+      <View style={styles.parametroLinha}>
+        <TextInput
+          style={[styles.input, styles.inputPequeno]}
+          placeholder="Ex: 24"
+          keyboardType="decimal-pad"
+          value={islTemp}
+          onChangeText={(t) =>
+            setIslTemp(
+              t
+                .replace(',', '.')
+                .replace(/[^0-9.]/g, '')
+                .replace(/(\..*?)\..*/g, '$1')
+            )
+          }
+          placeholderTextColor="#888"
+        />
+      </View>
+
+      {/* TDS opcional */}
+      <Text style={styles.label}>TDS (ppm) — opcional</Text>
+      <View style={styles.parametroLinha}>
+        <TextInput
+          style={[styles.input, styles.inputPequeno]}
+          placeholder="Ex: 1000"
+          keyboardType="numeric"
+          value={islTds}
+          onChangeText={(t) => setIslTds(t.replace(/[^0-9]/g, ''))}
+          placeholderTextColor="#888"
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.buttonCalcular,
+            (!islPH || !islAlc || !islDur || !islTemp) && styles.buttonDisabled,
+          ]}
+          onPress={onCalcularISL}
+          disabled={!islPH || !islAlc || !islDur || !islTemp}
+        >
+          <Text style={styles.buttonText}>Calcular ISL</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Resultado */}
+      {islResultado && (
+        <View style={{ marginTop: 10 }}>
+          <Text style={styles.details}>📌 ISL: {islResultado.isl}</Text>
+          <Text style={styles.details}>🧭 {islResultado.indicacao}</Text>
+
+          <Text style={styles.details}>
+            (D={islResultado.D} | A={islResultado.A} | T={islResultado.T} | S={islResultado.S})
+          </Text>
+
+          {islSugestao && (
+            <Text style={styles.details}>
+              🎯 Sugestão alvo: pH {islSugestao.phAlvo} | Alcalinidade {islSugestao.alcAlvo} ppm
+            </Text>
+          )}
+
+          {/* ✅ Guardar ISL (Opção A) */}
+          <TouchableOpacity
+            style={[
+              styles.buttonCalcular,
+              // bloqueia se faltar IDs essenciais (evita POST sem cliente/empresa)
+              (!empresaid || !clienteId) && styles.buttonDisabled,
+            ]}
+            onPress={onGuardarISL}
+            disabled={!empresaid || !clienteId}
+          >
+            <Text style={styles.buttonText}>Guardar ISL</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  )}
+</View>
+
+
+
+
+{/* Parâmetros Químicos */}
 <View style={styles.section}>
   <TouchableOpacity onPress={() => setIsParametrosExpanded(!isParametrosExpanded)}>
     <Text style={styles.sectionTitle}>
@@ -789,269 +1113,300 @@ return (
   </TouchableOpacity>
 
   {isParametrosExpanded && parametrosQuimicos.length > 0 ? (
-    parametrosQuimicos.map((item, index) => (
-      <View key={`${item.parametro}-${index}`} style={styles.parametroContainer}>
-        {/* Nome do Parâmetro */}
-        <Text style={styles.parametroTitulo}>{item.parametro}</Text>
-        <View style={styles.parametroLinha}>
-          {/* Último Valor */}
-          <TextInput
-            style={[styles.input, styles.inputPequeno]}
-            placeholder="Último Valor"
-            value={
-              item.valor_ultimo !== undefined && item.valor_ultimo !== null
-                ? item.valor_ultimo.toString()
-                : 'N/A'
-            }
-            editable={false} // Apenas leitura
-          />
+    parametrosQuimicos.map((item, index) => {
+      const isPH = item.parametro === 'pH';
+      const isAlc = item.parametro === 'Alcalinidade';
 
-          {/* Valor Atual */}
-          <TextInput
-  style={[styles.input, styles.inputPequeno]}
-  placeholder="Valor Atual"
-  keyboardType="decimal-pad"
-  editable={!isSomenteLeitura && !item.bloqueado} // Editável apenas se desbloqueado
-  value={item.valor_atual?.toString() || ''} // Exibe valor como string
-  onChangeText={(text: string) => {
-    if (!isSomenteLeitura && !item.bloqueado) {
-      // Permite apenas números e um único ponto
-      const formattedText = text
-        .replace(/[^0-9.]/g, '') // Remove caracteres inválidos
-        .replace(/(\..*?)\..*/g, '$1'); // Permite apenas um ponto decimal
+      const alvoISL =
+        isPH ? islSugestao?.phAlvo :
+        isAlc ? islSugestao?.alcAlvo :
+        null;
 
-      setParametrosQuimicos((prev) =>
-        prev.map((parametro) =>
-          parametro.parametro === item.parametro
-            ? { ...parametro, valor_atual: formattedText } // Armazena como string
-            : parametro
-        )
-      );
-    }
-  }}
-  placeholderTextColor="#888"
-/>
+      const islCreatedAt = islUltimoRegisto?.created_at;
 
-          {/* Botão Calcular */}
-<TouchableOpacity
-  style={[
-    styles.buttonCalcular,
-    (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled, // Bloqueia se bloqueado
-  ]}
-  onPress={() => {
-    if (!isSomenteLeitura && !item.bloqueado) {
-      const resultado = calcularProduto(item, volume);
-      setParametrosQuimicos((prev) =>
-        prev.map((parametro) =>
-          parametro.parametro === item.parametro
-            ? { ...parametro, resultado }
-            : parametro
-        )
-      );
-    }
-  }}
-  disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual} // Desabilita o botão
->
-  <Text style={styles.buttonText}>Calcular</Text>
-</TouchableOpacity>
+      const islValido =
+        !!islCreatedAt &&
+        Date.now() - new Date(islCreatedAt).getTime() <= 90 * 24 * 60 * 60 * 1000;
 
-        </View>
+      const mostrarAlvoISL =
+        (isPH || isAlc) && alvoISL !== null && islValido;
 
-        {/* Mensagem do Resultado */}
-{item.resultado && (
-  <Text
-    style={[
-      styles.resultado,
-      item.status === 'aplicado'
-        ? styles.resultadoVerde
-        : item.status === 'sem estoque'
-        ? styles.resultadoAmarelo
-        : item.resultado.resultado.includes('Dentro do intervalo ideal')
-        ? styles.resultadoIdeal
-        : styles.resultadoAdicionar,
-    ]}
-  >
-    {item.status === 'aplicado'
-      ? `Foi adicionado ${item.resultado.quantidade}kg de ${item.resultado.produto}`
-      : item.status === 'sem estoque'
-      ? `Na próxima semana adicionar ${item.resultado.quantidade}kg de ${item.resultado.produto}`
-      : item.resultado.resultado}
-  </Text>
-)}
-{/* Botão Enviar Notificação */}
-{item.resultado?.resultado === 'Não é possível diminuir este parâmetro.' && !item.notificacaoEnviada && (
-  <TouchableOpacity
-    style={styles.notifyButton}
-    onPress={() => {
-      console.log("🔄 Botão 'Enviar Notificação' pressionado para o parâmetro:", item.parametro);
+      return (
+        <View key={`${item.parametro}-${index}`} style={styles.parametroContainer}>
+          {/* Nome do Parâmetro */}
+          <Text style={styles.parametroTitulo}>{item.parametro}</Text>
 
-      Alert.alert(
-        'Confirmação',
-        'Tem certeza de que deseja enviar esta notificação à administração?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Enviar',
-            onPress: async () => {
-              try {
-                const storedEmpresaid = await AsyncStorage.getItem('empresaid');
-                if (!storedEmpresaid) {
-                  Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
-                  return;
-                }
-
-                const parsedEmpresaid = parseInt(storedEmpresaid, 10);
-                if (isNaN(parsedEmpresaid)) {
-                  Alert.alert('Erro', 'Empresaid inválido. Faça login novamente.');
-                  return;
-                }
-
-                console.log('🔄 Enviando notificação para o backend...');
-
-                // Enviar a notificação para a administração
-                await axios.post(`${Config.API_URL}/notificacoes`, {
-                  clienteId,
-                  parametro: item.parametro,
-                  assunto: `Alerta parâmetro não ajustável: ${item.parametro}`,
-                  mensagem: 'Não é possível diminuir este parâmetro. Ação necessária.',
-                  empresaid: parsedEmpresaid,
-                });
-
-                console.log('✅ Notificação enviada com sucesso!');
-
-                // ✅ Agora atualizamos o status no backend para "nao ajustavel"
-                console.log("🔄 Atualizando status para 'nao ajustavel' no backend...");
-                await registrarStatusParametro(item, 'nao ajustavel');
-
-                Alert.alert('Sucesso', 'Notificação enviada à administração.');
-
-                // Atualiza o estado para bloquear o botão e impedir alterações
-                setParametrosQuimicos((prev) =>
-                  prev.map((param) =>
-                    param.parametro === item.parametro
-                      ? {
-                          ...param,
-                          notificacaoEnviada: true,
-                          bloqueado: true, // Impede novas alterações
-                          resultado: {
-                            ...param.resultado,
-                            resultado: 'Foi solicitada assistência à administração com sucesso',
-                          },
-                        }
-                      : param
-                  )
-                );
-              } catch (error) {
-                console.error('❌ Erro ao enviar notificação:', error);
-                Alert.alert('Erro', 'Não foi possível enviar a notificação.');
-              }
-            },
-          },
-        ]
-      );
-    }}
-  >
-    <Text style={styles.notifyButtonText}>Enviar Notificação à Administração</Text>
-  </TouchableOpacity>
-)}
-
-{/* Botões de Ação */}
-{!isSomenteLeitura &&
-  item.resultado?.resultado !== 'Dentro do intervalo ideal' &&
-  item.resultado?.produto &&
-  !item.bloqueado && (
-    <View style={styles.actionButtons}>
-      {/* Botão Produto Aplicado */}
-      <TouchableOpacity
-        style={styles.buttonAplicado}
-        onPress={() => {
-          Alert.alert(
-            'Confirmação',
-            `Confirma aplicação de ${item.resultado?.produto}?`,
-            [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Confirmar',
-                onPress: () => {
-                  registrarStatusParametro(item, 'aplicado');
-                  setParametrosQuimicos((prev) =>
-                    prev.map((parametro) =>
-                      parametro.parametro === item.parametro
-                        ? { ...parametro, bloqueado: true }
-                        : parametro
-                    )
-                  );
-                },
-              },
-            ]
-          );
-        }}
-      >
-        <Text style={styles.buttonText}>Produto Aplicado</Text>
-      </TouchableOpacity>
-
-      {/* Botão Produto sem Stock */}
-      <TouchableOpacity
-        style={styles.buttonSemEstoque}
-        onPress={() => {
-          Alert.alert(
-            'Confirmação',
-            `Confirma que está sem stock de ${item.resultado?.produto}?`,
-            [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Confirmar',
-                onPress: () => {
-                  registrarStatusParametro(item, 'sem estoque');
-                  setParametrosQuimicos((prev) =>
-                    prev.map((parametro) =>
-                      parametro.parametro === item.parametro
-                        ? { ...parametro, bloqueado: true }
-                        : parametro
-                    )
-                  );
-                },
-              },
-            ]
-          );
-        }}
-      >
-        <Text style={styles.buttonText}>Sem Stock</Text>
-      </TouchableOpacity>
-    </View>
-  )}
-
-
-
-        {/* Botão Validar Dentro do Intervalo Ideal */}
-        {!isSomenteLeitura &&
-          item.resultado?.resultado === 'Dentro do intervalo ideal' &&
-          !item.bloqueado && (
-            <TouchableOpacity
-              style={styles.buttonValidar}
-              onPress={() => {
-                Alert.alert(
-                  'Confirmação',
-                  `Confirma que o valor está dentro do intervalo ideal para ${item.parametro}?`,
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Confirmar',
-                      onPress: () => {
-                        registrarStatusParametro(item, 'nao necessario');
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.buttonText}>Validar</Text>
-            </TouchableOpacity>
+          {/* 🎯 Alvo ISL (Opção B) */}
+          {mostrarAlvoISL && (
+            <>
+              <Text style={styles.details}>
+                🎯 Alvo ISL: {alvoISL}{isAlc ? ' ppm' : ''}
+              </Text>
+              <Text style={styles.details}>
+                🗓 ISL atualizado em: {new Date(islCreatedAt!).toLocaleDateString()}
+              </Text>
+            </>
           )}
-      </View>
-    ))
+
+          <View style={styles.parametroLinha}>
+            {/* Último Valor */}
+            <TextInput
+              style={[styles.input, styles.inputPequeno]}
+              placeholder="Último Valor"
+              value={
+                item.valor_ultimo !== undefined && item.valor_ultimo !== null
+                  ? item.valor_ultimo.toString()
+                  : 'N/A'
+              }
+              editable={false}
+            />
+
+            {/* Valor Atual */}
+            <TextInput
+              style={[styles.input, styles.inputPequeno]}
+              placeholder="Valor Atual"
+              keyboardType="decimal-pad"
+              editable={!isSomenteLeitura && !item.bloqueado}
+              value={item.valor_atual?.toString() || ''}
+              onChangeText={(text: string) => {
+                if (!isSomenteLeitura && !item.bloqueado) {
+                  const formattedText = text
+                    .replace(/[^0-9.]/g, '')
+                    .replace(/(\..*?)\..*/g, '$1');
+
+                  setParametrosQuimicos((prev) =>
+                    prev.map((parametro) =>
+                      parametro.parametro === item.parametro
+                        ? { ...parametro, valor_atual: formattedText }
+                        : parametro
+                    )
+                  );
+                }
+              }}
+              placeholderTextColor="#888"
+            />
+
+            {/* Botão Calcular */}
+            <TouchableOpacity
+              style={[
+                styles.buttonCalcular,
+                (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled,
+              ]}
+              onPress={() => {
+                if (!isSomenteLeitura && !item.bloqueado) {
+                  const resultado = calcularProduto(item, volume);
+                  setParametrosQuimicos((prev) =>
+                    prev.map((parametro) =>
+                      parametro.parametro === item.parametro
+                        ? { ...parametro, resultado }
+                        : parametro
+                    )
+                  );
+                }
+              }}
+              disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual}
+            >
+              <Text style={styles.buttonText}>Calcular</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mensagem do Resultado */}
+          {item.resultado && (
+            <Text
+              style={[
+                styles.resultado,
+                item.status === 'aplicado'
+                  ? styles.resultadoVerde
+                  : item.status === 'sem estoque'
+                  ? styles.resultadoAmarelo
+                  : item.resultado.resultado.includes('Dentro do intervalo ideal')
+                  ? styles.resultadoIdeal
+                  : styles.resultadoAdicionar,
+              ]}
+            >
+              {item.status === 'aplicado'
+                ? `Foi adicionado ${item.resultado.quantidade}kg de ${item.resultado.produto}`
+                : item.status === 'sem estoque'
+                ? `Na próxima semana adicionar ${item.resultado.quantidade}kg de ${item.resultado.produto}`
+                : item.resultado.resultado}
+            </Text>
+          )}
+
+          {/* Botão Enviar Notificação */}
+          {item.resultado?.resultado === 'Não é possível diminuir este parâmetro.' &&
+            !item.notificacaoEnviada && (
+              <TouchableOpacity
+                style={styles.notifyButton}
+                onPress={() => {
+                  console.log(
+                    "🔄 Botão 'Enviar Notificação' pressionado para o parâmetro:",
+                    item.parametro
+                  );
+
+                  Alert.alert(
+                    'Confirmação',
+                    'Tem certeza de que deseja enviar esta notificação à administração?',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Enviar',
+                        onPress: async () => {
+                          try {
+                            const storedEmpresaid = await AsyncStorage.getItem('empresaid');
+                            if (!storedEmpresaid) {
+                              Alert.alert('Erro', 'Empresaid não encontrado. Faça login novamente.');
+                              return;
+                            }
+
+                            const parsedEmpresaid = parseInt(storedEmpresaid, 10);
+                            if (isNaN(parsedEmpresaid)) {
+                              Alert.alert('Erro', 'Empresaid inválido. Faça login novamente.');
+                              return;
+                            }
+
+                            console.log('🔄 Enviando notificação para o backend...');
+
+                            await axios.post(`${Config.API_URL}/notificacoes`, {
+                              clienteId,
+                              parametro: item.parametro,
+                              assunto: `Alerta parâmetro não ajustável: ${item.parametro}`,
+                              mensagem: 'Não é possível diminuir este parâmetro. Ação necessária.',
+                              empresaid: parsedEmpresaid,
+                            });
+
+                            console.log('✅ Notificação enviada com sucesso!');
+
+                            console.log("🔄 Atualizando status para 'nao ajustavel' no backend...");
+                            await registrarStatusParametro(item, 'nao ajustavel');
+
+                            Alert.alert('Sucesso', 'Notificação enviada à administração.');
+
+                            setParametrosQuimicos((prev) =>
+                              prev.map((param) =>
+                                param.parametro === item.parametro
+                                  ? {
+                                      ...param,
+                                      notificacaoEnviada: true,
+                                      bloqueado: true,
+                                      resultado: {
+                                        ...param.resultado,
+                                        resultado: 'Foi solicitada assistência à administração com sucesso',
+                                      },
+                                    }
+                                  : param
+                              )
+                            );
+                          } catch (error) {
+                            console.error('❌ Erro ao enviar notificação:', error);
+                            Alert.alert('Erro', 'Não foi possível enviar a notificação.');
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.notifyButtonText}>Enviar Notificação à Administração</Text>
+              </TouchableOpacity>
+            )}
+
+          {/* Botões de Ação */}
+          {!isSomenteLeitura &&
+            item.resultado?.resultado !== 'Dentro do intervalo ideal' &&
+            item.resultado?.produto &&
+            !item.bloqueado && (
+              <View style={styles.actionButtons}>
+                {/* Produto Aplicado */}
+                <TouchableOpacity
+                  style={styles.buttonAplicado}
+                  onPress={() => {
+                    Alert.alert(
+                      'Confirmação',
+                      `Confirma aplicação de ${item.resultado?.produto}?`,
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        {
+                          text: 'Confirmar',
+                          onPress: () => {
+                            registrarStatusParametro(item, 'aplicado');
+                            setParametrosQuimicos((prev) =>
+                              prev.map((parametro) =>
+                                parametro.parametro === item.parametro
+                                  ? { ...parametro, bloqueado: true }
+                                  : parametro
+                              )
+                            );
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.buttonText}>Produto Aplicado</Text>
+                </TouchableOpacity>
+
+                {/* Sem Stock */}
+                <TouchableOpacity
+                  style={styles.buttonSemEstoque}
+                  onPress={() => {
+                    Alert.alert(
+                      'Confirmação',
+                      `Confirma que está sem stock de ${item.resultado?.produto}?`,
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        {
+                          text: 'Confirmar',
+                          onPress: () => {
+                            registrarStatusParametro(item, 'sem estoque');
+                            setParametrosQuimicos((prev) =>
+                              prev.map((parametro) =>
+                                parametro.parametro === item.parametro
+                                  ? { ...parametro, bloqueado: true }
+                                  : parametro
+                              )
+                            );
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.buttonText}>Sem Stock</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+          {/* Botão Validar Dentro do Intervalo Ideal */}
+          {!isSomenteLeitura &&
+            item.resultado?.resultado === 'Dentro do intervalo ideal' &&
+            !item.bloqueado && (
+              <TouchableOpacity
+                style={styles.buttonValidar}
+                onPress={() => {
+                  Alert.alert(
+                    'Confirmação',
+                    `Confirma que o valor está dentro do intervalo ideal para ${item.parametro}?`,
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Confirmar',
+                        onPress: () => {
+                          registrarStatusParametro(item, 'nao necessario');
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.buttonText}>Validar</Text>
+              </TouchableOpacity>
+            )}
+        </View>
+      );
+    })
   ) : null}
 </View>
+
 
 
 {/* Reportar Anomalias */}

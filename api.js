@@ -74,6 +74,7 @@ app.post('/clientes', async (req, res) => {
     cobertura,
     bomba_calor,
     equipamentos_especiais,
+    eletrolise_sal,
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
@@ -87,8 +88,8 @@ app.post('/clientes', async (req, res) => {
   try {
     const query = `
       INSERT INTO clientes 
-      (empresaid, nome, morada, localidade, codigo_postal, google_maps, email, telefone, info_acesso, comprimento, largura, profundidade_media, volume, tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais, ultima_substituicao, valor_manutencao, periodicidade, condicionantes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      (empresaid, nome, morada, localidade, codigo_postal, google_maps, email, telefone, info_acesso, comprimento, largura, profundidade_media, volume, tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais, eletrolise_sal, ultima_substituicao, valor_manutencao, periodicidade, condicionantes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING *;
     `;
 
@@ -110,6 +111,7 @@ app.post('/clientes', async (req, res) => {
       cobertura,
       bomba_calor,
       equipamentos_especiais,
+      eletrolise_sal,
       ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null, // ✅ esta é a correção
       parseFloat(valor_manutencao),
       sanitizeString(periodicidade),
@@ -212,6 +214,7 @@ app.put('/clientes/:id', async (req, res) => {
     cobertura,
     bomba_calor,
     equipamentos_especiais,
+    eletrolise_sal,
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
@@ -239,9 +242,9 @@ app.put('/clientes/:id', async (req, res) => {
       UPDATE clientes 
       SET nome = $1, morada = $2, localidade = $3, codigo_postal = $4, google_maps = $5, email = $6, telefone = $7, 
           info_acesso = $8, comprimento = $9, largura = $10, profundidade_media = $11, volume = $12, 
-          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, 
-          ultima_substituicao = $17, valor_manutencao = $18, periodicidade = $19, condicionantes = $20, updated_at = NOW()
-      WHERE id = $21 AND empresaid = $22
+          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17, 
+          ultima_substituicao = $18, valor_manutencao = $19, periodicidade = $20, condicionantes = $21, updated_at = NOW()
+      WHERE id = $22 AND empresaid = $23
       RETURNING *;
     `;
     const values = [
@@ -261,6 +264,7 @@ app.put('/clientes/:id', async (req, res) => {
       cobertura,
       bomba_calor,
       equipamentos_especiais,
+      eletrolise_sal,
       moment(ultima_substituicao).format('YYYY-MM-DD'),
       parseFloat(valor_manutencao),
       periodicidade,
@@ -606,6 +610,7 @@ app.get('/clientes-por-dia', async (req, res) => {
         c.cobertura,
         c.bomba_calor,
         c.equipamentos_especiais,
+        c.eletrolise_sal,
         c.ultima_substituicao,
         COALESCE(m.status, 'pendente') AS status,
         m.motivo
@@ -1349,6 +1354,7 @@ app.get('/clientes-por-equipe', async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar clientes.' });
   }
 });
+
 app.get('/detalhes-equipe', async (req, res) => {
   const { equipeId, empresaid } = req.query;
 
@@ -2369,6 +2375,112 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
   } catch (error) {
     console.error('Erro ao buscar parâmetros da manutenção:', error);
     res.status(500).json({ error: 'Erro ao buscar parâmetros da manutenção.' });
+  }
+});
+
+// Criar registo ISL - ISL (Langelier) 
+app.post('/isl', async (req, res) => {
+  console.log('📥 Dados recebidos no POST /isl:', req.body);
+  const {
+    empresaid,
+    cliente_id,
+    manutencao_id, // opcional
+    ph,
+    alcalinidade,
+    dureza,
+    temperatura,
+    tds,          // opcional
+    isl,
+    indicacao,
+  } = req.body;
+
+  // validações mínimas (mantém simples)
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+  if (ph === undefined || ph === null) return res.status(400).json({ error: 'ph é obrigatório.' });
+  if (alcalinidade === undefined || alcalinidade === null) return res.status(400).json({ error: 'alcalinidade é obrigatório.' });
+  if (dureza === undefined || dureza === null) return res.status(400).json({ error: 'dureza é obrigatório.' });
+  if (temperatura === undefined || temperatura === null) return res.status(400).json({ error: 'temperatura é obrigatório.' });
+  if (isl === undefined || isl === null) return res.status(400).json({ error: 'isl é obrigatório.' });
+  if (!indicacao) return res.status(400).json({ error: 'indicacao é obrigatório.' });
+
+  try {
+    const query = `
+      INSERT INTO isl_registos (
+        cliente_id, manutencao_id, empresaid,
+        ph, alcalinidade, dureza, temperatura, tds,
+        isl, indicacao
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *;
+    `;
+
+    const values = [
+      cliente_id,
+      manutencao_id || null,
+      empresaid,
+      ph,
+      alcalinidade,
+      dureza,
+      temperatura,
+      tds ?? null,
+      isl,
+      indicacao,
+    ];
+
+    const result = await pool.query(query, values);
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao criar ISL:', error);
+    return res.status(500).json({ error: 'Erro ao criar registo ISL.' });
+  }
+});
+
+// Último ISL por cliente
+app.get('/isl/ultimo', async (req, res) => {
+  const { empresaid, cliente_id } = req.query;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+
+  try {
+    const query = `
+      SELECT *
+      FROM isl_registos
+      WHERE empresaid = $1 AND cliente_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1;
+    `;
+    const result = await pool.query(query, [empresaid, cliente_id]);
+    return res.status(200).json(result.rows[0] || null);
+  } catch (error) {
+    console.error('❌ Erro ao buscar último ISL:', error);
+    return res.status(500).json({ error: 'Erro ao buscar último ISL.' });
+  }
+});
+
+// Histórico ISL por cliente (últimos N)
+app.get('/isl/historico', async (req, res) => {
+  const { empresaid, cliente_id, limit } = req.query;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+
+  const lim = Math.min(parseInt(limit || '20', 10) || 20, 200);
+
+  try {
+    const query = `
+      SELECT *
+      FROM isl_registos
+      WHERE empresaid = $1 AND cliente_id = $2
+      ORDER BY created_at DESC
+      LIMIT $3;
+    `;
+    const result = await pool.query(query, [empresaid, cliente_id, lim]);
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico ISL:', error);
+    return res.status(500).json({ error: 'Erro ao buscar histórico ISL.' });
   }
 });
 

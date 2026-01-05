@@ -37,6 +37,7 @@ type FormState = {
   cobertura: boolean;
   bomba_calor: boolean;
   equipamentos_especiais: boolean;
+  eletrolise_sal: boolean;
   ultima_substituicao: string;
   valor_manutencao: string;
   periodicidade: string;
@@ -65,6 +66,7 @@ const AddClienteScreen = ({ navigation }: Props) => {
     cobertura: false,
     bomba_calor: false,
     equipamentos_especiais: false,
+    eletrolise_sal: false,
     ultima_substituicao: '',
     valor_manutencao: '',
     periodicidade: '1',
@@ -386,6 +388,17 @@ useEffect(() => {
   }}
 />
 
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>
+    Eletrolise de Sal
+  </Text>
+  <Switch
+    value={form.eletrolise_sal}
+    onValueChange={(value) => handleChange('eletrolise_sal', value)}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.eletrolise_sal ? '#FFF' : '#777'}
+  />
+</View>
 
 <View style={styles.switchContainer}>
   <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>

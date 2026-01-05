@@ -310,6 +310,18 @@ if (loading || !form) {
         editable={isEditable}
         onChangeText={(value) => handleChange('ultima_substituicao', value)}
       />
+<View style={styles.switchContainer}>
+  <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>
+    Eletrolise de Sal
+  </Text>
+  <Switch
+    value={!!form.eletrolise_sal}
+    onValueChange={(value) => handleChange('eletrolise_sal', value)}
+    disabled={!isEditable}
+    trackColor={{ false: '#444', true: '#32CD32' }}
+    thumbColor={form.eletrolise_sal ? '#FFF' : '#777'}
+  />
+</View>
 
 <View style={styles.switchContainer}>
   <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>

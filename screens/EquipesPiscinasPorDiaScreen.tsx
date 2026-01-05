@@ -20,6 +20,7 @@ type Cliente = {
   cobertura: boolean;
   bomba_calor: boolean;
   equipamentos_especiais: boolean;
+  eletrolise_sal: boolean;
   ultima_substituicao: string;
   status?: string;
   motivo?: string | null;
@@ -138,6 +139,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
                   cobertura: item.cobertura,
                   bomba_calor: item.bomba_calor,
                   equipamentos_especiais: item.equipamentos_especiais,
+                  eletrolise_sal: item.eletrolise_sal,
                   ultima_substituicao: item.ultima_substituicao,
                   status: item.status,
                   equipeId,
