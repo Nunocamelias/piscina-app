@@ -157,7 +157,6 @@ app.get('/empresas/:id', async (req, res) => {
   }
 });
 
-
 app.put('/empresas/:id/update', async (req, res) => {
   const { id } = req.params;
   const { nome, email, telefone, endereco, logo, nif } = req.body;
@@ -348,6 +347,7 @@ app.delete('/clientes/:id', async (req, res) => {
       res.status(500).send('Erro ao apagar cliente.');
     }
 });
+
 app.post('/equipes', async (req, res) => {
     try {
       const {
@@ -416,7 +416,7 @@ app.post('/equipes', async (req, res) => {
     }
 });
 
-  // Endpoint GET para buscar todas as equipes de uma empresa
+// Endpoint GET para buscar todas as equipes de uma empresa
 app.get('/equipes', async (req, res) => {
     const { empresaid } = req.query;
 
@@ -471,7 +471,7 @@ app.get('/equipes/:id', async (req, res) => {
     }
 });
 
-  // Endpoint PUT para atualizar uma equipe
+// Endpoint PUT para atualizar uma equipe
 app.put('/equipes/:id', async (req, res) => {
   const {
     empresaid,
@@ -617,7 +617,8 @@ app.get('/clientes-por-dia', async (req, res) => {
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
       LEFT JOIN manutencoes m 
-        ON m.cliente_id = c.id 
+        ON m.cliente_id = c.id
+        AND m.equipe_id = $1 
         AND m.dia_semana = $2
         AND m.empresaid = $3
       WHERE a.equipeId = $1 
@@ -858,32 +859,46 @@ app.get('/clientes-disponiveis', async (req, res) => {
 });
 // Rota para obter contadores de clientes por dia da semana para uma equipe específica
 app.get('/contador-clientes', async (req, res) => {
-     const { equipeId, empresaid } = req.query;
+  const { equipeId, empresaid } = req.query;
 
-     if (!equipeId || !empresaid) {
-       return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
-     }
+  if (!equipeId || !empresaid) {
+    return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
+  }
 
-     try {
+  try {
     const query = `
-      SELECT 
+      WITH ultima_manutencao AS (
+        SELECT DISTINCT ON (m.cliente_id, m.dia_semana, m.equipe_id)
+          m.cliente_id,
+          m.dia_semana,
+          m.equipe_id,
+          m.status,
+          m.data_manutencao
+        FROM manutencoes m
+        WHERE m.empresaid = $2
+          AND m.equipe_id = $1
+        ORDER BY m.cliente_id, m.dia_semana, m.equipe_id, m.data_manutencao DESC
+      )
+      SELECT
         a.diasemana,
         COUNT(DISTINCT a.clienteid) AS total,
-        COALESCE(SUM(CASE WHEN m.status = 'concluida' THEN 1 ELSE 0 END), 0) AS concluidas,
-        COALESCE(SUM(CASE WHEN m.status = 'nao_concluida' THEN 1 ELSE 0 END), 0) AS nao_concluidas
+        COALESCE(SUM(CASE WHEN um.status = 'concluida' THEN 1 ELSE 0 END), 0) AS concluidas,
+        COALESCE(SUM(CASE WHEN um.status = 'nao_concluida' THEN 1 ELSE 0 END), 0) AS nao_concluidas
       FROM associados a
       INNER JOIN equipes e ON a.equipeid = e.id
-      LEFT JOIN manutencoes m ON a.clienteid = m.cliente_id 
-                              AND a.equipeid = m.equipe_id 
-                              AND a.diasemana = m.dia_semana
-      WHERE a.equipeid = $1 AND e.empresaid = $2
-      GROUP BY a.diasemana;
+      LEFT JOIN ultima_manutencao um
+        ON um.cliente_id = a.clienteid
+        AND um.equipe_id = a.equipeid
+        AND um.dia_semana = a.diasemana
+      WHERE a.equipeid = $1
+        AND e.empresaid = $2
+      GROUP BY a.diasemana
+      ORDER BY a.diasemana;
     `;
 
     const values = [equipeId, empresaid];
     const result = await pool.query(query, values);
 
-    // 🔹 Garante que a resposta é sempre um array, mesmo se não houver dados
     const contadores = result.rows.length > 0
       ? result.rows.map(row => ({
           diasemana: row.diasemana,
@@ -1460,29 +1475,37 @@ app.get('/manutencao-atual', async (req, res) => {
     }
 
     const parametrosQuery = `
-      SELECT 
-        mp.parametro,
-        mp.valor_atual,
-        mp.valor_ultimo,
-        mp.produto_usado,
-        mp.quantidade_usada,
-        mp.status,
-        pq.valor_minimo,
-        pq.valor_maximo,
-        pq.valor_alvo,
-        pq.produto_aumentar,
-        pq.produto_diminuir,
-        pq.dosagem_aumentar,
-        pq.dosagem_diminuir,
-        pq.volume_calculo,
-        pq.incremento_aumentar,
-        pq.incremento_diminuir
-      FROM manutencoes_parametros mp
-      JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
-      WHERE mp.manutencao_id = $1
-        AND pq.empresaid = $2
-        AND pq.ativo = TRUE;
-    `;
+  SELECT 
+    mp.parametro,
+    mp.valor_atual,
+    mp.valor_ultimo,
+    mp.produto_usado,
+    mp.quantidade_usada,
+    mp.status,
+    pq.valor_minimo,
+    pq.valor_maximo,
+    pq.valor_alvo,
+    pq.produto_aumentar,
+    pq.produto_diminuir,
+    pq.dosagem_aumentar,
+    pq.dosagem_diminuir,
+    pq.volume_calculo,
+    pq.incremento_aumentar,
+    pq.incremento_diminuir
+  FROM manutencoes_parametros mp
+  JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
+  WHERE mp.manutencao_id = $1
+    AND pq.empresaid = $2
+    AND pq.ativo = TRUE
+  ORDER BY
+    CASE
+      WHEN mp.parametro = 'Cloro Livre em ppm' THEN 1
+      WHEN mp.parametro = 'pH' THEN 2
+      WHEN mp.parametro = 'Alcalinidade' THEN 3
+      ELSE 99
+    END,
+    mp.parametro;
+`;
 
     const parametrosResult = await pool.query(parametrosQuery, [manutencao.id, empresaid]);
 
@@ -2015,8 +2038,10 @@ app.post('/reset-status', async (req, res) => {
     const clientesAtivosResult = await client.query(clientesAtivosQuery, [empresaid]);
 
     if (clientesAtivosResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Nenhuma manutenção encontrada para resetar.' });
-    }
+  await client.query('ROLLBACK');
+  return res.status(400).json({ error: 'Nenhuma manutenção encontrada para resetar.' });
+}
+
 
     const mensagensDeSucesso = [];
 
@@ -2077,12 +2102,7 @@ app.post('/reset-status', async (req, res) => {
     }
 
     // 🔹 Resetar os contadores para 0 após reset das manutenções
-    await client.query(`
-      UPDATE manutencoes
-      SET status = 'pendente'
-      WHERE empresaid = $1;
-    `, [empresaid]);
-
+  
     await client.query('COMMIT');
 
     res.status(200).json({
@@ -2203,11 +2223,41 @@ app.get('/ultima-manutencao', async (req, res) => {
 
 // 🔹 Regista parâmetros de manutenção e gera notificação automática se necessário
 app.post('/manutencoes_parametros', async (req, res) => {
-  const { manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, status, motivo, empresaid } = req.body;
+  const {
+    manutencao_id,
+    parametro,
+    valor_atual,
+    produto_usado,
+    quantidade_usada,
+    status,
+    motivo,
+    empresaid
+  } = req.body;
 
   // 🧩 Validação inicial
   if (!manutencao_id || !parametro || !empresaid) {
     return res.status(400).json({ error: 'Dados incompletos: manutenção, parâmetro ou empresaid ausente.' });
+  }
+
+  // ✅ Normaliza nome e valor (para validações e regras)
+  const nome = String(parametro || '').trim();
+  const valorNum =
+    valor_atual === undefined || valor_atual === null || valor_atual === ''
+      ? null
+      : Number(String(valor_atual).replace(',', '.'));
+
+  // ✅ HARD-STOPS (segurança) — adiciona (não substitui)
+  // Bloqueia apenas valores impossíveis/fora de escala
+  if (nome === 'pH' && valorNum !== null) {
+    if (!Number.isFinite(valorNum) || valorNum < 0 || valorNum > 14) {
+      return res.status(400).json({ error: 'pH inválido (tem de estar entre 0 e 14).' });
+    }
+  }
+
+  if (nome === 'Cloro Livre em ppm' && valorNum !== null) {
+    if (!Number.isFinite(valorNum) || valorNum < 0 || valorNum > 20) {
+      return res.status(400).json({ error: 'Cloro Livre inválido (tem de estar entre 0 e 20 ppm).' });
+    }
   }
 
   try {
@@ -2246,25 +2296,29 @@ app.post('/manutencoes_parametros', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (manutencao_id, parametro)
       DO UPDATE SET
-        valor_atual = CASE 
-          WHEN EXCLUDED.status = 'pendente' THEN NULL 
-          WHEN EXCLUDED.status = 'nao ajustavel' THEN COALESCE(manutencoes_parametros.valor_atual, EXCLUDED.valor_atual) 
-          ELSE COALESCE(EXCLUDED.valor_atual, manutencoes_parametros.valor_atual) 
-        END,
-        produto_usado = EXCLUDED.produto_usado,
-        quantidade_usada = EXCLUDED.quantidade_usada,
-        status = CASE 
-          WHEN EXCLUDED.status = 'nao ajustavel' THEN 'nao ajustavel'
-          ELSE EXCLUDED.status
-        END,
-        motivo = EXCLUDED.motivo,
-        empresaid = EXCLUDED.empresaid;
+      valor_atual = CASE 
+        WHEN EXCLUDED.status = 'pendente' THEN NULL 
+        WHEN EXCLUDED.status = 'nao ajustavel' THEN COALESCE(manutencoes_parametros.valor_atual, EXCLUDED.valor_atual) 
+        ELSE COALESCE(EXCLUDED.valor_atual, manutencoes_parametros.valor_atual) 
+      END,
+      produto_usado = EXCLUDED.produto_usado,
+      quantidade_usada = EXCLUDED.quantidade_usada,
+      status = CASE 
+        WHEN EXCLUDED.status = 'nao ajustavel' THEN 'nao ajustavel'
+        ELSE EXCLUDED.status
+      END,
+      motivo = EXCLUDED.motivo,
+      data_aplicacao = CASE
+        WHEN EXCLUDED.status = 'pendente' THEN manutencoes_parametros.data_aplicacao
+        ELSE NOW()
+      END,
+      empresaid = EXCLUDED.empresaid;
     `;
 
     const values = [
       manutencao_id,
       parametro,
-      valor_atual || null,
+      (valor_atual === '' || valor_atual === undefined) ? null : valor_atual, // mantém como tinhas
       produto_usado || null,
       quantidade_usada || 0,
       status,
@@ -2284,51 +2338,69 @@ app.post('/manutencoes_parametros', async (req, res) => {
     const clienteId = clienteResult.rows[0]?.cliente_id;
 
     // 🔔 Notificações automáticas para parâmetros fora do intervalo
-if (clienteId) {
-  let limite = null;
-  let descricao = '';
+    if (clienteId) {
+      const nomeNorm = String(parametro || '')
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
 
-  // 🧩 Define o limite e a descrição conforme o parâmetro
-  if (parametro === 'alcalinidade' && valor_atual > 120) {
-    limite = 120;
-    descricao = 'A alcalinidade está acima de 120 ppm. É necessário repor parte da água da piscina.';
-  } else if (parametro === 'acido cianurico' && valor_atual > 50) {
-    limite = 50;
-    descricao = 'O ácido cianúrico está acima de 50 ppm. É recomendada a reposição parcial da água da piscina.';
-  } else if (parametro === 'sal' && valor_atual > 6) {
-    limite = 6;
-    descricao = 'O teor de sal está acima de 6 kg/m³. Verifique o equipamento de eletrólise e a concentração de sal.';
-  }
+      const vn = (valorNum === null ? NaN : valorNum);
 
-  // Só continua se houver limite definido e o valor estiver fora do intervalo
-  if (limite !== null) {
-    const existeNotif = await pool.query(`
-      SELECT id FROM notificacoes
-      WHERE cliente_id = $1
-        AND assunto = 'Parâmetro químico fora do intervalo'
-        AND mensagem ILIKE $2
-        AND status != 'resolvido'
-        AND empresaid = $3
-    `, [clienteId, `%${parametro}%`, empresaid]);
+      let limite = null;
+      let descricao = '';
+      let chave = '';
 
-    if (existeNotif.rows.length === 0) {
-      await pool.query(`
-        INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
-        VALUES ($1, $2, $3, 'pendente', NOW(), $4)
-      `, [
-        clienteId,
-        'Parâmetro químico fora do intervalo',
-        descricao,
-        empresaid,
-      ]);
+      if (nomeNorm === 'alcalinidade' && Number.isFinite(vn) && vn > 120) {
+        limite = 120;
+        chave = 'alcalinidade';
+        descricao = 'A alcalinidade está acima de 120 ppm. É necessário repor parte da água da piscina.';
+      } else if (
+        (nomeNorm === 'acido cianurico' || nomeNorm.includes('acido cianurico')) &&
+        Number.isFinite(vn) &&
+        vn > 50
+      ) {
+        limite = 50;
+        chave = 'acido cianurico';
+        descricao = 'O ácido cianúrico está acima de 50 ppm. É recomendada a reposição parcial da água da piscina.';
+      } else if (
+        (nomeNorm === 'sal em kg/m3' || nomeNorm === 'sal em kg/m³' || nomeNorm === 'sal') &&
+        Number.isFinite(vn) &&
+        vn > 6
+      ) {
+        limite = 6;
+        chave = 'sal';
+        descricao = 'O teor de sal está acima de 6 kg/m³. Verifique o equipamento de eletrólise e a concentração de sal.';
+      }
 
-      console.log(`📢 Notificação criada automaticamente (${parametro}) para o cliente ${clienteId}`);
-    } else {
-      console.log(`⚠️ Notificação já existente (${parametro}) para o cliente ${clienteId}, não duplicada.`);
+      if (limite !== null) {
+        const existeNotif = await pool.query(
+          `
+          SELECT id FROM notificacoes
+          WHERE cliente_id = $1
+            AND assunto = 'Parâmetro químico fora do intervalo'
+            AND mensagem ILIKE $2
+            AND status != 'resolvido'
+            AND empresaid = $3
+          `,
+          [clienteId, `%${chave}%`, empresaid]
+        );
+
+        if (existeNotif.rows.length === 0) {
+          await pool.query(
+            `
+            INSERT INTO notificacoes (cliente_id, assunto, mensagem, status, data_criacao, empresaid)
+            VALUES ($1, $2, $3, 'pendente', NOW(), $4)
+            `,
+            [clienteId, 'Parâmetro químico fora do intervalo', descricao, empresaid]
+          );
+
+          console.log(`📢 Notificação criada automaticamente (${chave}) para o cliente ${clienteId}`);
+        } else {
+          console.log(`⚠️ Notificação já existente (${chave}) para o cliente ${clienteId}, não duplicada.`);
+        }
+      }
     }
-  }
-}
-
 
     // 🔚 Resposta final
     res.status(200).json({ message: 'Status do parâmetro registrado com sucesso.' });

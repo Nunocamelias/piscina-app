@@ -1,0 +1,160 @@
+[33mcommit 9b97f4e5e79f9cef4ec0d5ac1c119c18751eebd9[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mversao-estavel-gespool[m[33m, [m[1;33mtag: [m[1;33mv0.9.2[m[33m)[m
+Author: Nuno Silva <nunosilva.piscinas@gmail.com>
+Date:   Mon Jan 5 21:55:25 2026 +0000
+
+    release: v0.9.2 - ISL integrado, sugestões pH/Alc, melhorias na folha de manutenção
+
+[1mdiff --git a/api.js b/api.js[m
+[1mindex 382708a..dc97e6f 100644[m
+[1m--- a/api.js[m
+[1m+++ b/api.js[m
+[36m@@ -74,6 +74,7 @@[m [mapp.post('/clientes', async (req, res) => {[m
+     cobertura,[m
+     bomba_calor,[m
+     equipamentos_especiais,[m
+[32m+[m[32m    eletrolise_sal,[m
+     ultima_substituicao,[m
+     valor_manutencao,[m
+     periodicidade,[m
+[36m@@ -87,8 +88,8 @@[m [mapp.post('/clientes', async (req, res) => {[m
+   try {[m
+     const query = `[m
+       INSERT INTO clientes [m
+[31m-      (empresaid, nome, morada, localidade, codigo_postal, google_maps, email, telefone, info_acesso, comprimento, largura, profundidade_media, volume, tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais, ultima_substituicao, valor_manutencao, periodicidade, condicionantes)[m
+[31m-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)[m
+[32m+[m[32m      (empresaid, nome, morada, localidade, codigo_postal, google_maps, email, telefone, info_acesso, comprimento, largura, profundidade_media, volume, tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais, eletrolise_sal, ultima_substituicao, valor_manutencao, periodicidade, condicionantes)[m
+[32m+[m[32m      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)[m
+       RETURNING *;[m
+     `;[m
+ [m
+[36m@@ -110,6 +111,7 @@[m [mapp.post('/clientes', async (req, res) => {[m
+       cobertura,[m
+       bomba_calor,[m
+       equipamentos_especiais,[m
+[32m+[m[32m      eletrolise_sal,[m
+       ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null, // ✅ esta é a correção[m
+       parseFloat(valor_manutencao),[m
+       sanitizeString(periodicidade),[m
+[36m@@ -212,6 +214,7 @@[m [mapp.put('/clientes/:id', async (req, res) => {[m
+     cobertura,[m
+     bomba_calor,[m
+     equipamentos_especiais,[m
+[32m+[m[32m    eletrolise_sal,[m
+     ultima_substituicao,[m
+     valor_manutencao,[m
+     periodicidade,[m
+[36m@@ -239,9 +242,9 @@[m [mapp.put('/clientes/:id', async (req, res) => {[m
+       UPDATE clientes [m
+       SET nome = $1, morada = $2, localidade = $3, codigo_postal = $4, google_maps = $5, email = $6, telefone = $7, [m
+           info_acesso = $8, comprimento = $9, largura = $10, profundidade_media = $11, volume = $12, [m
+[31m-          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, [m
+[31m-          ultima_substituicao = $17, valor_manutencao = $18, periodicidade = $19, condicionantes = $20, updated_at = NOW()[m
+[31m-      WHERE id = $21 AND empresaid = $22[m
+[32m+[m[32m          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17,[m[41m [m
+[32m+[m[32m          ultima_substituicao = $18, valor_manutencao = $19, periodicidade = $20, condicionantes = $21, updated_at = NOW()[m
+[32m+[m[32m      WHERE id = $22 AND empresaid = $23[m
+       RETURNING *;[m
+     `;[m
+     const values = [[m
+[36m@@ -261,6 +264,7 @@[m [mapp.put('/clientes/:id', async (req, res) => {[m
+       cobertura,[m
+       bomba_calor,[m
+       equipamentos_especiais,[m
+[32m+[m[32m      eletrolise_sal,[m
+       moment(ultima_substituicao).format('YYYY-MM-DD'),[m
+       parseFloat(valor_manutencao),[m
+       periodicidade,[m
+[36m@@ -606,6 +610,7 @@[m [mapp.get('/clientes-por-dia', async (req, res) => {[m
+         c.cobertura,[m
+         c.bomba_calor,[m
+         c.equipamentos_especiais,[m
+[32m+[m[32m        c.eletrolise_sal,[m
+         c.ultima_substituicao,[m
+         COALESCE(m.status, 'pendente') AS status,[m
+         m.motivo[m
+[36m@@ -1349,6 +1354,7 @@[m [mapp.get('/clientes-por-equipe', async (req, res) => {[m
+     res.status(500).json({ error: 'Erro ao buscar clientes.' });[m
+   }[m
+ });[m
+[32m+[m
+ app.get('/detalhes-equipe', async (req, res) => {[m
+   const { equipeId, empresaid } = req.query;[m
+ [m
+[36m@@ -2372,6 +2378,112 @@[m [mWHERE mp.manutencao_id = $1 AND mp.empresaid = $2;[m
+   }[m
+ });[m
+ [m
+[32m+[m[32m// Criar registo ISL - ISL (Langelier)[m[41m [m
+[32m+[m[32mapp.post('/isl', async (req, res) => {[m
+[32m+[m[32m  console.log('📥 Dados recebidos no POST /isl:', req.body);[m
+[32m+[m[32m  const {[m
+[32m+[m[32m    empresaid,[m
+[32m+[m[32m    cliente_id,[m
+[32m+[m[32m    manutencao_id, // opcional[m
+[32m+[m[32m    ph,[m
+[32m+[m[32m    alcalinidade,[m
+[32m+[m[32m    dureza,[m
+[32m+[m[32m    temperatura,[m
+[32m+[m[32m    tds,          // opcional[m
+[32m+[m[32m    isl,[m
+[32m+[m[32m    indicacao,[m
+[32m+[m[32m  } = req.body;[m
+[32m+[m
+[32m+[m[32m  // validações mínimas (mantém simples)[m
+[32m+[m[32m  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });[m
+[32m+[m[32m  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });[m
+[32m+[m[32m  if (ph === undefined || ph === null) return res.status(400).json({ error: 'ph é obrigatório.' });[m
+[32m+[m[32m  if (alcalinidade === undefined || alcalinidade === null) return res.status(400).json({ error: 'alcalinidade é obrigatório.' });[m
+[32m+[m[32m  if (dureza === undefined || dureza === null) return res.status(400).json({ error: 'dureza é obrigatório.' });[m
+[32m+[m[32m  if (temperatura === undefined || temperatura === null) return res.status(400).json({ error: 'temperatura é obrigatório.' });[m
+[32m+[m[32m  if (isl === undefined || isl === null) return res.status(400).json({ error: 'isl é obrigatório.' });[m
+[32m+[m[32m  if (!indicacao) return res.status(400).json({ error: 'indicacao é obrigatório.' });[m
+[32m+[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const query = `[m
+[32m+[m[32m      INSERT INTO isl_registos ([m
+[32m+[m[32m        cliente_id, manutencao_id, empresaid,[m
+[32m+[m[32m        ph, alcalinidade, dureza, temperatura, tds,[m
+[32m+[m[32m        isl, indicacao[m
+[32m+[m[32m      )[m
+[32m+[m[32m      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)[m
+[32m+[m[32m      RETURNING *;[m
+[32m+[m[32m    `;[m
+[32m+[m
+[32m+[m[32m    const values = [[m
+[32m+[m[32m      cliente_id,[m
+[32m+[m[32m      manutencao_id || null,[m
+[32m+[m[32m      empresaid,[m
+[32m+[m[32m      ph,[m
+[32m+[m[32m      alcalinidade,[m
+[32m+[m[32m      dureza,[m
+[32m+[m[32m      temperatura,[m
+[32m+[m[32m      tds ?? null,[m
+[32m+[m[32m      isl,[m
+[32m+[m[32m      indicacao,[m
+[32m+[m[32m    ];[m
+[32m+[m
+[32m+[m[32m    const result = await pool.query(query, values);[m
+[32m+[m[32m    return res.status(201).json(result.rows[0]);[m
+[32m+[m[32m  } catch (error) {[m
+[32m+[m[32m    console.error('❌ Erro ao criar ISL:', error);[m
+[32m+[m[32m    return res.status(500).json({ error: 'Erro ao criar registo ISL.' });[m
+[32m+[m[32m  }[m
+[32m+[m[32m});[m
+[32m+[m
+[32m+[m[32m// Último ISL por cliente[m
+[32m+[m[32mapp.get('/isl/ultimo', async (req, res) => {[m
+[32m+[m[32m  const { empresaid, cliente_id } = req.query;[m
+[32m+[m
+[32m+[m[32m  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });[m
+[32m+[m[32m  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });[m
+[32m+[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const query = `[m
+[32m+[m[32m      SELECT *[m
+[32m+[m[32m      FROM isl_registos[m
+[32m+[m[32m      WHERE empresaid = $1 AND cliente_id = $2[m
+[32m+[m[32m      ORDER BY created_at DESC[m
+[32m+[m[32m      LIMIT 1;[m
+[32m+[m[32m    `;[m
+[32m+[m[32m    const result

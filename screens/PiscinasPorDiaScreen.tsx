@@ -91,7 +91,6 @@ const PiscinasPorDiaScreen: React.FC<Props> = ({ route }) => {
     }
   }, [userEmpresaid, equipeId, diaSemana, fetchClientes, fetchClientesDisponiveis, readOnly]); // ✅ Agora otimizado
 
-
   const associarCliente = async (clienteId: number) => {
     if (readOnly) {return;}
 

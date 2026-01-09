@@ -27,6 +27,21 @@ export const getAccessibleUri = async (uri: string): Promise<string | null> => {
   return uri;
 };
 
+type Cliente = {
+  nome: string;
+  morada: string;
+  telefone: string;
+  google_maps?: string;
+  info_acesso?: string;
+
+  volume?: number;
+  tanque_compensacao?: boolean;
+  cobertura?: boolean;
+  bomba_calor?: boolean;
+  equipamentos_especiais?: boolean;
+  eletrolise_sal?: boolean;
+  ultima_substituicao?: string | null;
+};
 
 type Parametro = {
   id: number;
@@ -69,6 +84,45 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   const navigation = useNavigation(); // Obtenha o navigation da navegação
   const route = useRoute();
 
+  const toNum = (v: any) => {
+  const n = Number(String(v ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+};
+
+type Alerta = { level: 'hard' | 'warn'; title: string; msg: string };
+
+function validarPH(ph: number): Alerta | null {
+  if (!Number.isFinite(ph)) return { level: 'hard', title: 'pH inválido', msg: 'Introduz um número válido.' };
+  if (ph < 0 || ph > 14) return { level: 'hard', title: 'pH inválido', msg: 'O pH tem de estar entre 0 e 14.' };
+  if (ph < 5 || ph > 9) return { level: 'warn', title: 'pH muito fora do normal', msg: 'Confirma se não trocaste os campos (pH vs alcalinidade).' };
+  return null;
+}
+
+function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
+  if (!Number.isFinite(cl)) return { level: 'hard', title: 'Cloro inválido', msg: 'Introduz um número válido.' };
+  if (cl < 0 || cl > 20) return { level: 'hard', title: 'Cloro inválido', msg: 'O cloro livre deve estar entre 0 e 20 ppm.' };
+
+  if (cl >= 10) {
+    return {
+      level: 'warn',
+      title: 'Cloro muito alto (interdito)',
+      msg: 'Piscina interdita a banhistas. Confirma o valor e aplica a correção (ex.: inibidor de cloro) se necessário.',
+    };
+  }
+
+  if (cl > 5) {
+    return {
+      level: 'warn',
+      title: 'Excesso de cloro',
+      msg: isPiscinaSal
+        ? 'Confirma o valor (pode indicar ORP/Alcalinidade desajustada em piscina a sal).'
+        : 'Confirma o valor e não adiciones cloro.',
+    };
+  }
+
+  return null;
+}
+
   const {
     clienteId,
     diaSemana,
@@ -81,6 +135,8 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
     ultima_substituicao,
   } = route.params as any;
 
+  const isPiscinaSal = !!eletrolise_sal;
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [parametrosQuimicos, setParametrosQuimicos] = useState<Parametro[]>([]);
   const [isClienteExpanded, setIsClienteExpanded] = useState(false);
   const [isParametrosExpanded, setIsParametrosExpanded] = useState(false);
@@ -444,14 +500,6 @@ const registrarStatusParametro = async (
   }
 };
 
-  const [cliente, setCliente] = useState<{
-    nome: string;
-    morada: string;
-    telefone: string;
-    google_maps: string;
-    info_acesso: string;
-  } | null>(null);
-
   type ResultadoCalculo = {
     resultado: string;
     quantidade: number;
@@ -463,7 +511,7 @@ const registrarStatusParametro = async (
   const calcularProduto = (
   parametro: Parametro,
   volumePiscina: number
-): ResultadoCalculo => { // ✅ Agora retorna um objeto corretamente tipado
+): ResultadoCalculo => {
   if (!parametro || !parametro.parametro) {
     return { resultado: 'Parâmetro inválido ou não configurado.', quantidade: 0 };
   }
@@ -482,7 +530,6 @@ const registrarStatusParametro = async (
     volume_calculo,
   } = parametro;
 
-  // Converte strings para números com validação
   const valorAtualNum = parseFloat(valor_atual?.toString() || '0');
   const valorMinNum = parseFloat(valor_minimo?.toString());
   const valorMaxNum = parseFloat(valor_maximo?.toString());
@@ -499,6 +546,20 @@ const registrarStatusParametro = async (
     return { resultado: 'Valores insuficientes ou inválidos para cálculo.', quantidade: 0 };
   }
 
+  // ✅ EXCEÇÃO: Cloro Livre (zona tampão 3–5 ppm)
+// Regra: acima do intervalo ideal mas até 5 => NÃO recomendar inibidor, só "não adicionar cloro"
+if (parametro.parametro === 'Cloro Livre em ppm') {
+  if (valorAtualNum > valorMaxNum && valorAtualNum <= 5) {
+    return {
+      resultado: `Cloro acima do intervalo ideal (${valorMaxNum} ppm). Não adicionar cloro.`,
+      quantidade: 0,
+      // produto: undefined, // opcional (podes omitir)
+      status: 'pendente',
+    };
+  }
+  // >5 segue a lógica normal e vai calcular o "diminuir" (inibidor) para o valor alvo
+}
+
   // Verifica se o parâmetro está dentro do intervalo ideal
   if (valorAtualNum >= valorMinNum && valorAtualNum <= valorMaxNum) {
     return { resultado: 'Dentro do intervalo ideal', quantidade: 0 };
@@ -508,21 +569,19 @@ const registrarStatusParametro = async (
   const ajustarParaCima = valorAtualNum < valorAlvoNum;
 
   if (!ajustarParaCima) {
-    // 🚨 Verifica se não é possível ajustar para baixo
     if (!produto_diminuir || !dosagem_diminuir || !incremento_diminuir) {
       return {
         resultado: 'Não é possível diminuir este parâmetro.',
         quantidade: 0,
-        status: 'nao ajustavel', // ✅ Agora o status é retornado corretamente
+        status: 'nao ajustavel',
       };
     }
   } else {
-    // 🚨 Verifica se não é possível ajustar para cima
     if (!produto_aumentar || !dosagem_aumentar || !incremento_aumentar) {
       return {
         resultado: 'Não é possível aumentar este parâmetro.',
         quantidade: 0,
-        status: 'nao ajustavel', // ✅ Garante que também há status neste caso
+        status: 'nao ajustavel',
       };
     }
   }
@@ -547,9 +606,10 @@ const registrarStatusParametro = async (
     resultado: `Adicionar ${quantidade}kg de ${produto}`,
     quantidade,
     produto,
-    status: 'pendente', // ✅ Por padrão, mantém pendente se for um cálculo normal
+    status: 'pendente',
   };
 };
+
 
 const getCorData = (data: string) => {
   if (!data) {
@@ -802,7 +862,6 @@ const handleAnexarFoto = async () => {
     return hoje > proxima; // Retorna true se a próxima manutenção estiver atrasada
   };
 
-
   const concluirManutencao = async () => {
   if (!manutencaoAtual || !manutencaoAtual.id) {
     console.error('❌ Manutenção atual inválida ou não encontrada:', manutencaoAtual);
@@ -891,8 +950,6 @@ const handleAnexarFoto = async () => {
   }
 };
 
-
-
   const marcarNaoConcluidaComMotivo = () => {
   Alert.alert(
     'Motivo da Não Conclusão',
@@ -939,35 +996,52 @@ const handleAnexarFoto = async () => {
   }
 };
 
-
-
 return (
   <FlatList
     data={isItensExpanded ? itensManutencaoPeriodica : []} // Apenas carrega os itens quando expandido
     keyExtractor={(item) => item.id.toString()}
     ListHeaderComponent={
       <>
-        <View style={styles.container}>
-          {/* Cliente */}
-          <View style={styles.section}>
-            <TouchableOpacity onPress={() => setIsClienteExpanded(!isClienteExpanded)}>
-              <Text style={styles.sectionTitle}>
-                {cliente ? cliente.nome : 'Carregando...'}
-              </Text>
-            </TouchableOpacity>
-            {isClienteExpanded && cliente && (
-              <View style={styles.expandedContent}>
-                <Text style={styles.details}>Morada: {cliente.morada}</Text>
-                {cliente.google_maps && (
-                  <TouchableOpacity onPress={() => Linking.openURL(cliente.google_maps)}>
-                    <Text style={styles.linkText}>{cliente.google_maps}</Text>
-                  </TouchableOpacity>
-                )}
-                <Text style={styles.details}>Telefone: {cliente.telefone}</Text>
-                <Text style={styles.details}>Informação de Acesso: {cliente.info_acesso}</Text>
-              </View>
-            )}
-          </View>
+       <View style={styles.container}>
+  {/* Cliente */}
+  <View style={styles.section}>
+    <TouchableOpacity onPress={() => setIsClienteExpanded(!isClienteExpanded)}>
+      <Text style={styles.sectionTitle}>
+        {cliente?.nome ?? 'Carregando...'}
+      </Text>
+    </TouchableOpacity>
+
+    {isClienteExpanded && cliente && (
+      <View style={styles.expandedContent}>
+        <Text style={styles.details}>
+          Morada: {cliente.morada || '—'}
+        </Text>
+
+        {cliente.google_maps ? (
+          <TouchableOpacity
+            onPress={() => {
+              if (cliente.google_maps) {
+                Linking.openURL(cliente.google_maps);
+              }
+            }}
+          >
+            <Text style={styles.linkText}>📍 Abrir no Google Maps</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.details}>📍 Localização não disponível</Text>
+        )}
+
+        <Text style={styles.details}>
+          Telefone: {cliente.telefone || '—'}
+        </Text>
+
+        <Text style={styles.details}>
+          Informação de Acesso:{' '}
+          {cliente.info_acesso?.trim() || '—'}
+        </Text>
+      </View>
+    )}
+  </View>
 
          {/* Índice de Saturação (Langelier) */} 
 <View style={styles.section}>
@@ -1082,6 +1156,53 @@ return (
               🎯 Sugestão alvo: pH {islSugestao.phAlvo} | Alcalinidade {islSugestao.alcAlvo} ppm
             </Text>
           )}
+          {/* ✅ Prioridade: corrigir Dureza primeiro (se ISL negativo e dureza abaixo do mínimo) */}
+{(() => {
+  const durParam = parametrosQuimicos.find((p) => String(p.parametro).trim() === 'Dureza');
+  const durAtual = toNum(islDur);
+  const durMin = durParam ? toNum(durParam.valor_minimo) : NaN;
+
+  const islNegativo = Number(islResultado.isl) < 0;
+  const durezaBaixa =
+    Number.isFinite(durAtual) &&
+    Number.isFinite(durMin) &&
+    durAtual < durMin;
+
+  if (!islNegativo || !durezaBaixa || !durParam) return null;
+
+  return (
+    <View style={{ marginTop: 10 }}>
+      <Text style={styles.details}>
+        ⚠️ ISL negativo e dureza abaixo do mínimo ({durMin}). Prioridade: aumentar dureza (ex.: CTX-22) e recalcular ISL.
+      </Text>
+
+      <TouchableOpacity
+        style={styles.buttonCalcular}
+        onPress={() => {
+          // usa o alvo da tabela (valor_alvo) e o valor medido no ISL (islDur)
+          const itemParaCalculo = {
+            ...durParam,
+            valor_atual: String(durAtual),
+            // valor_alvo já vem do durParam (parametros_quimicos)
+          };
+
+          const r = calcularProduto(itemParaCalculo, volume);
+
+          setParametrosQuimicos((prev) =>
+            prev.map((p) => (p.parametro === 'Dureza' ? { ...p, resultado: r } : p))
+          );
+
+          Alert.alert(
+            'Dureza',
+            'Correção calculada. Depois de aplicar, volta a calcular o ISL para obter alvos pH/Alc mais realistas.'
+          );
+        }}
+      >
+        <Text style={styles.buttonText}>Calcular correção de Dureza</Text>
+      </TouchableOpacity>
+    </View>
+  );
+})()}
 
           {/* ✅ Guardar ISL (Opção A) */}
           <TouchableOpacity
@@ -1187,27 +1308,96 @@ return (
             />
 
             {/* Botão Calcular */}
-            <TouchableOpacity
-              style={[
-                styles.buttonCalcular,
-                (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled,
-              ]}
-              onPress={() => {
-                if (!isSomenteLeitura && !item.bloqueado) {
-                  const resultado = calcularProduto(item, volume);
-                  setParametrosQuimicos((prev) =>
-                    prev.map((parametro) =>
-                      parametro.parametro === item.parametro
-                        ? { ...parametro, resultado }
-                        : parametro
-                    )
-                  );
-                }
-              }}
-              disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual}
-            >
-              <Text style={styles.buttonText}>Calcular</Text>
-            </TouchableOpacity>
+<TouchableOpacity
+  style={[
+    styles.buttonCalcular,
+    (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled,
+  ]}
+  onPress={() => {
+    if (isSomenteLeitura || item.bloqueado) return;
+
+    const nome = String(item.parametro || '').trim();
+    const valor = toNum(item.valor_atual);
+
+    const isPiscinaSal = !!cliente?.eletrolise_sal;
+
+    // validações só para pH e Cloro Livre
+    const alerta =
+      nome === 'pH'
+        ? validarPH(valor)
+        : nome === 'Cloro Livre em ppm'
+        ? validarCloro(valor, isPiscinaSal) // (se tiveres 2 args, troca para validarCloro(valor, isPiscinaSal))
+        : null;
+
+    // hard-stop: não calcula
+    if (alerta?.level === 'hard') {
+      Alert.alert(alerta.title, alerta.msg);
+      return;
+    }
+
+    const continuar = () => {
+      // ✅ 1) Se for pH/Alcalinidade, e houver ISL válido, usamos o alvo do ISL no cálculo
+      const isPH = nome === 'pH';
+      const isAlc = nome === 'Alcalinidade';
+
+      const islCreatedAt = islUltimoRegisto?.created_at;
+      const islValido =
+        !!islCreatedAt &&
+        Date.now() - new Date(islCreatedAt).getTime() <= 60 * 24 * 60 * 60 * 1000; // ✅ 60 dias
+
+      const alvoISL =
+        islValido
+          ? isPH
+            ? islSugestao?.phAlvo
+            : isAlc
+            ? islSugestao?.alcAlvo
+            : undefined
+          : undefined;
+
+      const itemParaCalculo =
+        (isPH || isAlc) && alvoISL !== undefined
+          ? { ...item, valor_alvo: String(alvoISL) }
+          : item;
+
+      const resultadoBase = calcularProduto(itemParaCalculo, volume);
+
+      // ✅ 2) Nota ORP só para piscina a sal e cloro "alto"
+      const isCloro = nome === 'Cloro Livre em ppm';
+      const precisaNotaORP = isCloro && isPiscinaSal && Number.isFinite(valor) && valor > 5;
+
+      const resultadoFinal = precisaNotaORP
+        ? {
+            ...resultadoBase,
+            resultado:
+              `${resultadoBase.resultado}\n` +
+              `ℹ️ Piscina a sal: discrepância ORP vs ppm pode indicar alcalinidade desajustada.`,
+          }
+        : resultadoBase;
+
+      setParametrosQuimicos((prev) =>
+        prev.map((p) =>
+          p.parametro === item.parametro ? { ...p, resultado: resultadoFinal } : p
+        )
+      );
+    };
+
+    // warn: pede confirmação mas deixa calcular
+    if (alerta?.level === 'warn') {
+      Alert.alert(alerta.title, alerta.msg, [
+        { text: 'Corrigir', style: 'cancel' },
+        { text: 'Confirmo', onPress: continuar },
+      ]);
+      return;
+    }
+
+    continuar();
+  }}
+  disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual}
+>
+  <Text style={styles.buttonText}>Calcular</Text>
+</TouchableOpacity>
+
+
           </View>
 
           {/* Mensagem do Resultado */}
