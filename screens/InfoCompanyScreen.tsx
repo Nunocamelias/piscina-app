@@ -33,6 +33,8 @@ const InfoCompanyScreen = ({ navigation }: Props) => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
+  const [logoAnterior, setLogoAnterior] = useState<string | null>(null);
+  
 
 
 useEffect(() => {
@@ -68,16 +70,15 @@ useEffect(() => {
       const response = await axios.get(endpoint);
 
       if (response.status === 200 && response.data) {
-        console.log('🏢 Dados da empresa recebidos:', response.data);
-        setEmpresa({
-             id: response.data.id,
-             nome: response.data.nome || '',
-             email: response.data.email || '',
-             telefone: response.data.telefone || '',
-             endereco: response.data.endereco || '',
-             nif: response.data.nif || '',
-             logo: response.data.logo || null,
-           });
+        console.log('🏢 Empresa recebida:', {
+              id: response.data.id,
+              nome: response.data.nome,
+              email: response.data.email,
+              telefone: response.data.telefone,
+              endereco: response.data.endereco,
+              nif: response.data.nif,
+              logo: response.data.logo ? '[BASE64]' : null,
+             });
 
         setLogo(response.data.logo || null);
       } else {
@@ -103,10 +104,10 @@ useEffect(() => {
     });
 
     const file = Array.isArray(res) ? res[0] : res;
+    if (!file?.uri) return;
 
-    if (!file || !file.uri) {
-      return;
-    }
+    // 🔹 guarda já o logo atual (antes de mudar)
+    const prevLogo = logo;
 
     let finalUri = file.uri;
 
@@ -120,37 +121,56 @@ useEffect(() => {
     const mimeType = file.type || 'image/jpeg';
     const base64Uri = `data:${mimeType};base64,${base64Data}`;
 
-    // 1) atualizar state local
+    // ✅ preview imediato
     setLogo(base64Uri);
 
-    // 2) se já tens empresa carregada, grava logo na BD
-    if (empresa) {
-      const updatedData = { ...empresa, logo: base64Uri };
+    Alert.alert('Confirmar alteração', 'Pretende atualizar o logotipo da empresa?', [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+        onPress: () => {
+          // ✅ rollback correto
+          setLogo(prevLogo);
+        },
+      },
+      {
+        text: 'Confirmar',
+        onPress: async () => {
+          if (!empresa) {
+            setLogo(prevLogo);
+            return;
+          }
 
-      const response = await axios.put(
-        `${Config.API_URL}/empresas/${empresa.id}/update`,
-        updatedData
-      );
+          const updatedData = { ...empresa, logo: base64Uri };
 
-      if (response.status === 200) {
-        setEmpresa(updatedData); // mantém o state alinhado
-        Alert.alert('Logo atualizado com sucesso!');
-      } else {
-        Alert.alert('Erro', 'Não foi possível atualizar o logo da empresa.');
-      }
-    }
+          try {
+            const response = await axios.put(
+              `${Config.API_URL}/empresas/${empresa.id}/update`,
+              updatedData
+            );
+
+            if (response.status === 200) {
+              setEmpresa(updatedData);
+              Alert.alert('Sucesso', 'Logotipo atualizado com sucesso.');
+            } else {
+              throw new Error('Erro ao atualizar logo');
+            }
+          } catch (err) {
+            console.error('Erro ao gravar logo:', err);
+            Alert.alert('Erro', 'Não foi possível atualizar o logotipo.');
+            // ✅ rollback se falhar o PUT
+            setLogo(prevLogo);
+          }
+        },
+      },
+    ]);
   } catch (err: any) {
-    if ((DocumentPicker as any).isCancel && (DocumentPicker as any).isCancel(err)) {
-      return;
-    }
+    if ((DocumentPicker as any).isCancel?.(err)) return;
 
     console.error('Erro ao selecionar logo:', err);
     Alert.alert('Erro', 'Não foi possível selecionar o logo.');
   }
 };
-
-
-
 
   const handleSave = async () => {
     try {
@@ -239,6 +259,14 @@ useEffect(() => {
       >
         <Text style={styles.buttonText}>{isEditing ? 'Guardar Alterações' : 'Editar'}</Text>
       </TouchableOpacity>
+      {/* 🔹 Footer fixo */}
+      <View style={styles.footer}>
+        <Text style={styles.empresaNome}>
+        {empresa?.nome || 'Empresa'}
+        </Text>
+      <Text style={styles.subTitle}>powered by GESPOOL</Text>
+    </View>
+
     </View>
   );
 };
@@ -291,23 +319,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   input: {
-  backgroundColor: '#FFF',        // fundo branco
-  borderRadius: 10,
-  width: '90%',
-  padding: 10,
-  marginBottom: 15,
-
-  // 🔹 Sombra 3D leve e elegante (igual aos botões)
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 3 },
-  shadowOpacity: 0.2,
-  shadowRadius: 4,
-  elevation: 6,                   // 🔹 profundidade Android
-
-  // 🔹 Remove o contorno
-  borderWidth: 0,
+    backgroundColor: '#FFF',        // fundo branco
+    borderRadius: 10,
+    width: '90%',
+    padding: 10,
+    marginBottom: 15,
+    // 🔹 Sombra 3D leve e elegante (igual aos botões)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,   // 🔹 profundidade Android
+    // 🔹 Remove o contorno
+    borderWidth: 0,
   },
-
   button: {
     backgroundColor: '#22b4b4ff',
     paddingVertical: 15,
@@ -333,6 +358,23 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: '#000',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 50,
+    width: '100%',
+    alignItems: 'center',
+  },
+  empresaNome: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  subTitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#444',
+    marginTop: 2,
   },
 });
 

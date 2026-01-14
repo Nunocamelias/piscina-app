@@ -410,7 +410,7 @@ useEffect(() => {
       </View>
         <View style={styles.footer}>
           <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-          <Text style={styles.subTitle}>powered by GES-POOL</Text>
+          <Text style={styles.subTitle}>powered by GESPOOL</Text>
        </View>
     </ScrollView>
   );

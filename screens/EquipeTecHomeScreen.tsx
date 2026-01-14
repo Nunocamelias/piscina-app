@@ -70,7 +70,7 @@ const EquipeTecHomeScreen: React.FC = () => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>powered by GES-POOL</Text>
+        <Text style={styles.footerText}>powered by GESPOOL</Text>
       </View>
     </ScrollView>
   );

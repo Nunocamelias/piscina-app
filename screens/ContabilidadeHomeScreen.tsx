@@ -50,7 +50,7 @@ const ContabilidadeHomeScreen: React.FC = () => {
         <Text style={styles.subtitle}>ID do utilizador: {userId}</Text>
         )}
         <Text style={styles.subtitle}>
-          Bem-vindo à área de contabilidade da GES-POOL.
+          Bem-vindo à área de contabilidade da GESPOOL.
         </Text>
         <Text style={styles.text}>
           Nesta área vais receber as notificações marcadas como "Serviço
@@ -73,7 +73,7 @@ const ContabilidadeHomeScreen: React.FC = () => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>powered by GES-POOL</Text>
+        <Text style={styles.footerText}>powered by GESPOOL</Text>
       </View>
     </ScrollView>
   );

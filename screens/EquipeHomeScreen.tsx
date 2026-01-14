@@ -80,14 +80,20 @@ const EquipeHomeScreen = ({ navigation, route }: Props) => {
          })
       }
 >
-  <Text style={styles.buttonText}>Notificações dos meus clientes</Text>
-</TouchableOpacity>
+          <Text
+             style={styles.buttonText}
+             numberOfLines={1}
+             ellipsizeMode="tail"
+            >
+             Notificações dos meus clientes
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* 🔹 Nome da empresa e "powered by" fixos no fundo */}
       <View style={styles.footer}>
         <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-        <Text style={styles.subTitle}>powered by GES-POOL</Text>
+        <Text style={styles.subTitle}>powered by GESPOOL</Text>
       </View>
     </View>
   );
@@ -125,15 +131,15 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
-    // 🔹 Remove o contorno preto
+    flexShrink: 0,          // ✅ importante
     borderWidth: 0,
-    // 🔹 Sombra 3D leve e elegante
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 4.65,
-    elevation: 10, // ← dá profundidade real no Android
+    elevation: 10,
   },
+
   buttonText: {
     fontSize: 15,
     fontWeight: '600',

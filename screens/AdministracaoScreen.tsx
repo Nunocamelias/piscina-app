@@ -58,7 +58,7 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
         {/* 🔹 Rodapé com nome e powered by */}
         <View style={styles.footer}>
           <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-          <Text style={styles.subTitle}>powered by GES-POOL</Text>
+          <Text style={styles.subTitle}>powered by GESPOOL</Text>
         </View>
       </View>
     </ScrollView>
@@ -116,9 +116,10 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   footer: {
-  alignItems: 'center',
-  marginTop: 170, // 🔹 desce o nome da empresa (ajusta se quiseres mais/menos)
-  marginBottom: 20, // 🔹 garante distância extra do fundo do ecrã
+    position: 'absolute',
+    bottom: 10,
+    width: '100%',
+    alignItems: 'center',
   },
   empresaNome: {
     fontSize: 16,

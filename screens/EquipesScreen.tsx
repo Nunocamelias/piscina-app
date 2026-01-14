@@ -42,7 +42,7 @@ const [empresaNome, setEmpresaNome] = useState('');
       {/* 🔹 Rodapé com nome e powered by */}
       <View style={styles.footer}>
         <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-        <Text style={styles.subTitle}>powered by GES-POOL</Text>
+        <Text style={styles.subTitle}>powered by GESPOOL</Text>
       </View>
     </View>
   );
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
-    bottom: 25,
+    bottom: 50,
     width: '100%',
     alignItems: 'center',
   },

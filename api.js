@@ -1413,101 +1413,180 @@ app.get('/manutencao-atual', async (req, res) => {
   console.log('Recebendo os parâmetros:', { clienteId, diaSemana, empresaid });
 
   if (!clienteId || !diaSemana || !empresaid) {
-    return res.status(400).json({ error: 'Cliente ID, Dia da Semana e Empresa ID são obrigatórios.' });
+    return res.status(400).json({
+      error: 'Cliente ID, Dia da Semana e Empresa ID são obrigatórios.',
+    });
   }
 
   try {
+    // ✅ 1) Buscar a manutenção MAIS RECENTE deste cliente/dia, mas DA EMPRESA CERTA
     const manutencaoQuery = `
       SELECT *
       FROM manutencoes
-      WHERE cliente_id = $1 AND dia_semana = $2
+      WHERE cliente_id = $1
+        AND dia_semana = $2
+        AND empresaid = $3
       ORDER BY data_manutencao DESC
       LIMIT 1;
     `;
-    const manutencaoResult = await pool.query(manutencaoQuery, [clienteId, diaSemana]);
+    const manutencaoResult = await pool.query(manutencaoQuery, [
+      clienteId,
+      diaSemana,
+      empresaid,
+    ]);
 
     let manutencao;
 
     if (manutencaoResult.rows.length === 0) {
       console.log('Nenhuma manutenção encontrada. Criando uma nova...');
 
+      // ✅ 2) Buscar a equipa associada (ok como tens)
       const equipeQuery = `
         SELECT e.id
         FROM associados a
         JOIN equipes e ON a.equipeid = e.id
-        WHERE a.clienteid = $1 AND a.diasemana = $2 AND e.empresaid = $3
+        WHERE a.clienteid = $1
+          AND a.diasemana = $2
+          AND e.empresaid = $3
         LIMIT 1;
       `;
-      const equipeResult = await pool.query(equipeQuery, [clienteId, diaSemana, empresaid]);
+      const equipeResult = await pool.query(equipeQuery, [
+        clienteId,
+        diaSemana,
+        empresaid,
+      ]);
 
       if (equipeResult.rows.length === 0) {
         return res.status(400).json({
-          error: 'Nenhuma equipe associada encontrada para este cliente e dia da semana.',
+          error:
+            'Nenhuma equipe associada encontrada para este cliente e dia da semana.',
         });
       }
 
       const equipeId = equipeResult.rows[0].id;
 
+      // ✅ 3) Copiar metodo_analise / modo_tratamento do ÚLTIMO registo do cliente (qualquer dia)
+      const ultimoMetodoQuery = `
+        SELECT metodo_analise, modo_tratamento
+        FROM manutencoes
+        WHERE cliente_id = $1
+          AND empresaid = $2
+        ORDER BY data_manutencao DESC
+        LIMIT 1;
+      `;
+      const ultimoMetodoRes = await pool.query(ultimoMetodoQuery, [
+        clienteId,
+        empresaid,
+      ]);
+
+      const metodo_analise =
+        ultimoMetodoRes.rows[0]?.metodo_analise ?? 'fitas';
+      const modo_tratamento =
+        ultimoMetodoRes.rows[0]?.modo_tratamento ?? 'cloro';
+
+      // ✅ 4) Criar nova manutenção já com metodo/modo
       const novaManutencaoQuery = `
-        INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao, empresaid)
-        VALUES ($1, $2, $3, 'pendente', NOW(), $4)
+        INSERT INTO manutencoes (
+          cliente_id,
+          equipe_id,
+          dia_semana,
+          status,
+          data_manutencao,
+          empresaid,
+          metodo_analise,
+          modo_tratamento
+        )
+        VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
         RETURNING *;
       `;
       const novaManutencaoResult = await pool.query(novaManutencaoQuery, [
         clienteId,
         equipeId,
         diaSemana,
-        empresaid, // Incluído como quarto parâmetro
+        empresaid,
+        metodo_analise,
+        modo_tratamento,
       ]);
+
       manutencao = novaManutencaoResult.rows[0];
 
+      // ✅ 5) Criar parâmetros padrão
       const criarParametrosQuery = `
-        INSERT INTO manutencoes_parametros (manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid)
-        SELECT $1, parametro, NULL, NULL, NULL, 0, 'pendente', $2
+        INSERT INTO manutencoes_parametros (
+          manutencao_id,
+          parametro,
+          valor_ultimo,
+          valor_atual,
+          produto_usado,
+          quantidade_usada,
+          status,
+          empresaid
+        )
+        SELECT
+          $1,
+          parametro,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          'pendente',
+          $2
         FROM parametros_quimicos
-        WHERE empresaid = $2 AND ativo = TRUE;
+        WHERE empresaid = $2
+          AND ativo = TRUE;
       `;
       await pool.query(criarParametrosQuery, [manutencao.id, empresaid]);
 
       console.log('Nova manutenção criada com parâmetros padrão.');
     } else {
       manutencao = manutencaoResult.rows[0];
+
+      // ✅ Garantir que nunca devolves nulls (evita cair em defaults no frontend)
+      manutencao.metodo_analise = manutencao.metodo_analise ?? 'fitas';
+      manutencao.modo_tratamento = manutencao.modo_tratamento ?? 'cloro';
     }
 
+    // ✅ 6) Buscar parâmetros (igual ao teu, só mantive)
     const parametrosQuery = `
-  SELECT 
-    mp.parametro,
-    mp.valor_atual,
-    mp.valor_ultimo,
-    mp.produto_usado,
-    mp.quantidade_usada,
-    mp.status,
-    pq.valor_minimo,
-    pq.valor_maximo,
-    pq.valor_alvo,
-    pq.produto_aumentar,
-    pq.produto_diminuir,
-    pq.dosagem_aumentar,
-    pq.dosagem_diminuir,
-    pq.volume_calculo,
-    pq.incremento_aumentar,
-    pq.incremento_diminuir
-  FROM manutencoes_parametros mp
-  JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
-  WHERE mp.manutencao_id = $1
-    AND pq.empresaid = $2
-    AND pq.ativo = TRUE
-  ORDER BY
-    CASE
-      WHEN mp.parametro = 'Cloro Livre em ppm' THEN 1
-      WHEN mp.parametro = 'pH' THEN 2
-      WHEN mp.parametro = 'Alcalinidade' THEN 3
-      ELSE 99
-    END,
-    mp.parametro;
-`;
+      SELECT 
+        mp.parametro,
+        mp.valor_atual,
+        mp.valor_ultimo,
+        mp.produto_usado,
+        mp.quantidade_usada,
+        mp.status,
+        pq.valor_minimo,
+        pq.valor_maximo,
+        pq.valor_alvo,
+        pq.produto_aumentar,
+        pq.produto_diminuir,
+        pq.dosagem_aumentar,
+        pq.dosagem_diminuir,
+        pq.volume_calculo,
+        pq.incremento_aumentar,
+        pq.incremento_diminuir
+      FROM manutencoes_parametros mp
+      JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
+      WHERE mp.manutencao_id = $1
+        AND pq.empresaid = $2
+        AND pq.ativo = TRUE
+      ORDER BY
+      CASE
+        WHEN mp.parametro = 'Cloro Livre em ppm' THEN 1
+        WHEN mp.parametro = 'Cloro Total em ppm' THEN 2
+        WHEN mp.parametro = 'pH' THEN 3
+        WHEN mp.parametro = 'Alcalinidade' THEN 4
+        WHEN mp.parametro = 'Ácido Cianúrico' THEN 5
+        WHEN mp.parametro = 'Dureza' THEN 6
+        ELSE 99
+      END,
+      mp.parametro;
+    `;
 
-    const parametrosResult = await pool.query(parametrosQuery, [manutencao.id, empresaid]);
+    const parametrosResult = await pool.query(parametrosQuery, [
+      manutencao.id,
+      empresaid,
+    ]);
 
     const parametrosTransformados = parametrosResult.rows.map((parametro) => ({
       ...parametro,
@@ -1526,15 +1605,13 @@ app.get('/manutencao-atual', async (req, res) => {
             },
     }));
 
-    console.log('Parâmetros transformados:', parametrosTransformados);
-
-    res.status(200).json({
+    return res.status(200).json({
       manutencao,
       parametros: parametrosTransformados,
     });
   } catch (error) {
     console.error('Erro ao buscar manutenção e parâmetros:', error);
-    res.status(500).json({ error: 'Erro ao buscar manutenção e parâmetros.' });
+    return res.status(500).json({ error: 'Erro ao buscar manutenção e parâmetros.' });
   }
 });
 
@@ -1768,7 +1845,8 @@ app.delete('/parametros-quimicos/:id', async (req, res) => {
 
 app.put('/manutencoes/:id', async (req, res) => {
   const { id } = req.params;
-  const { status, parametros, empresaid, motivo } = req.body;
+  const { status, parametros, empresaid, motivo, metodo_analise, modo_tratamento } = req.body;
+
 
   console.log('📥 Dados recebidos no PUT /manutencoes/:id:', req.body);
 
@@ -1797,6 +1875,16 @@ app.put('/manutencoes/:id', async (req, res) => {
     }
   }
 
+  const METODOS_OK = ['fotometro', 'gotas', 'fitas'];
+const MODOS_OK = ['sal', 'cloro'];
+
+if (metodo_analise && !METODOS_OK.includes(metodo_analise)) {
+  return res.status(400).json({ error: 'metodo_analise inválido.' });
+}
+if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
+  return res.status(400).json({ error: 'modo_tratamento inválido.' });
+}
+
   try {
     // ✅ Atualiza status + motivo (quando nao_concluida) + data_manutencao
     const updateManutencaoQuery = `
@@ -1806,7 +1894,9 @@ app.put('/manutencoes/:id', async (req, res) => {
     motivo = CASE 
       WHEN $1::varchar = 'nao_concluida' THEN $4::text
       ELSE motivo
-    END
+    END,
+    metodo_analise = COALESCE($5::varchar, metodo_analise),
+    modo_tratamento = COALESCE($6::varchar, modo_tratamento)
   WHERE id = $2 AND empresaid = $3
   RETURNING *;
 `;
@@ -1817,6 +1907,8 @@ app.put('/manutencoes/:id', async (req, res) => {
       id,
       empresaid,
       motivo ?? null,
+      metodo_analise ?? null,
+      modo_tratamento ?? null,
     ]);
 
     if (manutencaoResult.rowCount === 0) {
@@ -1923,32 +2015,43 @@ app.get('/manutencoes/:id', async (req, res) => {
   }
 
   try {
-    // Verifica se a manutenção pertence à empresa
-    const verificarQuery = `
-      SELECT m.id
+    // ✅ Busca manutenção já garantindo que pertence à empresa via cliente
+    const manutencaoQuery = `
+      SELECT
+        m.*,
+        c.empresaid AS cliente_empresaid
       FROM manutencoes m
       INNER JOIN clientes c ON m.cliente_id = c.id
-      WHERE m.id = $1 AND c.empresaid = $2;
+      WHERE m.id = $1 AND c.empresaid = $2
+      LIMIT 1;
     `;
-    const verificarResult = await pool.query(verificarQuery, [id, empresaid]);
+    const manutencaoResult = await pool.query(manutencaoQuery, [id, empresaid]);
 
-    if (verificarResult.rowCount === 0) {
-      return res.status(404).json({ error: 'Manutenção não encontrada ou não pertence à empresa.' });
+    if (manutencaoResult.rowCount === 0) {
+      return res.status(404).json({
+        error: 'Manutenção não encontrada ou não pertence à empresa.',
+      });
     }
 
-    const manutencaoQuery = 'SELECT * FROM manutencoes WHERE id = $1';
-    const manutencaoResult = await pool.query(manutencaoQuery, [id]);
-
-    const parametrosQuery = 'SELECT * FROM manutencoes_parametros WHERE manutencao_id = $1';
+    // ✅ Parâmetros da manutenção (se existirem)
+    const parametrosQuery = `
+      SELECT *
+      FROM manutencoes_parametros
+      WHERE manutencao_id = $1
+      ORDER BY parametro ASC;
+    `;
     const parametrosResult = await pool.query(parametrosQuery, [id]);
 
-    res.status(200).json({
-      ...manutencaoResult.rows[0],
+    // remove campo auxiliar
+    const { cliente_empresaid, ...manutencao } = manutencaoResult.rows[0];
+
+    return res.status(200).json({
+      ...manutencao, // <- aqui já vem metodo_analise e modo_tratamento
       parametros: parametrosResult.rows,
     });
   } catch (error) {
     console.error('Erro ao buscar manutenção:', error);
-    res.status(500).json({ error: 'Erro ao buscar manutenção.' });
+    return res.status(500).json({ error: 'Erro ao buscar manutenção.' });
   }
 });
 
@@ -2018,49 +2121,74 @@ app.post('/reset-status', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // ✅ Agora traz também metodo_analise e modo_tratamento da última manutenção concluída
     const clientesAtivosQuery = `
       SELECT DISTINCT ON (a.clienteid, a.diasemana)
         a.clienteid,
         a.equipeid,
         a.diasemana,
-        m.id AS manutencao_id
+        m.id AS manutencao_id,
+        m.metodo_analise,
+        m.modo_tratamento
       FROM associados a
-      LEFT JOIN manutencoes m 
+      JOIN clientes c ON a.clienteid = c.id
+      JOIN equipes e ON a.equipeid = e.id
+      JOIN manutencoes m 
         ON m.cliente_id = a.clienteid 
         AND m.dia_semana = a.diasemana
-      INNER JOIN clientes c ON a.clienteid = c.id
-      INNER JOIN equipes e ON a.equipeid = e.id
+        AND m.empresaid = $1
       WHERE m.status = 'concluida'
         AND c.empresaid = $1
         AND e.empresaid = $1
       ORDER BY a.clienteid, a.diasemana, m.data_manutencao DESC;
     `;
+
     const clientesAtivosResult = await client.query(clientesAtivosQuery, [empresaid]);
 
     if (clientesAtivosResult.rows.length === 0) {
-  await client.query('ROLLBACK');
-  return res.status(400).json({ error: 'Nenhuma manutenção encontrada para resetar.' });
-}
-
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Nenhuma manutenção encontrada para resetar.' });
+    }
 
     const mensagensDeSucesso = [];
 
     for (const cliente of clientesAtivosResult.rows) {
+      // ✅ defaults de segurança, caso a manutenção antiga tenha NULL
+      const metodo = cliente.metodo_analise ?? 'fitas';
+      const modo = cliente.modo_tratamento ?? 'cloro';
+
+      // ✅ Inserir nova manutenção já com metodo_analise e modo_tratamento copiados
       const novaManutencaoQuery = `
-        INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao, empresaid)
-        VALUES ($1, $2, $3, 'pendente', NOW(), $4)
+        INSERT INTO manutencoes (
+          cliente_id,
+          equipe_id,
+          dia_semana,
+          status,
+          data_manutencao,
+          empresaid,
+          metodo_analise,
+          modo_tratamento
+        )
+        VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
         RETURNING id;
       `;
+
       const novaManutencaoResult = await client.query(novaManutencaoQuery, [
         cliente.clienteid,
         cliente.equipeid,
         cliente.diasemana,
         empresaid,
+        metodo,
+        modo,
       ]);
+
       const novaManutencaoId = novaManutencaoResult.rows[0].id;
 
+      // ✅ Copiar parâmetros (mantém igual)
       const copiarParametrosQuery = `
-        INSERT INTO manutencoes_parametros (manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid)
+        INSERT INTO manutencoes_parametros (
+          manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid
+        )
         SELECT 
           $1, 
           mp.parametro,
@@ -2072,12 +2200,17 @@ app.post('/reset-status', async (req, res) => {
           $3
         FROM manutencoes_parametros mp
         JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
-        WHERE mp.manutencao_id = $2 AND pq.ativo = TRUE AND pq.empresaid = $3;
+        WHERE mp.manutencao_id = $2
+          AND pq.ativo = TRUE
+          AND pq.empresaid = $3;
       `;
       await client.query(copiarParametrosQuery, [novaManutencaoId, cliente.manutencao_id, empresaid]);
 
+      // ✅ Adicionar parâmetros ativos que não existam (mantém igual)
       const adicionarParametrosAtivosQuery = `
-        INSERT INTO manutencoes_parametros (manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid)
+        INSERT INTO manutencoes_parametros (
+          manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid
+        )
         SELECT 
           $1,
           pq.parametro,
@@ -2093,26 +2226,27 @@ app.post('/reset-status', async (req, res) => {
           AND NOT EXISTS (
             SELECT 1
             FROM manutencoes_parametros mp
-            WHERE mp.manutencao_id = $1 AND mp.parametro = pq.parametro
+            WHERE mp.manutencao_id = $1
+              AND mp.parametro = pq.parametro
           );
       `;
       await client.query(adicionarParametrosAtivosQuery, [novaManutencaoId, empresaid]);
 
-      mensagensDeSucesso.push(`Nova manutenção criada para cliente ${cliente.clienteid}, dia ${cliente.diasemana}.`);
+      mensagensDeSucesso.push(
+        `Nova manutenção criada para cliente ${cliente.clienteid}, dia ${cliente.diasemana} (metodo=${metodo}, modo=${modo}).`
+      );
     }
 
-    // 🔹 Resetar os contadores para 0 após reset das manutenções
-  
     await client.query('COMMIT');
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Manutenções resetadas com sucesso!',
       detalhes: mensagensDeSucesso,
     });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Erro ao resetar status:', error);
-    res.status(500).json({ error: 'Erro ao resetar status.', detalhes: error.message });
+    return res.status(500).json({ error: 'Erro ao resetar status.', detalhes: error.message });
   } finally {
     client.release();
   }

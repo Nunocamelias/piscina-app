@@ -140,7 +140,7 @@ const fetchEmpresa = async (empresaid: number) => {
     {/* 🔹 Nome da empresa e powered by no rodapé */}
     <View style={styles.footer}>
       <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-      <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      <Text style={styles.subTitle}>powered by GESPOOL</Text>
     </View>
   </View>
 );
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   // 🔹 Footer fixo no fundo
   footer: {
     position: 'absolute',
-    bottom: 40, // 🔹 ligeiro afastamento do fundo
+    bottom: 50,
     width: '100%',
     alignItems: 'center',
   },

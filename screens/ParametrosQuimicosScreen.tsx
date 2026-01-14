@@ -12,6 +12,8 @@ const isDarkMode = Appearance.getColorScheme() === 'dark';
 const PARAMETROS_VALIDOS = [
   'pH',
   'Cloro Livre em ppm',
+  'Cloro Total em ppm',       // ✅ novo
+  'Cloro Combinado em ppm',   // ✅ novo (mesmo que não seja editável na folha)
   'Cloro ORP em mV',
   'Alcalinidade',
   'Dureza',
@@ -19,6 +21,7 @@ const PARAMETROS_VALIDOS = [
   'Sal em Kg/m³',
   'Oxigênio',
 ];
+
 
 type Parametro = {
   id: number;
@@ -182,6 +185,26 @@ const ParametrosQuimicosScreen: React.FC = () => {
     }
   };
 
+const formatDosagemFrase = (
+  p?: Parametro | null,
+  modo?: 'aumentar' | 'diminuir',
+  unidade?: string
+) => {
+  if (!p) return '';
+
+  const u = unidade || 'unidades';
+
+  if (modo === 'aumentar') {
+    const { dosagem_aumentar, incremento_aumentar, volume_calculo } = p;
+    if (!dosagem_aumentar || !incremento_aumentar || !volume_calculo) return '';
+    return `Adicionar ${dosagem_aumentar} kg/lt para aumentar ${incremento_aumentar} ${u} em ${volume_calculo} m³ de água.`;
+  }
+
+  // diminuir
+  const { dosagem_diminuir, incremento_diminuir, volume_calculo } = p;
+  if (!dosagem_diminuir || !incremento_diminuir || !volume_calculo) return '';
+  return `Adicionar ${dosagem_diminuir} kg/lt para reduzir ${incremento_diminuir} ${u} em ${volume_calculo} m³ de água.`;
+};
 
   return (
     <KeyboardAvoidingView
@@ -258,7 +281,7 @@ ListFooterComponent={
     </TouchableOpacity>
      <View style={styles.footer}>
       <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-      <Text style={styles.subTitle}>powered by GES-POOL</Text>
+      <Text style={styles.subTitle}>powered by GESPOOL</Text>
     </View>
   </View>
 }
@@ -282,224 +305,309 @@ ListFooterComponent={
         <View style={styles.innerContainer}>
           <Text style={styles.modalTitle}>Parâmetro Químico</Text>
 
-         {/* 1ª linha: Nome do parâmetro com o array */}
+        {/* 1) Picker do parâmetro */}
 <View style={[styles.pickerContainer, { backgroundColor: '#FFFFFF' }]}>
   <Picker
     selectedValue={parametroSelecionado?.parametro}
     onValueChange={(itemValue) =>
       setParametroSelecionado({ ...parametroSelecionado!, parametro: itemValue })
     }
-    style={[
-      styles.picker,
-      { backgroundColor: '#FFFFFF', color: '#000000' }, // força texto preto e fundo branco
-    ]}
+    style={[styles.picker, { backgroundColor: '#FFFFFF', color: '#000000' }]}
     dropdownIconColor={'#000000'}
-    mode="dropdown" // 🔹 garante o estilo dropdown (não dialog)
+    mode="dropdown"
   >
     <Picker.Item
-  label="Escolha um Parâmetro"
-  value=""
-  color={isDarkMode ? '#000000' : '#000000'} // 🔹 força texto sempre visível
-/>
-{PARAMETROS_VALIDOS.map((parametro) => (
-  <Picker.Item
-    key={parametro}
-    label={parametro}
-    value={parametro}
-    color={isDarkMode ? '#FFFFFF' : '#000000'}
-  />
-))}
-
+      label="Escolha um Parâmetro"
+      value=""
+      color="#000000"
+    />
+    {PARAMETROS_VALIDOS.map((parametro) => (
+      <Picker.Item
+        key={parametro}
+        label={parametro}
+        value={parametro}
+        color={isDarkMode ? '#FFFFFF' : '#000000'}
+      />
+    ))}
   </Picker>
 </View>
 
+{/* 2) Intervalo Ideal (Min / Alvo / Máx na mesma “caixa”) */}
+<Text style={styles.titleText}>Intervalo Ideal</Text>
+
+<View style={styles.dosagemCard}>
+  <View style={styles.dosagemRow}>
+    {/* Min */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Min</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="0"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.valor_minimo || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({ ...parametroSelecionado!, valor_minimo: formattedText });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+
+    {/* Valor alvo (label em baixo do input) */}
+    <View style={styles.dosagemField}>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="Alvo"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.valor_alvo || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({ ...parametroSelecionado!, valor_alvo: formattedText });
+        }}
+        placeholderTextColor="#888"
+      />
+      <Text style={styles.dosagemMiniLabel}>Valor Alvo</Text>
+    </View>
+
+    {/* Máx */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Máx</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="0"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.valor_maximo || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({ ...parametroSelecionado!, valor_maximo: formattedText });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+  </View>
+</View>
+
+<View style={styles.divider} />
+
+{/* 4) Produto Aumentar */}
+
+<Text style={styles.titleText}>Produto para Aumentar</Text>
+<TextInput
+  style={styles.input}
+  placeholder="Produto"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.produto_aumentar}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, produto_aumentar: text })
+  }
+/>
+
+{/* 5) Dosagem Aumentar */}
+<Text style={styles.titleText}>Dosagem para Aumentar</Text>
+
+<View style={styles.dosagemCard}>
+  <View style={styles.dosagemRow}>
+    {/* Kg */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Kg</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="1.5"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.dosagem_aumentar || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            dosagem_aumentar: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+
+    {/* para aumentar (em 2 linhas para poupar espaço) */}
+    <Text style={styles.dosagemMiddleText}>{'para\n aumentar'}</Text>
+
+    {/* Unid/ppm */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Unid/ppm</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="0.2"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.incremento_aumentar || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            incremento_aumentar: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+
+    {/* em */}
+    <Text style={[styles.dosagemMiddleText, { marginTop: 22 }]}>{'em'}</Text>
+
+    {/* m³ */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>m³</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="100"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.volume_calculo || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            volume_calculo: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+  </View>
+
+  {/* ✅ Frase “tipo rótulo CTX” (sem unidadeDoParametro) */}
+  <Text style={styles.dosagemPreview}>
+    {formatDosagemFrase(parametroSelecionado, 'aumentar')}
+  </Text>
+</View>
+
+<View style={styles.divider} />
+
+{/* 6) Produto Diminuir */}
+<Text style={styles.titleText}>Produto para Diminuir</Text>
+<TextInput
+  style={styles.input}
+  placeholder="Produto"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.produto_diminuir}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, produto_diminuir: text })
+  }
+/>
+
+{/* 7) Dosagem Diminuir */}
+<Text style={styles.titleText}>Dosagem para Diminuir</Text>
+
+<View style={styles.dosagemCard}>
+  <View style={styles.dosagemRow}>
+    {/* Kg */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Kg</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="1.5"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.dosagem_diminuir || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            dosagem_diminuir: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+
+    {/* para reduzir (em 2 linhas para poupar espaço) */}
+    <Text style={styles.dosagemMiddleText}>{'para\n reduzir'}</Text>
+
+    {/* Unid/ppm */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>Unid/ppm</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="0.2"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.incremento_diminuir || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            incremento_diminuir: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+
+    {/* em */}
+    <Text style={[styles.dosagemMiddleText, { marginTop: 22 }]}>{'em'}</Text>
+
+    {/* m³ */}
+    <View style={styles.dosagemField}>
+      <Text style={styles.dosagemMiniLabel}>m³</Text>
+      <TextInput
+        style={styles.dosagemMiniInput}
+        placeholder="100"
+        keyboardType="decimal-pad"
+        value={parametroSelecionado?.volume_calculo || ''}
+        onChangeText={(text) => {
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            volume_calculo: formattedText,
+          });
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
+  </View>
+
+  {/* ✅ Frase “tipo rótulo CTX” */}
+  <Text style={styles.dosagemPreview}>
+    {formatDosagemFrase(parametroSelecionado, 'diminuir')}
+  </Text>
+</View>
 
 
-          {/* 2ª linha: Intervalo ideal */}
-          <Text style={styles.titleText}>Intervalo Ideal:</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="Mín"
-              keyboardType="decimal-pad"
-              value={parametroSelecionado?.valor_minimo || ''}
-              onChangeText={(text) => {
-                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1');
-                setParametroSelecionado({ ...parametroSelecionado!, valor_minimo: formattedText });
-              }}
-              placeholderTextColor="#888"
-            />
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="Máx"
-              keyboardType="decimal-pad"
-              value={parametroSelecionado?.valor_maximo || ''}
-              onChangeText={(text) => {
-                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1');
-                setParametroSelecionado({ ...parametroSelecionado!, valor_maximo: formattedText });
-              }}
-              placeholderTextColor="#888"
-            />
-          </View>
+{/* Botões */}
+<TouchableOpacity style={styles.saveButton} onPress={salvarParametro}>
+  <Text style={styles.buttonText}>Salvar</Text>
+</TouchableOpacity>
 
-          {/* 3ª linha: Valor Alvo */}
-          <Text style={styles.titleText}>Valor Alvo:</Text>
-          <TextInput
-            style={styles.medioInput}
-            placeholder="Alvo"
-            keyboardType="decimal-pad"
-            value={parametroSelecionado?.valor_alvo || ''}
-            onChangeText={(text) => {
-              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1');
-              setParametroSelecionado({ ...parametroSelecionado!, valor_alvo: formattedText });
-            }}
-            placeholderTextColor="#888"
-          />
+<TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+  <Text style={styles.buttonText}>Cancelar</Text>
+</TouchableOpacity>
 
-          {/* 4ª linha: Produto para aumentar */}
-          <Text style={styles.titleText}>Produto para Aumentar:</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Produto"
-            placeholderTextColor="#888"
-            value={parametroSelecionado?.produto_aumentar}
-            onChangeText={(text) =>
-              setParametroSelecionado({
-                ...parametroSelecionado!,
-                produto_aumentar: text,
-              })
-            }
-          />
-
-            {/* 5ª linha: Dosagem para aumentar */}
-            <Text style={styles.titleText}>Dosagem para Aumentar:</Text>
-            <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="Kg"
-              keyboardType="decimal-pad" // Teclado para números com decimais
-              value={parametroSelecionado?.dosagem_aumentar || ''} // Trabalha diretamente como string
-              onChangeText={(text) => {
-              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-              setParametroSelecionado({
-              ...parametroSelecionado!,
-              dosagem_aumentar: formattedText, // Atualiza como string
-            });
-           }}
-           placeholderTextColor="#888"
-          />
-            <Text>para incrementar</Text>
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder=""
-              keyboardType="decimal-pad" // Teclado para números com decimais
-              value={parametroSelecionado?.incremento_aumentar || ''} // Trabalha diretamente como string
-              onChangeText={(text) => {
-              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-              setParametroSelecionado({
-              ...parametroSelecionado!,
-              incremento_aumentar: formattedText, // Atualiza como string
-            });
-           }}
-           placeholderTextColor="#888"
-          />
-            <Text>em</Text>
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="m³"
-              keyboardType="decimal-pad" // Teclado para números com decimais
-              value={parametroSelecionado?.volume_calculo || ''} // Trabalha diretamente como string
-              onChangeText={(text) => {
-              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-              setParametroSelecionado({
-              ...parametroSelecionado!,
-              volume_calculo: formattedText, // Atualiza como string
-            });
-           }}
-           placeholderTextColor="#888"
-          />
-            </View>
-
-            {/* 6ª linha: Produto para diminuir */}
-            <Text style={styles.titleText}>Produto para Diminuir:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Produto"
-              placeholderTextColor="#888"
-              value={parametroSelecionado?.produto_diminuir}
-              onChangeText={(text) =>
-                setParametroSelecionado({
-                  ...parametroSelecionado!,
-                  produto_diminuir: text,
-                })
-              }
-            />
-
-            {/* 7ª linha: Dosagem para diminuir */}
-          <Text style={styles.titleText}>Dosagem para Diminuir:</Text>
-          <View style={styles.row}>
-          <TextInput
-              style={[styles.input, styles.smallInput]}
-              placeholder="Kg"
-              keyboardType="decimal-pad" // Teclado para números com decimais
-              value={parametroSelecionado?.dosagem_diminuir || ''} // Trabalha diretamente como string
-              onChangeText={(text) => {
-              const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-              setParametroSelecionado({
-              ...parametroSelecionado!,
-              dosagem_diminuir: formattedText, // Atualiza como string
-            });
-           }}
-           placeholderTextColor="#888"
-          />
-              <Text>para reduzir</Text>
-              <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder=""
-                keyboardType="decimal-pad" // Teclado para números com decimais
-                value={parametroSelecionado?.incremento_diminuir || ''} // Trabalha diretamente como string
-                onChangeText={(text) => {
-                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-                setParametroSelecionado({
-                ...parametroSelecionado!,
-                incremento_diminuir: formattedText, // Atualiza como string
-             });
-            }}
-           placeholderTextColor="#888"
-          />
-            <Text>em</Text>
-            <TextInput
-                style={[styles.input, styles.smallInput]}
-                placeholder="m³"
-                keyboardType="decimal-pad" // Teclado para números com decimais
-                value={parametroSelecionado?.volume_calculo || ''} // Trabalha diretamente como string
-                onChangeText={(text) => {
-                const formattedText = text.replace(',', '.').replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'); // Permite apenas números e um ponto
-                setParametroSelecionado({
-                ...parametroSelecionado!,
-                volume_calculo: formattedText, // Atualiza como string
-              });
-             }}
-           placeholderTextColor="#888"
-          />
-            </View>
-
-
-            {/* Botões para Salvar e Cancelar */}
-          <TouchableOpacity style={styles.saveButton} onPress={salvarParametro}>
-            <Text style={styles.buttonText}>Salvar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => setModalVisible(false)}
-          >
-            <Text style={styles.buttonText}>Cancelar</Text>
-          </TouchableOpacity>
         </View>
          {/* 🔹 Nome da empresa e powered by no rodapé */}
             <View style={styles.footer}>
               <Text style={styles.empresaNome}>{empresaNome || 'Empresa'}</Text>
-              <Text style={styles.subTitle}>powered by GES-POOL</Text>
+              <Text style={styles.subTitle}>powered by GESPOOL</Text>
             </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -531,15 +639,21 @@ const styles = StyleSheet.create({
         marginTop: 16, // Espaço acima dos botões
       },
       input: {
-        borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 8,
-        padding: 10,
-        width: '100%',
-        marginVertical: 5,
-        backgroundColor: 'white',
-        marginBottom: 20,
-      },
+        width: '98%',
+        backgroundColor: '#FFF',
+        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        fontSize: 16,
+        color: '#000',
+        // sombra leve
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 3,
+        elevation: 8,
+        },
+
       medioInput: {
         width: 80, // 🔹 Maior que o smallInput, mas menor que o input normal
         height: 50, // 🔹 Levemente maior para melhor legibilidade
@@ -574,7 +688,7 @@ const styles = StyleSheet.create({
       shadowColor: '#000',
       shadowOpacity: 0.1,
       shadowRadius: 4,
-      elevation: 2,
+      elevation: 10,
     },
     cardTitle: {
       fontSize: 18,
@@ -595,16 +709,28 @@ const styles = StyleSheet.create({
       marginRight: 8,
     },
     editButton: {
-      backgroundColor: '#4CAF50',
+      backgroundColor: '#22b4b4ff',
       paddingVertical: 8,
       paddingHorizontal: 16,
-      borderRadius: 4,
+      borderRadius: 18,
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 2,
+      shadowRadius: 4.65,
+      elevation: 8, 
     },
     deleteButton: {
-      backgroundColor: '#F44336',
+      backgroundColor: '#FFB3B3',
       paddingVertical: 8,
       paddingHorizontal: 16,
-      borderRadius: 4,
+      borderRadius: 18,
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 2,
+      shadowRadius: 4.65,
+      elevation: 8, 
     },
     buttonText: {
       color: '#000',
@@ -617,18 +743,13 @@ const styles = StyleSheet.create({
       fontSize: 16,
       color: '#777',
     },
-    footer: {
-      marginTop: 20,
-      marginBottom: 30, // 🔹 Garante que o botão tenha espaço no final da lista
-      alignItems: 'center',
-    },
     addButton: {
       backgroundColor: '#22b4b4ff',
       paddingVertical: 15,
       paddingHorizontal: 40,
       borderRadius: 25,
       marginBottom: 15,
-      width: '80%',
+      width: '60%',
       alignItems: 'center',
       // 🔹 Remove o contorno preto
       borderWidth: 0,
@@ -678,34 +799,54 @@ const styles = StyleSheet.create({
       marginBottom: 20,
     },
     saveButton: {
-    backgroundColor: '#ADD8E6',
-    paddingVertical: 15,
+      backgroundColor: '#22b4b4ff', // Azul claro
+      paddingVertical: 12,
       paddingHorizontal: 40,
       borderRadius: 25, // Cantos arredondados
-      width: '100%', // Mantém a largura fixa
+      marginTop: 20,
+      marginBottom: 10, // Espaçamento abaixo
+      width: '80%', // Botão maior
       alignItems: 'center', // Centraliza o texto dentro do botão
-      borderWidth: 1.2, // Moldura preta ao botão
-      borderColor: '#000',
-  },
+      alignSelf: 'center', // Centraliza o botão no ecrã
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
+    },
     cancelButton: {
-      backgroundColor: '#FFB3B3',
-      paddingVertical: 15,
+      backgroundColor: '#FFB3B3', // Vermelho tomate para indicar erro
+      padding: 15,
+      paddingVertical: 12,
       paddingHorizontal: 40,
-      borderRadius: 25, // Cantos arredondados
-      width: '100%', // Mantém a largura fixa
-      alignItems: 'center', // Centraliza o texto dentro do botão
-      borderWidth: 1.2, // Moldura preta ao botão
-      borderColor: '#000',
+      borderRadius: 25,
+      marginBottom: 15,
+      width: '80%',
+      alignItems: 'center',
+      alignSelf: 'center',
       marginTop: 10,
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10, // ← dá profundidade real no Android
     },
     pickerContainer: {
-      width: '100%',
+      width: '98%',
       borderWidth: 1,
       borderColor: '#ccc',
       borderRadius: 8,
       overflow: 'hidden',
       marginBottom: 20,
       backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10,
     },
     picker: {
       backgroundColor: '#333', // 🔹 Cor do texto dentro do Picker
@@ -732,10 +873,16 @@ const styles = StyleSheet.create({
       fontSize: 16,
       fontWeight: 'bold',
       color: '#333',
+      marginTop: 10,
       marginBottom: 5, // 🔹 Aumenta o espaço entre o título e o input
     },
     listPadding: {
       paddingBottom: 120, // Garante espaço extra na parte inferior da lista
+    },
+    footer: {
+      marginTop: 20,
+      marginBottom: 30, // 🔹 Garante que o botão tenha espaço no final da lista
+      alignItems: 'center',
     },
     empresaNome: {
       fontSize: 16,
@@ -749,5 +896,109 @@ const styles = StyleSheet.create({
       color: '#444',
       marginTop: 2,
     },
+    fieldBlock: {
+      flex: 1,
+      alignItems: 'center',
+    },
+
+    fieldLabel: {
+      fontSize: 12,
+      color: '#444',
+      marginBottom: 4,
+      fontWeight: '600',
+    },
+
+    divider: {
+      height: 1,
+      width: '100%',
+      backgroundColor: '#bbb',
+      marginVertical: 12,
+      opacity: 0.8,
+    },
+
+    dosagemLabel: {
+      fontSize: 11,
+      color: '#444',
+      marginBottom: 4,
+      fontWeight: '600',
+    },
+
+    dosagemInput: {
+      width: 70,
+      height: 42,
+      borderWidth: 1,
+      borderColor: '#ccc',
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      textAlign: 'center',
+      backgroundColor: '#fff',
+    },
+
+    dosagemInlineText: {
+      fontSize: 13,
+      color: '#333',
+      marginHorizontal: 6,
+      fontWeight: '600',
+    },
+
+    dosagemCard: {
+      width: '98%',
+      backgroundColor: '#e9e9e9',
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      marginTop: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 8,
+    },
+
+    dosagemRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
+
+    dosagemField: {
+      alignItems: 'center',
+    },
+
+    dosagemMiniLabel: {
+      fontSize: 11,
+      color: '#444',
+      marginBottom: 4,
+      fontWeight: '600',
+    },
+
+    dosagemMiniInput: {
+      width: 62, // 🔹 mais pequeno para caber tudo numa linha
+      height: 42,
+      backgroundColor: '#fff',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#cfcfcf',
+      textAlign: 'center',
+      fontSize: 14,
+      paddingVertical: 6,
+    },
+
+    dosagemMiddleText: {
+      fontSize: 12,
+      color: '#333',
+      fontWeight: '600',
+      marginTop: 16,
+      textAlign: 'center',
+      lineHeight: 14,
+    },
+
+    dosagemPreview: {
+      marginTop: 8,
+      textAlign: 'center',
+      fontSize: 12,
+      color: '#111',
+     fontWeight: '600',
+},
   });
 export default ParametrosQuimicosScreen;

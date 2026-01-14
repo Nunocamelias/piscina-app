@@ -123,7 +123,7 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={isDarkMode ? styles.titleDark : styles.titleLight}>GES-POOL</Text>
+      <Text style={isDarkMode ? styles.titleDark : styles.titleLight}>GESPOOL</Text>
 
       {/* 🔹 Input de Email com Validação */}
       <TextInput
@@ -217,10 +217,11 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: '#000',
     padding: 10,
-    marginBottom: 20,
+    height: 50,
+    marginBottom: 15,
     borderRadius: 25,
-    backgroundColor: '#FFF',
-    color: '#000',
+    backgroundColor: '#333',
+    color: '#BBBBBB',
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
@@ -234,12 +235,12 @@ const styles = StyleSheet.create({
   inputDark: {
     borderWidth: 0,
     borderColor: '#000',
-    padding: 12,
-    height: 45,
+    padding: 10,
+    height: 50,
     marginBottom: 15,
     borderRadius: 25,
     backgroundColor: '#333',
-    color: '#FFF',
+    color: '#BBBBBB',
     width: '80%',
     fontSize: 16,
     textAlign: 'center',
@@ -258,6 +259,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     width: '80%',
     alignItems: 'center',
+    height: 50,
 
     // 🔹 Remove o contorno preto
     borderWidth: 0,
@@ -290,7 +292,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     width: '80%',
-    height: 45, // 🔹 Controla a altura do campo de senha
+    height: 50, // 🔹 Controla a altura do campo de senha
     borderWidth: 0,
     marginBottom: 15,
     borderColor: '#000',
@@ -308,7 +310,7 @@ const styles = StyleSheet.create({
 
   passwordInput: {
     flex: 1,
-    height: 45,
+    height: 50,
     color: '#FFF',
     fontSize: 16,
     backgroundColor: '#333',

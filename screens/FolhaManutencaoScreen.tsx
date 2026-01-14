@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform } from 'react-native';
 import Config from 'react-native-config';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -8,7 +8,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import moment from 'moment';
-import { calcularISL, sugerirAlvosPorISL, type ISLResultado } from '../utils/isl';
+import { calcularISL, sugerirAlvosPorISL } from '../utils/isl';
+import Slider from '@react-native-community/slider';
+import { CLORO_ANCHORS, CLORO_TOTAL_ANCHORS, PH_ANCHORS, ALC_ANCHORS, CYA_ANCHORS, DUREZA_ANCHORS, interpolateColor, type Anchor } from '../utils/colors';
 
 
 
@@ -73,6 +75,9 @@ type ItemManutencao = {
   cor?: string;
 };
 
+type MetodoAnalise = 'fotometro' | 'gotas' | 'fitas';
+type ModoTratamento = 'sal' | 'cloro';
+
 type Props = {
   navigation: any; // Ajuste o tipo para um tipo mais específico se necessário
   route: any; // Ajuste para refletir o formato exato dos parâmetros passados
@@ -135,9 +140,13 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
     ultima_substituicao,
   } = route.params as any;
 
-  const isPiscinaSal = !!eletrolise_sal;
+ 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [parametrosQuimicos, setParametrosQuimicos] = useState<Parametro[]>([]);
+  const [metodoAnalise, setMetodoAnalise] = useState<MetodoAnalise>('fitas');
+  const [modoTratamento, setModoTratamento] = useState<ModoTratamento>('cloro');
+  const [expandTratamento, setExpandTratamento] = useState(false);
+  const [expandMetodo, setExpandMetodo] = useState(false);
   const [isClienteExpanded, setIsClienteExpanded] = useState(false);
   const [isParametrosExpanded, setIsParametrosExpanded] = useState(false);
   const [isItensExpanded, setIsItensExpanded] = useState(false);
@@ -149,6 +158,7 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   const [valorServicoExtra, setValorServicoExtra] = useState('');
   const [imagensAnexadas, setImagensAnexadas] = useState<string[]>([]);
   const [islExpanded, setIslExpanded] = useState(false);
+  const [expandCloroTotal, setExpandCloroTotal] = React.useState(false);
   const [islPH, setIslPH] = useState('');
   const [islAlc, setIslAlc] = useState('');
   const [islDur, setIslDur] = useState('');
@@ -167,6 +177,7 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
 } | null>(null);
 
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
+  
 
 
   // 🔹 Função para buscar o empresaid
@@ -276,8 +287,6 @@ const onGuardarISL = async () => {
   }
 };
 
-
-
 // 🔹 Função para buscar os parâmetros químicos
 const fetchParametros = useCallback(async () => {
   if (!userEmpresaid) {
@@ -290,8 +299,39 @@ const fetchParametros = useCallback(async () => {
     });
 
     if (response.status === 200) {
-      setParametrosQuimicos(response.data);
-      console.log('[DEBUG] Parâmetros químicos carregados:', response.data);
+  const data = Array.isArray(response.data) ? response.data : [];
+
+  const existeTotal = data.some((p: any) => norm(p.parametro) === 'cloro total em ppm');
+  const existeComb = data.some((p: any) => norm(p.parametro) === 'cloro combinado em ppm');
+
+  const add: any[] = [];
+
+  if (!existeTotal) {
+    add.push({
+      parametro: 'Cloro Total em ppm',
+      valor_atual: '',
+      valor_ultimo: null,
+      bloqueado: false,
+      status: null,
+      resultado: null,
+    });
+  }
+
+  if (!existeComb) {
+    add.push({
+      parametro: 'Cloro Combinado em ppm',
+      valor_atual: '',
+      valor_ultimo: null,
+      bloqueado: true,
+      status: null,
+      resultado: null,
+    });
+  }
+
+  const finalList = add.length ? [...data, ...add] : data;
+
+  setParametrosQuimicos(finalList);
+  console.log('[DEBUG] Parâmetros químicos carregados:', finalList);
     } else {
       console.error('[DEBUG] Erro ao buscar parâmetros químicos. Status:', response.status);
       Alert.alert('Erro', 'Não foi possível carregar os parâmetros químicos.');
@@ -375,6 +415,15 @@ const fetchDadosManutencao = useCallback(async () => {
     const manutencaoData = await manutencaoResponse.json();
     setManutencaoAtual(manutencaoData.manutencao || null);
     console.log('✅ Dados da manutenção carregados:', manutencaoData.manutencao);
+    // ✅ carregar método/modo guardados na manutenção
+    const m = manutencaoData.manutencao;
+
+    if (m?.metodo_analise) setMetodoAnalise(m.metodo_analise);
+    else setMetodoAnalise('fitas');
+
+    if (m?.modo_tratamento) setModoTratamento(m.modo_tratamento);
+    else setModoTratamento(clienteData?.eletrolise_sal ? 'sal' : 'cloro');
+
 
     if (manutencaoData.manutencao?.id && Array.isArray(manutencaoData.parametros)) {
       const parametrosAtivos = manutencaoData.parametros.map((parametro: any) => {
@@ -399,12 +448,90 @@ const fetchDadosManutencao = useCallback(async () => {
         };
       });
 
-      setParametrosQuimicos(parametrosAtivos);
+      setParametrosQuimicos((prev) => {
+  const byKey = new Map<string, any>();
+
+  // 1) começa com o que já existe (a tua lista base / semeada)
+  for (const p of prev) {
+    byKey.set(norm(p.parametro), p);
+  }
+
+  // 2) aplica por cima os dados carregados/ativos da manutenção
+  for (const p of parametrosAtivos) {
+    const k = norm(p.parametro);
+    const base = byKey.get(k) || p;
+
+    byKey.set(k, {
+      ...base,
+      ...p, // valor_atual, valor_ultimo, status, motivo, etc.
+    });
+  }
+
+  // 3) garante que os novos existem (se por algum motivo não vieram)
+  const existeTotal = byKey.has('cloro total em ppm');
+  const existeComb = byKey.has('cloro combinado em ppm');
+
+  if (!existeTotal) {
+    byKey.set('cloro total em ppm', {
+      parametro: 'Cloro Total em ppm',
+      valor_atual: '',
+      valor_ultimo: null,
+      bloqueado: false,
+      status: null,
+      resultado: null,
+    });
+  }
+
+  if (!existeComb) {
+    byKey.set('cloro combinado em ppm', {
+      parametro: 'Cloro Combinado em ppm',
+      valor_atual: '',
+      valor_ultimo: null,
+      bloqueado: true,
+      status: null,
+      resultado: null,
+    });
+  }
+
+  // 4) devolve array final
+  return Array.from(byKey.values());
+});
+
       console.log('✅ Parâmetros químicos ativos carregados:', parametrosAtivos);
     } else {
-      console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
-      setParametrosQuimicos([]);
+  console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
+
+  // NÃO apagues a lista base; garante pelo menos os 2 novos
+  setParametrosQuimicos((prev) => {
+    const byKey = new Map<string, any>();
+    for (const p of prev) byKey.set(norm(p.parametro), p);
+
+    if (!byKey.has('cloro total em ppm')) {
+      byKey.set('cloro total em ppm', {
+        parametro: 'Cloro Total em ppm',
+        valor_atual: '',
+        valor_ultimo: null,
+        bloqueado: false,
+        status: null,
+        resultado: null,
+      });
     }
+
+    if (!byKey.has('cloro combinado em ppm')) {
+      byKey.set('cloro combinado em ppm', {
+        parametro: 'Cloro Combinado em ppm',
+        valor_atual: '',
+        valor_ultimo: null,
+        bloqueado: true,
+        status: null,
+        resultado: null,
+      });
+    }
+
+    return Array.from(byKey.values());
+  });
+}
+
   } catch (error) {
     console.error(
       '❌ Erro ao processar os parâmetros químicos:',
@@ -426,7 +553,6 @@ useFocusEffect(
     console.log('🔄 Recarregando os parâmetros químicos ao voltar para a tela...');
 
     if (!clienteId || !diaSemana || !empresaid) {
-      console.warn('⚠️ Cliente ID, Dia da Semana ou Empresaid ainda não estão disponíveis. Aguardando...');
       return;
     }
 
@@ -924,6 +1050,8 @@ const handleAnexarFoto = async () => {
       body: JSON.stringify({
         status: 'concluida',
         parametros: parametrosParaEnviar,
+        metodo_analise: metodoAnalise,
+        modo_tratamento: modoTratamento,
         empresaid,
       }),
     });
@@ -977,6 +1105,8 @@ const handleAnexarFoto = async () => {
         status: 'nao_concluida',
         motivo: motivoEscolhido, // ✅ usa a coluna existente "motivo"
         empresaid,
+        metodo_analise: metodoAnalise,
+        modo_tratamento: modoTratamento,
       }),
     });
 
@@ -995,6 +1125,112 @@ const handleAnexarFoto = async () => {
     Alert.alert('Erro', 'Não foi possível registrar a manutenção como não concluída.');
   }
 };
+
+const ColorSlider = ({
+  label,
+  value,
+  min,
+  max,
+  step,
+  anchors,
+  onCommit,
+  formatValue,
+}: {
+  label?: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  anchors: Anchor[];
+  onCommit: (v: number) => void;
+  formatValue?: (n: number) => string;
+}) => {
+
+  const anchorsSorted = React.useMemo(
+    () => [...anchors].sort((a, b) => a.value - b.value),
+    [anchors]
+  );
+
+  const [temp, setTemp] = React.useState<number>(value);
+  React.useEffect(() => setTemp(value), [value]);
+
+  const previewColor = React.useMemo(
+    () => interpolateColor(temp, anchorsSorted),
+    [temp, anchorsSorted]
+  );
+
+  return (
+  <View style={styles.colorTool}>
+    {typeof label === 'string' && label.trim().length > 0 && (
+  <Text style={styles.colorToolLabel} numberOfLines={1} ellipsizeMode="tail">
+    {label}
+  </Text>
+)}
+
+
+    {/* ✅ Linha única: preview (com valor por baixo) + espaço (hint) + âncoras com labels */}
+    <View style={styles.colorRow}>
+      {/* preview (cor variável) + valor por baixo */}
+      <View style={styles.anchorWrap}>
+        <View style={[styles.previewSwatch, { backgroundColor: previewColor }]} />
+        <Text style={styles.anchorLabel}>
+         {formatValue ? formatValue(temp) : temp.toFixed(1)}
+        </Text>
+
+      </View>
+
+      {/* espaço do meio (mantém o gap e centra a hint) */}
+      <View style={styles.middleHint}>
+        <Text style={styles.hintText}>(comparar à sombra)</Text>
+      </View>
+
+      {/* âncoras (6 cores) + labels */}
+      <View style={styles.anchorsRow}>
+        {anchorsSorted.map((a) => (
+          <View key={a.value} style={styles.anchorWrap}>
+            <View style={[styles.anchorSwatch, { backgroundColor: a.color }]} />
+            <Text style={styles.anchorLabel}>{a.value}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+
+    {/* slider */}
+    <Slider
+      style={styles.colorSlider}
+      minimumValue={min}
+      maximumValue={max}
+      step={step}
+      value={temp}
+      onValueChange={(v: number) => setTemp(v)}
+      onSlidingComplete={(v: number) => onCommit(v)}
+    />
+  </View>
+);
+};
+
+const norm = (s: any) =>
+  String(s || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const getValorAtualByNorm = React.useCallback(
+  (key: string) => {
+    const it = parametrosQuimicos.find((p) => norm(p.parametro) === key);
+    const n = it ? toNum(it.valor_atual) : NaN;
+    return Number.isFinite(n) ? n : NaN;
+  },
+  [parametrosQuimicos]
+);
+
+const calcCloroCombinado = React.useCallback(() => {
+  const livre = toNum(getValorAtualByNorm('cloro livre em ppm'));
+  const total = toNum(getValorAtualByNorm('cloro total em ppm'));
+  if (!Number.isFinite(livre) || !Number.isFinite(total)) return NaN;
+  return Math.max(0, total - livre);
+}, [getValorAtualByNorm]);
 
 return (
   <FlatList
@@ -1233,172 +1469,651 @@ return (
     </Text>
   </TouchableOpacity>
 
+  {/* ✅ Tratamento (Sal vs Cloro) */}
+<View style={styles.radioBlock}>
+  <TouchableOpacity
+    style={styles.radioHeader}
+    onPress={() => setExpandTratamento((v) => !v)}
+  >
+    <Text style={styles.radioTitle}>
+      Piscina tratada com:{" "}
+      <Text style={{ fontWeight: '600' }}>
+        {modoTratamento === 'sal'
+          ? 'Eletrólise de sal'
+          : 'Cloro (manual/automático)'}
+      </Text>
+    </Text>
+    <Text style={styles.chevron}>{expandTratamento ? '▲' : '▼'}</Text>
+  </TouchableOpacity>
+
+  {expandTratamento && (
+    <>
+      {/* Sal */}
+      <TouchableOpacity
+        style={styles.radioRow}
+        onPress={() => {
+          if (modoTratamento === 'sal') return;
+          Alert.alert(
+            'Confirmar',
+            'Está a tratar esta manutenção como piscina a SAL. OK?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  setModoTratamento('sal');
+                  setExpandTratamento(false);
+                },
+              },
+            ]
+          );
+        }}
+      >
+        <View style={[styles.radioDot, modoTratamento === 'sal' && styles.radioDotOn]} />
+        <Text style={styles.radioText}>Eletrólise de sal</Text>
+      </TouchableOpacity>
+
+      {/* Cloro */}
+      <TouchableOpacity
+        style={styles.radioRow}
+        onPress={() => {
+          if (modoTratamento === 'cloro') return;
+          Alert.alert(
+            'Confirmar',
+            'Está a tratar esta manutenção como piscina a CLORO. OK?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  setModoTratamento('cloro');
+                  setExpandTratamento(false);
+                },
+              },
+            ]
+          );
+        }}
+      >
+        <View style={[styles.radioDot, modoTratamento === 'cloro' && styles.radioDotOn]} />
+        <Text style={styles.radioText}>Cloro (manual / automático)</Text>
+      </TouchableOpacity>
+    </>
+  )}
+</View>
+
+{/* 🧪 Método de análise */}
+<View style={styles.radioBlock}>
+  <TouchableOpacity
+    style={styles.radioHeader}
+    onPress={() => setExpandMetodo((v) => !v)}
+  >
+    <Text style={styles.radioTitle}>
+      Vou fazer análises com:{" "}
+      <Text style={{ fontWeight: '600' }}>
+        {metodoAnalise === 'fotometro'
+          ? 'Fotómetro'
+          : metodoAnalise === 'gotas'
+          ? 'Gotas / titulação'
+          : 'Fitas (AquaChek)'}
+      </Text>
+    </Text>
+    <Text style={styles.chevron}>{expandMetodo ? '▲' : '▼'}</Text>
+  </TouchableOpacity>
+
+  {expandMetodo && (
+    <>
+      {/* Fotómetro */}
+      <TouchableOpacity
+        style={styles.radioRow}
+        onPress={() => {
+          if (metodoAnalise === 'fotometro') return;
+          Alert.alert(
+            'Confirmar',
+            'Está a usar o FOTÓMETRO para esta análise. OK?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  setMetodoAnalise('fotometro');
+                  setExpandMetodo(false);
+                },
+              },
+            ]
+          );
+        }}
+      >
+        <View
+          style={[
+            styles.radioDot,
+            metodoAnalise === 'fotometro' && styles.radioDotOn,
+          ]}
+        />
+        <Text style={styles.radioText}>Fotómetro (mais preciso)</Text>
+      </TouchableOpacity>
+
+      {/* Gotas */}
+      <TouchableOpacity
+        style={styles.radioRow}
+        onPress={() => {
+          if (metodoAnalise === 'gotas') return;
+          Alert.alert(
+            'Confirmar',
+            'Está a usar TESTES DE GOTAS para esta análise. OK?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  setMetodoAnalise('gotas');
+                  setExpandMetodo(false);
+                },
+              },
+            ]
+          );
+        }}
+      >
+        <View
+          style={[
+            styles.radioDot,
+            metodoAnalise === 'gotas' && styles.radioDotOn,
+          ]}
+        />
+        <Text style={styles.radioText}>Gotas / titulação</Text>
+      </TouchableOpacity>
+
+      {/* Fitas */}
+      <TouchableOpacity
+        style={styles.radioRow}
+        onPress={() => {
+          if (metodoAnalise === 'fitas') return;
+          Alert.alert(
+            'Confirmar',
+            'Está a usar FITAS (AquaChek) para esta análise. OK?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  setMetodoAnalise('fitas');
+                  setExpandMetodo(false);
+                },
+              },
+            ]
+          );
+        }}
+      >
+        <View
+          style={[
+            styles.radioDot,
+            metodoAnalise === 'fitas' && styles.radioDotOn,
+          ]}
+        />
+        <Text style={styles.radioText}>Fitas (AquaChek) — rápido</Text>
+      </TouchableOpacity>
+    </>
+  )}
+</View>
+
+
+
   {isParametrosExpanded && parametrosQuimicos.length > 0 ? (
-    parametrosQuimicos.map((item, index) => {
-      const isPH = item.parametro === 'pH';
-      const isAlc = item.parametro === 'Alcalinidade';
+  <>
 
-      const alvoISL =
-        isPH ? islSugestao?.phAlvo :
-        isAlc ? islSugestao?.alcAlvo :
-        null;
+    {(() => {
+      // ✅ ORDEM FIXA (garante Cloro Total entre Cloro Livre e pH)
+      const ORDEM = [
+        'cloro livre em ppm',
+        'cloro total em ppm',
+        'ph',
+        'alcalinidade',
+        'acido cianurico',
+        'dureza',
+        'cloro orp em mv',
+        'sal em kg/m3',
+        'oxigenio',
+        // 'cloro combinado em ppm'  // (mantemos oculto pelo teu return null)
+      ];
 
-      const islCreatedAt = islUltimoRegisto?.created_at;
+      const parametrosOrdenados = [...parametrosQuimicos].sort((a, b) => {
+        const na = norm(a.parametro);
+        const nb = norm(b.parametro);
 
-      const islValido =
-        !!islCreatedAt &&
-        Date.now() - new Date(islCreatedAt).getTime() <= 90 * 24 * 60 * 60 * 1000;
+        const ia = ORDEM.indexOf(na);
+        const ib = ORDEM.indexOf(nb);
 
-      const mostrarAlvoISL =
-        (isPH || isAlc) && alvoISL !== null && islValido;
+        // desconhecidos vão para o fim, mantendo a ordem relativa
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
 
-      return (
-        <View key={`${item.parametro}-${index}`} style={styles.parametroContainer}>
-          {/* Nome do Parâmetro */}
-          <Text style={styles.parametroTitulo}>{item.parametro}</Text>
+        return ia - ib;
+      });
 
-          {/* 🎯 Alvo ISL (Opção B) */}
-          {mostrarAlvoISL && (
-            <>
-              <Text style={styles.details}>
-                🎯 Alvo ISL: {alvoISL}{isAlc ? ' ppm' : ''}
-              </Text>
-              <Text style={styles.details}>
-                🗓 ISL atualizado em: {new Date(islCreatedAt!).toLocaleDateString()}
-              </Text>
-            </>
+      const cc = calcCloroCombinado();
+      const limiteCloroCombinado = metodoAnalise === 'fotometro' ? 0.2 : 0.5;
+      const mostrarAlertaCC = Number.isFinite(cc) && cc > limiteCloroCombinado;
+
+      return parametrosOrdenados.map((item, index) => {
+        const nomeNorm = norm(item.parametro);
+
+        const isFitas = metodoAnalise === 'fitas';
+
+// quais têm slider por cor?
+const temSliderCor =
+  isFitas &&
+  !isSomenteLeitura &&
+  !item.bloqueado &&
+  (nomeNorm === 'cloro livre em ppm' ||
+   nomeNorm === 'cloro total em ppm' ||
+   nomeNorm === 'ph' ||
+   nomeNorm === 'alcalinidade' ||
+   nomeNorm.includes('acido cianurico') ||
+   nomeNorm === 'dureza');
+
+const suffixAjuste = temSliderCor ? ' - 🎨 Ajuste por cor' : '';
+
+const tituloBase =
+  nomeNorm === 'cloro livre em ppm' ? 'Cloro Livre em ppm' :
+  nomeNorm === 'cloro total em ppm' ? 'Cloro Total em ppm' :
+  nomeNorm === 'ph' ? 'pH' :
+  nomeNorm === 'alcalinidade' ? 'Alcalinidade em ppm' :
+  nomeNorm.includes('acido cianurico') ? 'Ácido Cianúrico em ppm' :
+  nomeNorm === 'dureza' ? 'Dureza em ppm' :
+  item.parametro; // fallback
+
+const tituloFinal = `${tituloBase}${suffixAjuste}`;
+
+
+        // ✅ Tu queres o combinado escondido (vamos manter)
+        if (nomeNorm === 'cloro combinado em ppm') {
+          return null;
+        }
+
+        const isPH = nomeNorm === 'ph';
+        const isAlc = nomeNorm === 'alcalinidade';
+        const isCloroTotal = nomeNorm === 'cloro total em ppm';
+
+        // ✅ para aviso no Ácido Cianúrico quando alcalinidade é baixa
+        const alcAtual = toNum(getValorAtualByNorm('alcalinidade'));
+        const mostrarAvisoCYA =
+          (nomeNorm === 'acido cianurico' || nomeNorm.includes('acido cianurico')) &&
+          Number.isFinite(alcAtual) &&
+          alcAtual < 80;
+
+        // ✅ Conteúdo do Cloro Total só aparece quando expandido
+        const mostrarConteudo = !isCloroTotal || expandCloroTotal;
+
+        const alvoISL =
+          isPH ? islSugestao?.phAlvo :
+          isAlc ? islSugestao?.alcAlvo :
+          null;
+
+        const islCreatedAt = islUltimoRegisto?.created_at;
+
+        const islValido =
+          !!islCreatedAt &&
+          Date.now() - new Date(islCreatedAt).getTime() <= 90 * 24 * 60 * 60 * 1000;
+
+        const mostrarAlvoISL =
+          (isPH || isAlc) && alvoISL !== null && islValido;
+
+        return (
+          <View key={`${item.parametro}-${index}`} style={styles.parametroContainer}>
+            {/* ✅ TÍTULO */}
+          {isCloroTotal ? (
+            <TouchableOpacity
+              onPress={() => setExpandCloroTotal((v) => !v)}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <Text style={styles.parametroTitulo}>{tituloFinal}</Text>
+              <Text style={styles.chevron}>{expandCloroTotal ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.parametroTitulo}>{tituloFinal}</Text>
           )}
 
-          <View style={styles.parametroLinha}>
-            {/* Último Valor */}
-            <TextInput
-              style={[styles.input, styles.inputPequeno]}
-              placeholder="Último Valor"
-              value={
-                item.valor_ultimo !== undefined && item.valor_ultimo !== null
-                  ? item.valor_ultimo.toString()
-                  : 'N/A'
-              }
-              editable={false}
-            />
+            {/* 🎯 Alvo ISL (Opção B) */}
+            {mostrarAlvoISL && (
+              <>
+                <Text style={styles.details}>
+                 🎯 Alvo ISL: {alvoISL}{isAlc ? ' ppm' : ''}  •  Atualizado em: {new Date(islCreatedAt!).toLocaleDateString()}
+                </Text>
+              </>
+            )}
 
-            {/* Valor Atual */}
-            <TextInput
-              style={[styles.input, styles.inputPequeno]}
-              placeholder="Valor Atual"
-              keyboardType="decimal-pad"
-              editable={!isSomenteLeitura && !item.bloqueado}
-              value={item.valor_atual?.toString() || ''}
-              onChangeText={(text: string) => {
-                if (!isSomenteLeitura && !item.bloqueado) {
-                  const formattedText = text
-                    .replace(/[^0-9.]/g, '')
-                    .replace(/(\..*?)\..*/g, '$1');
+            {/* ✅ CONTEÚDO (Cloro Total só aparece quando expandido) */}
+            {mostrarConteudo && (
+              <View style={styles.parametroLinha}>
+                {/* ✅ Linha 0: ColorSliders */}
+                {String(item.parametro || '').trim() === 'Cloro Livre em ppm' &&
+                  metodoAnalise === 'fitas' &&
+                  !isSomenteLeitura &&
+                  !item.bloqueado && (
+                    <View style={styles.rowColorTool}>
+                      <ColorSlider            
+                        value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 0}
+                        min={0}
+                        max={10}
+                        step={0.1}
+                        anchors={CLORO_ANCHORS}
+                        onCommit={(v: number) => {
+                          const s = v.toFixed(1);
+                          setParametrosQuimicos((prev) =>
+                            prev.map((p) =>
+                              p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                            )
+                          );
+                        }}
+                      />
+                    </View>
+                  )}
 
-                  setParametrosQuimicos((prev) =>
-                    prev.map((parametro) =>
-                      parametro.parametro === item.parametro
-                        ? { ...parametro, valor_atual: formattedText }
-                        : parametro
-                    )
-                  );
-                }
-              }}
-              placeholderTextColor="#888"
-            />
+                  {/* (B) Slider Cloro Total */}
+              {isCloroTotal &&
+                metodoAnalise === 'fitas' &&
+                !isSomenteLeitura &&
+                !item.bloqueado && (
+                  <View style={styles.rowColorTool}>
+                    <ColorSlider    
+                      value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 0}
+                      min={0}
+                      max={10}
+                      step={0.1}
+                      anchors={CLORO_TOTAL_ANCHORS}
+                      onCommit={(v: number) => {
+                        const s = v.toFixed(1);
+                        setParametrosQuimicos((prev) =>
+                          prev.map((p) =>
+                            p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                          )
+                        );
+                      }}
+                    />
+                  </View>
+                )}
 
-            {/* Botão Calcular */}
-<TouchableOpacity
-  style={[
-    styles.buttonCalcular,
-    (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled,
-  ]}
-  onPress={() => {
-    if (isSomenteLeitura || item.bloqueado) return;
+                {nomeNorm === 'ph' &&
+                  metodoAnalise === 'fitas' &&
+                  !isSomenteLeitura &&
+                  !item.bloqueado && (
+                    <View style={styles.rowColorTool}>
+                      <ColorSlider                        
+                        value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 7.2}
+                        min={6.2}
+                        max={8.4}
+                        step={0.1}
+                        anchors={PH_ANCHORS}
+                        onCommit={(v: number) => {
+                          const s = v.toFixed(1);
+                          setParametrosQuimicos((prev) =>
+                            prev.map((p) =>
+                              p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                            )
+                          );
+                        }}
+                      />
+                    </View>
+                  )}
 
-    const nome = String(item.parametro || '').trim();
-    const valor = toNum(item.valor_atual);
+                {nomeNorm === 'alcalinidade' &&
+                  metodoAnalise === 'fitas' &&
+                  !isSomenteLeitura &&
+                  !item.bloqueado && (
+                    <View style={styles.rowColorTool}>
+                      <ColorSlider                        
+                        value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 120}
+                        min={0}
+                        max={240}
+                        step={2}
+                        anchors={ALC_ANCHORS}
+                        formatValue={(n) => String(Math.round(n))}
+                        onCommit={(v: number) => {
+                         const s = String(Math.round(v));
+                         setParametrosQuimicos((prev) =>
+                          prev.map((p) =>
+                           p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                          )
+                         );
+                        }}
+                       />
+                    </View>
+                   )}
 
-    const isPiscinaSal = !!cliente?.eletrolise_sal;
+                {nomeNorm.includes('acido cianurico') &&
+                  metodoAnalise === 'fitas' &&
+                  !isSomenteLeitura &&
+                  !item.bloqueado && (
+                    <View style={styles.rowColorTool}>
+                      <ColorSlider                        
+                        value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 40}
+                        min={0}
+                        max={300}
+                        step={2}
+                        anchors={CYA_ANCHORS}
+                        formatValue={(n) => String(Math.round(n))}
+                        onCommit={(v: number) => {
+                        const s = String(Math.round(v));
+                        setParametrosQuimicos((prev) =>
+                         prev.map((p) =>
+                          p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                         )
+                        );
+                       }}
+                      />
+                   </View>
+                   )}
 
-    // validações só para pH e Cloro Livre
-    const alerta =
-      nome === 'pH'
-        ? validarPH(valor)
-        : nome === 'Cloro Livre em ppm'
-        ? validarCloro(valor, isPiscinaSal) // (se tiveres 2 args, troca para validarCloro(valor, isPiscinaSal))
-        : null;
+                 {nomeNorm === 'dureza' &&
+                   metodoAnalise === 'fitas' &&
+                   !isSomenteLeitura &&
+                   !item.bloqueado && (
+                    <View style={styles.rowColorTool}>
+                      <ColorSlider       
+                        value={Number.isFinite(toNum(item.valor_atual)) ? toNum(item.valor_atual) : 250}
+                        min={0}
+                        max={1000}
+                        step={10}
+                        anchors={DUREZA_ANCHORS}
+                        formatValue={(n) => String(Math.round(n))}
+                        onCommit={(v: number) => {
+                        const s = String(Math.round(v));
+                        setParametrosQuimicos((prev) =>
+                         prev.map((p) =>
+                          p.parametro === item.parametro ? { ...p, valor_atual: s } : p
+                         )
+                        );
+                       }}
+                      />
+                   </View>
+                   )}
 
-    // hard-stop: não calcula
-    if (alerta?.level === 'hard') {
-      Alert.alert(alerta.title, alerta.msg);
-      return;
-    }
 
-    const continuar = () => {
-      // ✅ 1) Se for pH/Alcalinidade, e houver ISL válido, usamos o alvo do ISL no cálculo
-      const isPH = nome === 'pH';
-      const isAlc = nome === 'Alcalinidade';
+  {/* ✅ Linha 1 (igual ao layout antigo): Último + Atual + Calcular */}
+  <View style={styles.rowInputs}>
+    <View style={styles.colInput}>
+      <Text style={styles.inputLabel}>Último</Text>
+      <TextInput
+        style={styles.inputBox}
+        value={
+          item.valor_ultimo !== undefined && item.valor_ultimo !== null
+            ? String(item.valor_ultimo)
+            : 'N/A'
+        }
+        editable={false}
+      />
+    </View>
 
-      const islCreatedAt = islUltimoRegisto?.created_at;
-      const islValido =
-        !!islCreatedAt &&
-        Date.now() - new Date(islCreatedAt).getTime() <= 60 * 24 * 60 * 60 * 1000; // ✅ 60 dias
+    <View style={styles.colInput}>
+      <Text style={styles.inputLabel}>Atual</Text>
+      <TextInput
+        style={styles.inputBox}
+        placeholder="Ex: 1.5"
+        keyboardType="decimal-pad"
+        editable={!isSomenteLeitura && !item.bloqueado}
+        value={item.valor_atual?.toString() || ''}
+        onChangeText={(text: string) => {
+          if (isSomenteLeitura || item.bloqueado) return;
 
-      const alvoISL =
-        islValido
-          ? isPH
-            ? islSugestao?.phAlvo
-            : isAlc
-            ? islSugestao?.alcAlvo
-            : undefined
-          : undefined;
+          const formattedText = text
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
 
-      const itemParaCalculo =
-        (isPH || isAlc) && alvoISL !== undefined
-          ? { ...item, valor_alvo: String(alvoISL) }
-          : item;
+          setParametrosQuimicos((prev) =>
+            prev.map((p) =>
+              p.parametro === item.parametro ? { ...p, valor_atual: formattedText } : p
+            )
+          );
+        }}
+        placeholderTextColor="#888"
+      />
+    </View>
 
-      const resultadoBase = calcularProduto(itemParaCalculo, volume);
+  {/* Botão Calcular (mantém regras todas) */}
+  <TouchableOpacity
+    style={[
+      styles.buttonCalcular,
+      (isSomenteLeitura || item.bloqueado) && styles.buttonDisabled,
+    ]}
+    onPress={() => {
+      if (isSomenteLeitura || item.bloqueado) return;
 
-      // ✅ 2) Nota ORP só para piscina a sal e cloro "alto"
-      const isCloro = nome === 'Cloro Livre em ppm';
-      const precisaNotaORP = isCloro && isPiscinaSal && Number.isFinite(valor) && valor > 5;
+      const nome = String(item.parametro || '').trim();
+      const valor = toNum(item.valor_atual);
+      const isPiscinaSal = !!cliente?.eletrolise_sal;
 
-      const resultadoFinal = precisaNotaORP
-        ? {
-            ...resultadoBase,
-            resultado:
-              `${resultadoBase.resultado}\n` +
-              `ℹ️ Piscina a sal: discrepância ORP vs ppm pode indicar alcalinidade desajustada.`,
-          }
-        : resultadoBase;
+      // ✅ alerta: variação grande pH vs último valor (não bloqueia, mas pede confirmação)
+      const ultimoPH = nome === 'pH' ? toNum(item.valor_ultimo) : NaN;
+      const diffPH =
+        nome === 'pH' && Number.isFinite(valor) && Number.isFinite(ultimoPH)
+          ? Math.abs(valor - ultimoPH)
+          : 0;
 
-      setParametrosQuimicos((prev) =>
-        prev.map((p) =>
-          p.parametro === item.parametro ? { ...p, resultado: resultadoFinal } : p
-        )
-      );
-    };
+      const alertaVariacaoPH =
+        nome === 'pH' && diffPH >= 0.3
+          ? {
+              level: 'warn' as const,
+              title: 'Variação grande de pH',
+              msg: `Diferença de ${diffPH.toFixed(2)} desde a última manutenção. Verificar alcalinidade (TAC).`,
+            }
+          : null;
 
-    // warn: pede confirmação mas deixa calcular
-    if (alerta?.level === 'warn') {
-      Alert.alert(alerta.title, alerta.msg, [
-        { text: 'Corrigir', style: 'cancel' },
-        { text: 'Confirmo', onPress: continuar },
-      ]);
-      return;
-    }
+      // ✅ validações “hard/warn” existentes
+      const alertaBase =
+        nome === 'pH'
+          ? validarPH(valor)
+          : nome === 'Cloro Livre em ppm'
+          ? validarCloro(valor, isPiscinaSal)
+          : null;
 
-    continuar();
-  }}
-  disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual}
->
-  <Text style={styles.buttonText}>Calcular</Text>
-</TouchableOpacity>
+      const alerta = alertaBase ?? alertaVariacaoPH;
 
+      // hard-stop: não calcula
+      if (alerta?.level === 'hard') {
+        Alert.alert(alerta.title, alerta.msg);
+        return;
+      }
+
+      const continuar = () => {
+        // ✅ 1) Se for pH/Alcalinidade, e houver ISL válido, usamos o alvo do ISL no cálculo
+        const isPH = nome === 'pH';
+        const isAlc = nome === 'Alcalinidade';
+
+        const islCreatedAt = islUltimoRegisto?.created_at;
+        const islValido =
+          !!islCreatedAt &&
+          Date.now() - new Date(islCreatedAt).getTime() <= 60 * 24 * 60 * 60 * 1000; // 60 dias
+
+        const alvoISL =
+          islValido
+            ? isPH
+              ? islSugestao?.phAlvo
+              : isAlc
+              ? islSugestao?.alcAlvo
+              : undefined
+            : undefined;
+
+        const itemParaCalculo =
+          (isPH || isAlc) && alvoISL !== undefined
+            ? { ...item, valor_alvo: String(alvoISL) }
+            : item;
+
+        const resultadoBase = calcularProduto(itemParaCalculo, volume);
+
+        // ✅ 2) Nota ORP só para piscina a sal e cloro "alto"
+        const isCloro = nome === 'Cloro Livre em ppm';
+        const precisaNotaORP =
+          isCloro && isPiscinaSal && Number.isFinite(valor) && valor > 5;
+
+        const resultadoFinal = precisaNotaORP
+          ? {
+              ...resultadoBase,
+              resultado:
+                `${resultadoBase.resultado}\n` +
+                `ℹ️ Piscina a sal: discrepância ORP vs ppm pode indicar alcalinidade desajustada.`,
+            }
+          : resultadoBase;
+
+        setParametrosQuimicos((prev) =>
+          prev.map((p) =>
+            p.parametro === item.parametro ? { ...p, resultado: resultadoFinal } : p
+          )
+        );
+      };
+
+      // warn: pede confirmação mas deixa calcular
+      if (alerta?.level === 'warn') {
+        Alert.alert(alerta.title, alerta.msg, [
+          { text: 'Corrigir', style: 'cancel' },
+          { text: 'Confirmo', onPress: continuar },
+        ]);
+        return;
+      }
+
+      continuar();
+    }}
+    disabled={isSomenteLeitura || item.bloqueado || !item.valor_atual}
+  >
+    <Text style={styles.buttonText}>Calcular</Text>
+  </TouchableOpacity>
+</View>
 
           </View>
+          )}
+
+          {/* ✅ Cloro Combinado (depois dos inputs do Cloro Total) */}
+{isCloroTotal && expandCloroTotal && (
+  <View style={{ marginTop: 8 }}>
+    <Text style={[styles.inputLabel, { marginBottom: 4 }]}>
+      Cloro Combinado (ppm)
+    </Text>
+
+    <TextInput
+      style={[styles.inputBox, { backgroundColor: '#f2f2f2' }]}
+      value={Number.isFinite(cc) ? cc.toFixed(1) : ''}
+      editable={false}
+      placeholder="—"
+      placeholderTextColor="#888"
+    />
+
+    {mostrarAlertaCC && (
+      <Text style={{ marginTop: 6, fontSize: 12, color: '#B00020' }}>
+        ⚠️ Acima de {limiteCloroCombinado.toFixed(1)} ppm: A sua água contém resíduos de cloro que causam odores e irritação. Ação necessária: Realize um tratamento choque utilizando Cloro Rápido!
+      </Text>
+    )}
+  </View>
+)}
+
+{/* ✅ Aviso do CYA quando alcalinidade baixa */}
+{mostrarAvisoCYA && (
+  <Text style={{ marginTop: 6, fontSize: 12, color: '#B00020' }}>
+    ⚠️ Alcalinidade baixa: a leitura do ácido cianúrico pode ficar menos fiável. Recomenda-se corrigir a alcalinidade antes de usar este valor como referência.
+
+  </Text>
+)}
+
+
 
           {/* Mensagem do Resultado */}
           {item.resultado && (
@@ -1591,13 +2306,38 @@ return (
                 <Text style={styles.buttonText}>Validar</Text>
               </TouchableOpacity>
             )}
+            {/* ✅ Botão Validar (exceção: Cloro alto mas <=5 => "não adicionar cloro") */}
+        {!isSomenteLeitura &&
+         !item.bloqueado &&
+        item.parametro === 'Cloro Livre em ppm' &&
+        typeof item.resultado?.resultado === 'string' &&
+        item.resultado.resultado.includes('Não adicionar cloro') && (
+          <TouchableOpacity
+            style={styles.buttonValidar}
+             onPress={() => {
+              Alert.alert(
+              'Confirmação',
+              'Cloro acima do ideal (zona tampão). Confirma que NÃO foi adicionado cloro?',
+              [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+              text: 'Confirmar',
+              onPress: () => registrarStatusParametro(item, 'nao necessario'),
+               },
+             ]
+            );
+           }}
+           >
+          <Text style={styles.buttonText}>Validar</Text>
+          </TouchableOpacity>
+           )}
         </View>
-      );
-    })
-  ) : null}
+        );
+      });
+    })()}
+  </>
+) : null}
 </View>
-
-
 
 {/* Reportar Anomalias */}
 <View style={styles.section}>
@@ -1771,7 +2511,7 @@ const styles = StyleSheet.create({
     elevation: 10, // ← dá profundidade real no Android
   },
   buttonNaoConcluida: {
-    backgroundColor: '#FF6347', // Vermelho tomate para indicar erro
+    backgroundColor: '#FFB3B3', // Vermelho tomate para indicar erro
     padding: 15,
     paddingVertical: 12,
     paddingHorizontal: 40,
@@ -1799,12 +2539,6 @@ const styles = StyleSheet.create({
     fontSize: 16, // Tamanho do texto
     marginTop: 8, // Margem superior para separação
   },
-  buttonCalcular: {
-    backgroundColor: '#4CAF50',
-    padding: 10,
-    borderRadius: 5,
-    marginLeft: 10,
-  },
   buttonDisabled: {
     backgroundColor: '#d3d3d3', // Cor cinza para indicar que está desativado
     opacity: 0.6, // Torna o botão visualmente menos proeminente
@@ -1819,11 +2553,6 @@ const styles = StyleSheet.create({
   },
   resultadoAdicionar: {
     color: 'red',
-  },
-  parametroLinha: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   buttonAplicado: {
     backgroundColor: '#4CAF50',
@@ -1931,7 +2660,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   details: {
-    fontSize: 16,
+    fontSize: 14,
     marginTop: 4,
   },
   parametroContainer: {
@@ -2118,6 +2847,164 @@ const styles = StyleSheet.create({
   opacityHalf: {
     opacity: 0.5, // Reduz opacidade quando manutenção estiver concluída
   },
+
+// ✅ Coluna para cada input (Último / Atual)
+colInput: {
+  flex: 1,
+},
+
+// ✅ Label pequeno por cima do input
+inputLabel: {
+  marginBottom: 4,
+  color: '#555',
+  fontSize: 12,
+},
+
+// ✅ Caixa do input (altura consistente e legível)
+inputBox: {
+  height: 44,
+  borderWidth: 1,
+  borderColor: '#ccc',
+  borderRadius: 8,
+  paddingHorizontal: 10,
+  backgroundColor: '#fff',
+  color: '#000',
+},
+
+// ✅ Botão calcular (mantém tamanho fixo para não “dançar”)
+buttonCalcular: {
+  height: 44,
+  minWidth: 92,
+  paddingHorizontal: 14,
+  borderRadius: 8,
+  justifyContent: 'center',
+  alignItems: 'center',
+  alignSelf: 'flex-end',
+  backgroundColor: '#4CAF50', // usa a tua se já tinhas
+},
+// ✅ Linha 2 (o bloco do slider)
+colorTool: {
+  marginTop: 10,
+},colorToolLabel: {
+  fontWeight: '600',
+  marginBottom: 6,
+},
+// ✅ 7 cores + valor/hint na mesma linha, sem sair do ecrã
+colorSwatchRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 6,
+  flexWrap: 'nowrap',
+},
+colorSwatch: {
+  width: 22,
+  height: 22,
+  borderRadius: 6,
+  borderWidth: 1,
+  borderColor: '#999',
+},
+// slider ocupa a largura toda e não invade o layout
+colorSlider: {
+  width: '100%',
+  marginTop: 6,
+},
+colorMetaRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginTop: 6,
+},
+parametroLinha: {
+  flexDirection: 'column',   // ✅ ISTO é o que faltava
+  width: '100%',
+},
+rowColorTool: {
+  width: '100%',
+  alignSelf: 'stretch',
+  marginTop: 6,
+  marginBottom: 8,           // ✅ separa do rowInputs
+},
+rowInputs: {
+  flexDirection: 'row',
+  alignItems: 'flex-end',
+  justifyContent: 'space-between',
+  width: '100%',
+  gap: 10,                   // se o teu RN não suportar gap, digo já alternativa
+},
+colorRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  width: '100%',
+  marginTop: 6,
+},
+previewSwatch: {
+  width: 30,
+  height: 30,
+  borderRadius: 6,
+  // ✅ sem moldura (como pediste)
+},
+middleHint: {
+  flex: 1,                 // ✅ empurra as âncoras para a direita
+  paddingLeft: 12,         // ✅ cria o gap entre preview e o resto
+  paddingRight: 12,        // ✅ dá “ar” antes das âncoras
+  flexDirection: 'row',
+  alignItems: 'baseline',
+  flexWrap: 'wrap',
+},
+valueText: {
+  fontSize: 16,
+  fontWeight: '700',
+  marginRight: 8,
+},
+hintText: {
+  fontSize: 12,
+  opacity: 0.7,
+},
+anchorsRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between', // ✅ distribui 0..10
+  width: 220,                      // ✅ afina para “bater” com o Calcular
+},
+anchorWrap: {
+  alignItems: 'center',
+},
+anchorSwatch: {
+  width: 30,
+  height: 30,
+  borderRadius: 5,
+  // ✅ sem moldura (como pediste)
+},
+anchorLabel: {
+  fontSize: 12,
+  marginTop: 3,
+  opacity: 0.8,
+},
+radioBlock: { marginTop: 6 },
+radioTitle: { fontWeight: '700', marginBottom: 6, color: '#222' },
+radioRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+radioDot: {
+  width: 16, height: 16, borderRadius: 8,
+  borderWidth: 2, borderColor: '#2e7d32', marginRight: 10,
+},
+radioDotOn: { backgroundColor: '#2e7d32' },
+radioText: { color: '#222' },
+radioHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginTop: 0,
+  marginBottom: 0, // ↓ baixa isto (ex: 2)
+},
+
+chevron: {
+  fontSize: 14,
+  opacity: 0.6,
+  marginLeft: 10,
+},
+
+
+
 });
 
 export default FolhaManutencaoScreen;

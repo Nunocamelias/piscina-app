@@ -53,7 +53,7 @@ const OrcamentacaoHomeScreen: React.FC = () => {
         )}
 
         <Text style={styles.subtitle}>
-        Bem-vindo à área de orçamentação da GES-POOL.
+        Bem-vindo à área de orçamentação da GESPOOL.
         </Text>
         <Text style={styles.text}>
           Aqui vais concentrar todas as avarias que exigem orçamento, podendo
@@ -76,7 +76,7 @@ const OrcamentacaoHomeScreen: React.FC = () => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>powered by GES-POOL</Text>
+        <Text style={styles.footerText}>powered by GESPOOL</Text>
       </View>
     </ScrollView>
   );
