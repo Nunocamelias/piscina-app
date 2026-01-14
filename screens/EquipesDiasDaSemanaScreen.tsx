@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
     justifyContent: 'flex-start', // <- garantir que não centra verticalmente
   },
   title: {

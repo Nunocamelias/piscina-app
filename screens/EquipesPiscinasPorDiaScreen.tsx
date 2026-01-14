@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
   },
   title: {
     fontSize: 24,
@@ -190,6 +190,12 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#909090',
     marginBottom: 10,
+    // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3.65,
+    elevation: 10,
   },
   cardConcluida: {
     backgroundColor: '#DFF2BF',

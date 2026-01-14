@@ -85,7 +85,7 @@ const EquipeHomeScreen = ({ navigation, route }: Props) => {
              numberOfLines={1}
              ellipsizeMode="tail"
             >
-             Notificações dos meus clientes
+             As minhas notificações
           </Text>
         </TouchableOpacity>
       </View>
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
-    bottom: 25, // 🔹 afastado do fundo
+    bottom: 50, // 🔹 afastado do fundo
     width: '100%',
     alignItems: 'center',
   },

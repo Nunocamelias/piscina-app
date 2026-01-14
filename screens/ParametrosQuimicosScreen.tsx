@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
       paddingHorizontal: 40,
       borderRadius: 25,
       marginBottom: 15,
-      width: '60%',
+      width: '80%',
       alignItems: 'center',
       // 🔹 Remove o contorno preto
       borderWidth: 0,

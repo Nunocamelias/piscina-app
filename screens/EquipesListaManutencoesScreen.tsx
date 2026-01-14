@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 0,
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
   },
   title: {
     fontSize: 24,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
-    bottom: 25, // 🔹 afastado do fundo
+    bottom: 50, // 🔹 afastado do fundo
     width: '100%',
     alignItems: 'center',
   },

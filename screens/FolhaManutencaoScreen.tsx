@@ -1204,6 +1204,9 @@ const ColorSlider = ({
       value={temp}
       onValueChange={(v: number) => setTemp(v)}
       onSlidingComplete={(v: number) => onCommit(v)}
+      minimumTrackTintColor="#B0B0B0"   // parte ativa (até ao thumb)
+      maximumTrackTintColor="#9c9c9c"   // parte “cinzenta” que tu queres mudar
+      thumbTintColor="#B0B0B0" 
     />
   </View>
 );
@@ -1480,7 +1483,7 @@ return (
       <Text style={{ fontWeight: '600' }}>
         {modoTratamento === 'sal'
           ? 'Eletrólise de sal'
-          : 'Cloro (manual/automático)'}
+          : 'Cloro'}
       </Text>
     </Text>
     <Text style={styles.chevron}>{expandTratamento ? '▲' : '▼'}</Text>
@@ -1548,7 +1551,7 @@ return (
     onPress={() => setExpandMetodo((v) => !v)}
   >
     <Text style={styles.radioTitle}>
-      Vou fazer análises com:{" "}
+      Análises com:{" "}
       <Text style={{ fontWeight: '600' }}>
         {metodoAnalise === 'fotometro'
           ? 'Fotómetro'
@@ -2495,7 +2498,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   buttonConcluir: {
-    backgroundColor: '#22b4b4ff', // Azul claro
+    backgroundColor: '#adcfae', // Verde claro
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 25, // Cantos arredondados
@@ -2555,7 +2558,7 @@ const styles = StyleSheet.create({
     color: 'red',
   },
   buttonAplicado: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#adcfae',
     flex: 1,
     height: 45,             // 🔹 altura fixa igual nos dois
     borderRadius: 5,
@@ -2569,7 +2572,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   buttonSemEstoque: {
-    backgroundColor: '#f44336',
+    backgroundColor: '#FFB3B3',
     flex: 1,
     height: 45,             // 🔹 mesma altura
     borderRadius: 5,
@@ -2583,7 +2586,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   buttonValidar: {
-    backgroundColor: '#4CAF50', // Verde claro
+    backgroundColor: '#adcfae', // Verde claro
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
@@ -2640,7 +2643,7 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#ECECEC', // cinza claro neutro
     borderRadius: 8,
     borderWidth: 0,
     borderColor: '#909090',
@@ -2664,11 +2667,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   parametroContainer: {
-    padding: 12,
-    backgroundColor: '#fff',
-    marginBottom: 8,
-    borderRadius: 8,
-  },
+  padding: 12,
+  backgroundColor: '#ECECEC', // cinza claro neutro
+  marginBottom: 8,
+  borderRadius: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.12,
+  shadowRadius: 3,
+  elevation: 4,
+},
+
+
+
   parametroTitulo: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -2746,11 +2757,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   submitButton: {
-    backgroundColor: '#4d994dff',
+    backgroundColor: '#adcfae',
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
-    marginTop: 10,
+    alignSelf: 'center',
+    marginTop: 15,
+    width: '50%',
     // 🔹 Sombra 3D leve e elegante
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -2759,7 +2772,7 @@ const styles = StyleSheet.create({
     elevation: 10, // ← dá profundidade real no Android
   },
   submitButtonText: {
-    color: '#FFF',
+    color: '#000',
     fontWeight: 'bold',
   },
   unitText: {
@@ -2821,7 +2834,7 @@ const styles = StyleSheet.create({
   },
   inputNormal: { backgroundColor: '#FFF' }, // Branco normal
   botaoConfirmar: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#adcfae',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 5,
@@ -2880,7 +2893,7 @@ buttonCalcular: {
   justifyContent: 'center',
   alignItems: 'center',
   alignSelf: 'flex-end',
-  backgroundColor: '#4CAF50', // usa a tua se já tinhas
+  backgroundColor: '#adcfae', // usa a tua se já tinhas
 },
 // ✅ Linha 2 (o bloco do slider)
 colorTool: {
@@ -2905,6 +2918,7 @@ colorSwatch: {
 },
 // slider ocupa a largura toda e não invade o layout
 colorSlider: {
+  
   width: '100%',
   marginTop: 6,
 },
@@ -2985,9 +2999,9 @@ radioTitle: { fontWeight: '700', marginBottom: 6, color: '#222' },
 radioRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
 radioDot: {
   width: 16, height: 16, borderRadius: 8,
-  borderWidth: 2, borderColor: '#2e7d32', marginRight: 10,
+  borderWidth: 2, borderColor: '#adcfae', marginRight: 10,
 },
-radioDotOn: { backgroundColor: '#2e7d32' },
+radioDotOn: { backgroundColor: '#adcfae' },
 radioText: { color: '#222' },
 radioHeader: {
   flexDirection: 'row',
@@ -3002,9 +3016,6 @@ chevron: {
   opacity: 0.6,
   marginLeft: 10,
 },
-
-
-
 });
 
 export default FolhaManutencaoScreen;
