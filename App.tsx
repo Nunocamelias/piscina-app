@@ -28,6 +28,7 @@ import EquipeTecHomeScreen from './screens/EquipeTecHomeScreen';
 import OrcamentacaoHomeScreen from './screens/OrcamentacaoHomeScreen';
 import ContabilidadeHomeScreen from './screens/ContabilidadeHomeScreen';
 import HeaderLogo from './components/HeaderLogo';
+import TesteRapidoScreen from './screens/TesteRapidoScreen';
 
 
 
@@ -67,6 +68,14 @@ export type RootStackParamList = {
     status: string;
     equipeId: number;
     diaSemana: string;
+    };
+    TesteRapido: {
+    // provisório: vamos navegar a partir da FolhaManutencao
+    clienteId: number;
+    nome: string;
+    volume: number;
+    // opcional (se quiseres já controlar o modo a partir da Folha)
+    // modo?: 'PH_CL' | 'TODOS';
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;
@@ -390,6 +399,21 @@ const App = (): React.JSX.Element => {
           },
           headerTitleAlign: 'center',
           headerTintColor: '#000' }}/>
+        <Stack.Screen
+          name="TesteRapido"
+          component={TesteRapidoScreen}
+          options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="RegisterCompany"
           component={RegisterCompanyScreen}

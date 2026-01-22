@@ -2,6 +2,8 @@ import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform } from 'react-native';
 import Config from 'react-native-config';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../App'; // ajusta o path se o App.tsx estiver noutro sítio
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -86,13 +88,14 @@ type Props = {
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const FolhaManutencaoScreen: React.FC<Props> = () => {
-  const navigation = useNavigation(); // Obtenha o navigation da navegação
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute();
 
   const toNum = (v: any) => {
   const n = Number(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : NaN;
 };
+
 
 type Alerta = { level: 'hard' | 'warn'; title: string; msg: string };
 
@@ -1235,6 +1238,17 @@ const calcCloroCombinado = React.useCallback(() => {
   return Math.max(0, total - livre);
 }, [getValorAtualByNorm]);
 
+const abrirTesteRapido = () => {
+  navigation.navigate('TesteRapido', {
+    clienteId: Number(clienteId),
+    nome: (route.params as any)?.nome ?? 'Cliente',
+    volume: Number(volume ?? 0),
+    // se quiseres já forçar modo, podemos passar depois:
+    // modo: 'TODOS',
+  });
+};
+
+
 return (
   <FlatList
     data={isItensExpanded ? itensManutencaoPeriodica : []} // Apenas carrega os itens quando expandido
@@ -1658,6 +1672,9 @@ return (
   )}
 </View>
 
+<TouchableOpacity style={styles.testeRapidoBtn} onPress={abrirTesteRapido}>
+  <Text style={styles.testeRapidoBtnText}>⚡ Teste Rápido</Text>
+</TouchableOpacity>
 
 
   {isParametrosExpanded && parametrosQuimicos.length > 0 ? (
@@ -3016,6 +3033,21 @@ chevron: {
   opacity: 0.6,
   marginLeft: 10,
 },
+testeRapidoBtn: {
+  marginTop: 10,
+  marginBottom: 10,
+  alignSelf: 'flex-start',
+  backgroundColor: '#22b4b4ff',
+  paddingVertical: 10,
+  paddingHorizontal: 14,
+  borderRadius: 12,
+  elevation: 3,
+},
+testeRapidoBtnText: {
+  color: '#000',
+  fontWeight: '700',
+},
+
 });
 
 export default FolhaManutencaoScreen;

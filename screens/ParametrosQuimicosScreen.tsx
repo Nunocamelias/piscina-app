@@ -5,6 +5,8 @@ import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KeyboardAvoidingView, Platform } from 'react-native';
+import { Linking } from 'react-native';
+
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
@@ -36,8 +38,14 @@ type Parametro = {
   incremento_aumentar: string | null;
   incremento_diminuir: string | null;
   volume_calculo: string | null;
+  periodicidade_dias: number;   // ✅ NOVO  
+  ficha_tecnica_aumentar_url?: string | null;
+  ficha_tecnica_aumentar_nome?: string | null;
+  ficha_tecnica_diminuir_url?: string | null;
+  ficha_tecnica_diminuir_nome?: string | null;
   ativo: boolean;
 };
+
 
 const ParametrosQuimicosScreen: React.FC = () => {
   const [parametros, setParametros] = useState<Parametro[]>([]);
@@ -121,6 +129,11 @@ const ParametrosQuimicosScreen: React.FC = () => {
         incremento_aumentar: parametroSelecionado.incremento_aumentar || null,
         incremento_diminuir: parametroSelecionado.incremento_diminuir || null,
         volume_calculo: parametroSelecionado.volume_calculo || null,
+        periodicidade_dias: parametroSelecionado.periodicidade_dias ?? 7,        
+        ficha_tecnica_aumentar_url: (parametroSelecionado.ficha_tecnica_aumentar_url || '').trim() || null,
+        ficha_tecnica_aumentar_nome: (parametroSelecionado.ficha_tecnica_aumentar_nome || '').trim() || null,
+        ficha_tecnica_diminuir_url: (parametroSelecionado.ficha_tecnica_diminuir_url || '').trim() || null,
+        ficha_tecnica_diminuir_nome: (parametroSelecionado.ficha_tecnica_diminuir_nome || '').trim() || null,
         empresaid: userEmpresaid,
       };
 
@@ -147,23 +160,34 @@ const ParametrosQuimicosScreen: React.FC = () => {
 
   // Função para abrir o modal de edição/adicionar
   const abrirModal = (parametro?: Parametro) => {
-    setParametroSelecionado(parametro || {
-      id: 0,
-      parametro: '',
-      valor_minimo: null, // Define como null por padrão
-      valor_maximo: null, // Define como null por padrão
-      valor_alvo: null, // Define como null por padrão
-      produto_aumentar: '',
-      produto_diminuir: '',
-      dosagem_aumentar: null, // Define como null por padrão
-      dosagem_diminuir: null, // Define como null por padrão
-      incremento_aumentar: null, // Define como null por padrão
-      incremento_diminuir: null, // Define como null por padrão
-      volume_calculo: null, // Define como null por padrão
-      ativo: true,
-    });
-    setModalVisible(true);
-  };
+  setParametroSelecionado(parametro || {
+    id: 0,
+    parametro: '',
+    valor_minimo: null,
+    valor_maximo: null,
+    valor_alvo: null,
+    produto_aumentar: '',
+    produto_diminuir: '',
+    dosagem_aumentar: null,
+    dosagem_diminuir: null,
+    incremento_aumentar: null,
+    incremento_diminuir: null,
+    volume_calculo: null,
+    periodicidade_dias: 7, // ✅ default semanal
+    ficha_tecnica_aumentar_url: '',
+    ficha_tecnica_aumentar_nome: '',
+    ficha_tecnica_diminuir_url: '',
+    ficha_tecnica_diminuir_nome: '',
+    ativo: true,
+  });
+  setModalVisible(true);
+};
+
+const mostraPeriodicidade =
+  parametroSelecionado?.parametro === 'Alcalinidade' ||
+  parametroSelecionado?.parametro === 'Dureza' ||
+  parametroSelecionado?.parametro === 'Ácido Cianúrico' ||
+  parametroSelecionado?.parametro === 'Sal em Kg/m³';
 
   // Função para apagar um parâmetro
   const apagarParametro = async (id: number) => {
@@ -216,49 +240,23 @@ const formatDosagemFrase = (
           data={parametros}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: item.ativo ? '#CCFFCC' : '#B0B0B0' }]}>
+           <View style={[styles.card, { backgroundColor: '#CCFFCC' }]}>
               <Text style={styles.cardTitle}>{item.parametro}</Text>
               <Text>Intervalo: {item.valor_minimo} - {item.valor_maximo}</Text>
               <Text>Valor Alvo: {item.valor_alvo}</Text>
-              <Text>Produto para Aumentar: {item.produto_aumentar}</Text>
-              <Text>Produto para Diminuir: {item.produto_diminuir}</Text>
+              {(['Alcalinidade','Dureza','Ácido Cianúrico','Sal em Kg/m³'].includes(item.parametro)) && (
+              <Text>
+              Teste: {Math.round((item.periodicidade_dias ?? 0) / 7)} em {Math.round((item.periodicidade_dias ?? 0) / 7)} semanas
+              </Text>
+              )}
+              <Text>
+              Produto para Aumentar: {item.produto_aumentar || '—'} {item.ficha_tecnica_aumentar_url ? '📄' : ''}
+              </Text>
+              <Text>
+              Produto para Diminuir: {item.produto_diminuir || '—'} {item.ficha_tecnica_diminuir_url ? '📄' : ''}
+              </Text>
 
-              {/* Botão Ativar/Desativar com Switch */}
-              <View style={styles.switchRow}>
-                <Text style={styles.switchText}>
-                  {item.ativo ? 'Ativo' : 'Desativado'}
-                </Text>
-                <Switch
-                  value={item.ativo}
-                  onValueChange={async (value) => {
-                    try {
-                      // Atualiza o estado no backend
-                      await axios.put(`${Config.API_URL}/parametros-quimicos/${item.id}`, {
-                        ...item,
-                        ativo: value, // Atualiza o campo 'ativo'
-                      });
-
-                      // Atualiza o estado localmente após sucesso
-                      setParametros((prev) =>
-                        prev.map((parametro) =>
-                          parametro.id === item.id
-                            ? { ...parametro, ativo: value }
-                            : parametro
-                        )
-                      );
-
-                      Alert.alert(
-                        'Sucesso',
-                        `Parâmetro ${value ? 'ativado' : 'desativado'} com sucesso!`
-                      );
-                    } catch (error) {
-                      console.error('Erro ao alternar ativo:', error);
-                      Alert.alert('Erro', 'Não foi possível alterar o estado do parâmetro.');
-                    }
-                  }}
-                />
-              </View>
-
+        
               {/* Botões Editar e Apagar */}
 <View style={styles.buttonRow}>
   <TouchableOpacity style={styles.editButton} onPress={() => abrirModal(item)}>
@@ -332,6 +330,34 @@ ListFooterComponent={
   </Picker>
 </View>
 
+
+{/* ✅ Picker da periodicidade (só para alguns parâmetros) */}
+{mostraPeriodicidade && (
+  <>
+    <Text style={styles.titleText}>Periodicidade de teste (dias)</Text>
+    <View style={[styles.pickerContainer, { backgroundColor: '#FFFFFF' }]}>
+      <Picker
+        selectedValue={parametroSelecionado?.periodicidade_dias ?? 7}
+        onValueChange={(v) =>
+          setParametroSelecionado({
+            ...parametroSelecionado!,
+            periodicidade_dias: Number(v),
+          })
+        }
+        style={[styles.picker, { backgroundColor: '#FFFFFF', color: '#000000' }]}
+        dropdownIconColor={'#000000'}
+        mode="dropdown"
+      >
+        <Picker.Item label="7 (semanal)" value={7} />
+        <Picker.Item label="14 (2 semanas)" value={14} />
+        <Picker.Item label="28 (4 semanas)" value={28} />
+        <Picker.Item label="42 (6 semanas)" value={42} />
+        <Picker.Item label="91 (13 semanas)" value={91} />
+      </Picker>
+    </View>
+  </>
+)}
+
 {/* 2) Intervalo Ideal (Min / Alvo / Máx na mesma “caixa”) */}
 <Text style={styles.titleText}>Intervalo Ideal</Text>
 
@@ -399,17 +425,52 @@ ListFooterComponent={
 <View style={styles.divider} />
 
 {/* 4) Produto Aumentar */}
-
 <Text style={styles.titleText}>Produto para Aumentar</Text>
 <TextInput
   style={styles.input}
   placeholder="Produto"
   placeholderTextColor="#888"
-  value={parametroSelecionado?.produto_aumentar}
+  value={parametroSelecionado?.produto_aumentar ?? ''}
   onChangeText={(text) =>
     setParametroSelecionado({ ...parametroSelecionado!, produto_aumentar: text })
   }
 />
+
+<Text style={styles.titleText}>
+  Ficha técnica (Aumentar) {(parametroSelecionado?.ficha_tecnica_aumentar_url ?? '').trim() ? '📄' : ''}
+</Text>
+
+<TextInput
+  style={styles.input}
+  placeholder="URL da ficha técnica (PDF)"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.ficha_tecnica_aumentar_url ?? ''}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, ficha_tecnica_aumentar_url: text })
+  }
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Nome do ficheiro (opcional) ex: CTX-20.pdf"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.ficha_tecnica_aumentar_nome ?? ''}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, ficha_tecnica_aumentar_nome: text })
+  }
+/>
+
+{(parametroSelecionado?.ficha_tecnica_aumentar_url ?? '').trim().length > 0 && (
+  <TouchableOpacity
+    style={styles.openPdfButton}
+    onPress={() => Linking.openURL((parametroSelecionado!.ficha_tecnica_aumentar_url ?? '').trim())}
+  >
+    <Text style={styles.openPdfButtonText}>
+      Abrir ficha técnica {parametroSelecionado?.ficha_tecnica_aumentar_nome ? `(${parametroSelecionado.ficha_tecnica_aumentar_nome})` : ''}
+    </Text>
+  </TouchableOpacity>
+)}
+
 
 {/* 5) Dosagem Aumentar */}
 <Text style={styles.titleText}>Dosagem para Aumentar</Text>
@@ -503,11 +564,47 @@ ListFooterComponent={
   style={styles.input}
   placeholder="Produto"
   placeholderTextColor="#888"
-  value={parametroSelecionado?.produto_diminuir}
+  value={parametroSelecionado?.produto_diminuir ?? ''}
   onChangeText={(text) =>
     setParametroSelecionado({ ...parametroSelecionado!, produto_diminuir: text })
   }
 />
+
+<Text style={styles.titleText}>
+  Ficha técnica (Diminuir) {(parametroSelecionado?.ficha_tecnica_diminuir_url ?? '').trim() ? '📄' : ''}
+</Text>
+
+<TextInput
+  style={styles.input}
+  placeholder="URL da ficha técnica (PDF)"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.ficha_tecnica_diminuir_url ?? ''}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, ficha_tecnica_diminuir_url: text })
+  }
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Nome do ficheiro (opcional) ex: CTX-15.pdf"
+  placeholderTextColor="#888"
+  value={parametroSelecionado?.ficha_tecnica_diminuir_nome ?? ''}
+  onChangeText={(text) =>
+    setParametroSelecionado({ ...parametroSelecionado!, ficha_tecnica_diminuir_nome: text })
+  }
+/>
+
+{(parametroSelecionado?.ficha_tecnica_diminuir_url ?? '').trim().length > 0 && (
+  <TouchableOpacity
+    style={styles.openPdfButton}
+    onPress={() => Linking.openURL((parametroSelecionado!.ficha_tecnica_diminuir_url ?? '').trim())}
+  >
+    <Text style={styles.openPdfButtonText}>
+      Abrir ficha técnica {parametroSelecionado?.ficha_tecnica_diminuir_nome ? `(${parametroSelecionado.ficha_tecnica_diminuir_nome})` : ''}
+    </Text>
+  </TouchableOpacity>
+)}
+
 
 {/* 7) Dosagem Diminuir */}
 <Text style={styles.titleText}>Dosagem para Diminuir</Text>
@@ -644,6 +741,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         paddingVertical: 10,
         paddingHorizontal: 14,
+        marginBottom: 10,
         fontSize: 16,
         color: '#000',
         // sombra leve
@@ -999,6 +1097,28 @@ const styles = StyleSheet.create({
       fontSize: 12,
       color: '#111',
      fontWeight: '600',
-},
+    },
+    openPdfButton: {
+      backgroundColor: '#22b4b4ff', // Azul claro
+      paddingVertical: 12,
+      paddingHorizontal: 40,
+      borderRadius: 25, // Cantos arredondados
+      marginTop: 10,
+      marginBottom: 10, // Espaçamento abaixo
+      width: '60%', // Botão maior
+      alignItems: 'center', // Centraliza o texto dentro do botão
+      alignSelf: 'center', // Centraliza o botão no ecrã
+      // 🔹 Sombra 3D leve e elegante
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4.65,
+      elevation: 10,
+    },
+    openPdfButtonText: {
+      color: '#fff',
+      fontWeight: 'bold',
+    },
+
   });
 export default ParametrosQuimicosScreen;

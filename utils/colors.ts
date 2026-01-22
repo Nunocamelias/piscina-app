@@ -22,7 +22,7 @@ export function lerp(a: number, b: number, t: number) {
 }
 
 export function interpolateColor(value: number, anchors: Anchor[]) {
-  const sorted = [...anchors].sort((a, b) => a.value - b.value);
+  const sorted = anchors;
 
   // fora do intervalo
   if (value <= sorted[0].value) return sorted[0].color;
@@ -49,23 +49,24 @@ export function buildScale(min: number, max: number, step: number) {
   return Array.from({ length: n + 1 }, (_, i) => Number((min + i * step).toFixed(1)));
 }
 
-// ✅ Âncoras Cloro Livre (0–10)
+// ✅ Âncoras Cloro Livre (0–10) — ajustadas para bater melhor com leitura real (AquaChek)
 export const CLORO_ANCHORS: Anchor[] = [
-  { value: 0, color: '#FEFECC' },
-  { value: 0.5, color: '#F7F9E1' },
-  { value: 1.0, color: '#E6DFD7' },
-  { value: 3.0, color: '#AC8BD0' },
-  { value: 5.0, color: '#9E6ABD' },
-  { value: 10.0, color: '#811D99' },
+  { value: 0, color: '#CDCAAB' },
+  { value: 1, color: '#CABAAE' },
+  { value: 2, color: '#C1A5B1' },
+  { value: 3, color: '#B195A4' },
+  { value: 5, color: '#9F7196' },
+  { value: 10, color: '#7D3772' },
 ];
 
-// ✅ Âncoras pH (6.2–8.4)
+// ✅ Âncoras pH (ajustadas para bater melhor com leitura real)
 export const PH_ANCHORS: Anchor[] = [
-  { value: 6.2, color: '#F2AF3C' },
-  { value: 6.8, color: '#EA6A2D' },
-  { value: 7.2, color: '#E13624' },
-  { value: 7.8, color: '#DF2F20' },
-  { value: 8.4, color: '#D52D22' },
+  { value: 6.2, color: '#F4B93A' }, // mais amarelo, menos laranja
+  { value: 6.6, color: '#E79530' }, // amarelo-alaranjado (média coerente)
+  { value: 7.0, color: '#DB7A24' }, // laranja
+  { value: 7.4, color: '#D96522' }, // laranja-avermelhado (menos “vermelho cedo”)
+  { value: 7.8, color: '#D64F1F' }, // vermelho alaranjado
+  { value: 8.2, color: '#C83737' }, // vermelho mais forte
 ];
 
 // ✅ Âncoras Alcalinidade (0–240)

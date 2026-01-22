@@ -1765,7 +1765,7 @@ app.post('/parametros-quimicos', async (req, res) => {
   }
 });
 
-app.put('/parametros-quimicos/:id', async (req, res) => {
+app.put('/parametros-quimicos/:id', async (req, res) => { 
   const { id } = req.params;
   const { empresaid, ...parametrosAtualizados } = req.body;
 
@@ -1775,38 +1775,55 @@ app.put('/parametros-quimicos/:id', async (req, res) => {
 
   try {
     const query = `
-      UPDATE parametros_quimicos
-      SET
-        parametro = $1,
-        valor_minimo = $2,
-        valor_maximo = $3,
-        valor_alvo = $4,
-        produto_aumentar = $5,
-        produto_diminuir = $6,
-        dosagem_aumentar = $7,
-        dosagem_diminuir = $8,
-        volume_calculo = $9,
-        incremento_aumentar = $10,
-        incremento_diminuir = $11,
-        ativo = $12
-      WHERE id = $13 AND empresaid = $14 RETURNING *`;
-    const values = [
-      parametrosAtualizados.parametro,
-      parametrosAtualizados.valor_minimo,
-      parametrosAtualizados.valor_maximo,
-      parametrosAtualizados.valor_alvo,
-      parametrosAtualizados.produto_aumentar,
-      parametrosAtualizados.produto_diminuir,
-      parametrosAtualizados.dosagem_aumentar,
-      parametrosAtualizados.dosagem_diminuir,
-      parametrosAtualizados.volume_calculo,
-      parametrosAtualizados.incremento_aumentar,
-      parametrosAtualizados.incremento_diminuir,
-      parametrosAtualizados.ativo,
-      id,
-      empresaid,
-    ];
+  UPDATE parametros_quimicos
+  SET
+    parametro = $1,
+    valor_minimo = $2,
+    valor_maximo = $3,
+    valor_alvo = $4,
+    produto_aumentar = $5,
+    produto_diminuir = $6,
+    dosagem_aumentar = $7,
+    dosagem_diminuir = $8,
+    volume_calculo = $9,
+    incremento_aumentar = $10,
+    incremento_diminuir = $11,
+    ativo = $12,
+    periodicidade_dias = $13,
+    ficha_tecnica_aumentar_url = $14,
+    ficha_tecnica_aumentar_nome = $15,
+    ficha_tecnica_diminuir_url = $16,
+    ficha_tecnica_diminuir_nome = $17
+  WHERE id = $18 AND empresaid = $19
+  RETURNING *;
+`;
+
+const values = [
+  parametrosAtualizados.parametro,
+  parametrosAtualizados.valor_minimo,
+  parametrosAtualizados.valor_maximo,
+  parametrosAtualizados.valor_alvo,
+  parametrosAtualizados.produto_aumentar,
+  parametrosAtualizados.produto_diminuir,
+  parametrosAtualizados.dosagem_aumentar,
+  parametrosAtualizados.dosagem_diminuir,
+  parametrosAtualizados.volume_calculo,
+  parametrosAtualizados.incremento_aumentar,
+  parametrosAtualizados.incremento_diminuir,
+  parametrosAtualizados.ativo,
+  parametrosAtualizados.periodicidade_dias ?? 0,
+  parametrosAtualizados.ficha_tecnica_aumentar_url ?? null,
+  parametrosAtualizados.ficha_tecnica_aumentar_nome ?? null,
+  parametrosAtualizados.ficha_tecnica_diminuir_url ?? null,
+  parametrosAtualizados.ficha_tecnica_diminuir_nome ?? null,
+  id,
+  empresaid,
+];
+
+
+
     const result = await pool.query(query, values);
+
     if (result.rows.length > 0) {
       res.json(result.rows[0]);
     } else {

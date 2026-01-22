@@ -71,16 +71,28 @@ useEffect(() => {
 
       if (response.status === 200 && response.data) {
         console.log('🏢 Empresa recebida:', {
-              id: response.data.id,
-              nome: response.data.nome,
-              email: response.data.email,
-              telefone: response.data.telefone,
-              endereco: response.data.endereco,
-              nif: response.data.nif,
-              logo: response.data.logo ? '[BASE64]' : null,
-             });
+          id: response.data.id,
+          nome: response.data.nome,
+          email: response.data.email,
+          telefone: response.data.telefone,
+          endereco: response.data.endereco,
+          nif: response.data.nif,
+          logo: response.data.logo ? '[BASE64]' : null,
+        });
 
-        setLogo(response.data.logo || null);
+        const empresaRecebida = {
+          id: response.data.id,
+          nome: response.data.nome ?? '',
+          email: response.data.email ?? '',
+          telefone: response.data.telefone ?? '',
+          endereco: response.data.endereco ?? '',
+          nif: response.data.nif ?? '',
+          logo: response.data.logo ?? null,
+        };
+
+        setEmpresa(empresaRecebida);            // ✅ preenche o formulário
+        setLogo(empresaRecebida.logo);          // ✅ preview do logo
+        setLogoAnterior(empresaRecebida.logo);  // ✅ rollback se cancelares
       } else {
         console.warn('⚠️ Nenhum dado recebido para esta empresa.');
         Alert.alert('Aviso', 'Não foram encontrados dados da empresa.');
@@ -173,23 +185,43 @@ useEffect(() => {
 };
 
   const handleSave = async () => {
-    try {
-      if (!empresa) {return;}
+  if (!empresa) return;
 
-      const updatedData = { ...empresa, logo };
+  Alert.alert(
+    'Confirmar alteração',
+    'Tem a certeza que pretende modificar os dados da empresa?',
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Confirmar',
+        onPress: async () => {
+          try {
+            const updatedData = { ...empresa, logo };
 
-      const response = await axios.put(`${Config.API_URL}/empresas/${empresa.id}/update`, updatedData);
-      if (response.status === 200) {
-        Alert.alert('Sucesso', 'Informações atualizadas com sucesso!');
-        setIsEditing(false);
-      } else {
-        Alert.alert('Erro', 'Não foi possível atualizar as informações.');
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar informações:', error);
-      Alert.alert('Erro', 'Falha ao atualizar informações da empresa.');
-    }
-  };
+            const response = await axios.put(
+              `${Config.API_URL}/empresas/${empresa.id}/update`,
+              updatedData
+            );
+
+            if (response.status === 200) {
+              setEmpresa(updatedData); // mantém o estado sincronizado
+              Alert.alert('Sucesso', 'Informações atualizadas com sucesso!');
+              setIsEditing(false);
+            } else {
+              Alert.alert('Erro', 'Não foi possível atualizar as informações.');
+            }
+          } catch (error) {
+            console.error('Erro ao atualizar informações:', error);
+            Alert.alert('Erro', 'Falha ao atualizar informações da empresa.');
+          }
+        },
+      },
+    ]
+  );
+};
 
   if (!empresa) {
     return (
@@ -198,6 +230,18 @@ useEffect(() => {
       </View>
     );
   }
+
+  const handleStartEditing = () => {
+  Alert.alert(
+    'Confirmar edição',
+    'Tem a certeza que pretende modificar os dados da empresa?',
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sim', onPress: () => setIsEditing(true) },
+    ]
+  );
+};
+
 
   return (
     <View style={styles.container}>
@@ -254,11 +298,13 @@ useEffect(() => {
       />
 
       <TouchableOpacity
-        style={[styles.button, isEditing && { backgroundColor: '#CCFFCC' }]}
-        onPress={() => (isEditing ? handleSave() : setIsEditing(true))}
-      >
-        <Text style={styles.buttonText}>{isEditing ? 'Guardar Alterações' : 'Editar'}</Text>
-      </TouchableOpacity>
+  style={[styles.button, isEditing && { backgroundColor: '#CCFFCC' }]}
+  onPress={() => (isEditing ? handleSave() : handleStartEditing())}
+>
+  <Text style={styles.buttonText}>
+    {isEditing ? 'Guardar Alterações' : 'Editar'}
+  </Text>
+</TouchableOpacity>
       {/* 🔹 Footer fixo */}
       <View style={styles.footer}>
         <Text style={styles.empresaNome}>
