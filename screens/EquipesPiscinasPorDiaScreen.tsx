@@ -51,6 +51,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
   // Função para buscar clientes associados
   const fetchClientes = useCallback(async () => {
     setLoading(true);
+    console.log('[fetchClientes] params:', { equipeId, diaSemana, empresaid });
     try {
       const response = await axios.get(`${Config.API_URL}/clientes-por-dia`, {
         params: { equipeId, diaSemana, empresaid },
@@ -127,25 +128,28 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
                 item.status === 'nao_concluida' && styles.cardNaoConcluida,
               ]}
               onPress={() =>
-                navigation.navigate('FolhaManutencao', {
-                  clienteId: item.id,
-                  nome: item.nome,
-                  morada: item.morada,
-                  telefone: item.telefone,
-                  info_acesso: item.info_acesso,
-                  google_maps: item.google_maps,
-                  volume: item.volume,
-                  tanque_compensacao: item.tanque_compensacao,
-                  cobertura: item.cobertura,
-                  bomba_calor: item.bomba_calor,
-                  equipamentos_especiais: item.equipamentos_especiais,
-                  eletrolise_sal: item.eletrolise_sal,
-                  ultima_substituicao: item.ultima_substituicao,
-                  status: item.status,
-                  equipeId,
-                  diaSemana,
-                })
-              }
+  navigation.navigate('FolhaManutencao', {
+    empresaid,
+    clienteId: item.id,
+    nome: item.nome,
+    morada: item.morada,
+    telefone: item.telefone,
+    info_acesso: item.info_acesso,
+    google_maps: item.google_maps,
+    volume: item.volume,
+    tanque_compensacao: item.tanque_compensacao,
+    cobertura: item.cobertura,
+    bomba_calor: item.bomba_calor,
+    equipamentos_especiais: item.equipamentos_especiais,
+    eletrolise_sal: item.eletrolise_sal,
+    ultima_substituicao: item.ultima_substituicao,
+    status: item.status,
+    equipeId,
+    diaSemana,
+    equipeNome,
+  })
+}
+
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.clientName}>{item.nome}</Text>

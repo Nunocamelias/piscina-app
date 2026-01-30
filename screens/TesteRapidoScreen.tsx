@@ -1,6 +1,7 @@
 // screens/TesteRapidoScreen.tsx
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
+  Image,
   View,
   Text,
   StyleSheet,
@@ -10,8 +11,7 @@ import {
   PanResponder,
   LayoutChangeEvent,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-
+import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import {
   CLORO_ANCHORS,
   CLORO_TOTAL_ANCHORS,
@@ -21,7 +21,14 @@ import {
   DUREZA_ANCHORS,
   interpolateColor,
   type Anchor,
+  DEFAULT_NOISE_PRESET,
+  DEFAULT_FIBER_PRESET,
+  BOX_NOISE_PRESET,
+  BOX_FIBER_PRESET
 } from '../utils/colors';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../App';
+
 
 /* =========================================================
    1) DECLARAÇÕES E FUNÇÕES
@@ -84,9 +91,8 @@ function roundToStepForDisplay(v: number, step: number) {
   return Number(Number(v).toFixed(d));
 }
 
-
-
 const SWATCH = 40; // muda aqui e fica tudo centrado
+const OVER = SWATCH * 3; // 120
 
 
 // ✅ ORDEM AquaChek (igual ao rótulo)
@@ -184,38 +190,45 @@ const panResponder = useMemo(
       onMoveShouldSetPanResponder: () => !disabled,
 
       onPanResponderGrant: (evt) => {
+  if (disabled) return;
+
   setArmed(true);
 
-  // ✅ NÃO ligar dragging aqui
-  draggingRef.current = false;
-
-  // ✅ guarda a posição local inicial do dedo (dentro do track)
-  const startY = clampNum(evt.nativeEvent.locationY, 0, trackH);
-  startLocalYRef.current = startY;
-
-  // ✅ Só posiciona logo no ponto do dedo se estiver no mínimo
+  // ✅ ao tocar, se estás no mínimo, "agarra" logo (no telemóvel isto é crucial)
   const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
+
   if (isAtMin) {
-    const newVal = yToValue(startY);
+    draggingRef.current = true;
+    setDragging(true);
+
+    // opcional: se quiseres que ao tocar no fundo não fique preso no 0,
+    // podes usar um pequeno offset para cima (ex.: -2)
+    const newVal = yToValue(evt.nativeEvent.locationY);
     onChangeRef.current(newVal);
+  } else {
+    // comportamento atual (não cresce no double-tap)
+    draggingRef.current = false;
   }
 },
 
-onPanResponderMove: (_evt, gesture) => {
+onPanResponderMove: (evt, gesture) => {
   if (disabled) return;
 
-  // ✅ só começa “drag” quando há movimento real
-  if (!draggingRef.current) {
-    const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
-    if (!moved) return;
-
-    draggingRef.current = true;
-    setDragging(true);
+  // ✅ se já estamos a arrastar (ex.: arrancou no mínimo), atualiza logo
+  if (draggingRef.current) {
+    const newVal = yToValue(evt.nativeEvent.locationY);
+    onChangeRef.current(newVal);
+    return;
   }
 
-  // ✅ usa Y inicial + dy (robusto no topo/fundo)
-  const localY = startLocalYRef.current + gesture.dy;
-  const newVal = yToValue(localY);
+  // ✅ caso não esteja a arrastar ainda, só começa quando há movimento real
+  const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
+  if (!moved) return;
+
+  draggingRef.current = true;
+  setDragging(true);
+
+  const newVal = yToValue(evt.nativeEvent.locationY);
   onChangeRef.current(newVal);
 },
 
@@ -328,12 +341,15 @@ const vstyles = StyleSheet.create({
 ========================================================= */
 
 export default function TesteRapidoScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
 
   const [modo, setModo] = useState<ModoTeste>('TODOS');
   const [invertido, setInvertido] = useState(false);
-
   const [valores, setValores] = useState<ValoresTR>({});
+  const [repetirArmado, setRepetirArmado] = useState(false);
+
+  const { folhaParams } = route.params as RootStackParamList['TesteRapido'];
 
   const paramsAtivos = useMemo(() => {
     if (modo === 'PH_CL') return PARAMS_ALL.filter((p) => p.key === 'cloro_livre' || p.key === 'ph');
@@ -343,7 +359,25 @@ export default function TesteRapidoScreen() {
   const [idx, setIdx] = useState(0);
   const paramAtual = paramsAtivos[idx];
 
+  const keyAtual = paramAtual?.key as ParamKey;
+
   const [finalizado, setFinalizado] = useState(false);
+
+// obrigatórios
+const isObrigatorio = (k: ParamKey) => k === 'cloro_livre' || k === 'ph';
+
+// ✅ Saltar só quando não é modo PH_CL e não é obrigatório
+const podeSaltar = modo !== 'PH_CL' && !isObrigatorio(keyAtual);
+
+// ✅ validação de "tem número"
+const temValorNumero = (k: ParamKey) => typeof valores[k] === 'number';
+
+const obrigatoriosOk = temValorNumero('cloro_livre') && temValorNumero('ph');
+
+// ✅ Aceitar final:
+// - PH_CL: só precisa dos 2
+// - TODOS: precisa estar finalizado + ter os 2 obrigatórios
+const podeAceitarFinal = modo === 'PH_CL' ? obrigatoriosOk : (finalizado && obrigatoriosOk);
 
   const currentValue = (valores[paramAtual.key] ?? paramAtual.min) as number;
   const currentValueRef = useRef<number>(currentValue);
@@ -355,6 +389,14 @@ export default function TesteRapidoScreen() {
   const isUltimo = idx === paramsAtivos.length - 1;
   const valorUltimo = valores[paramAtual.key];
   
+ 
+
+  const obrigatorioAtual = isObrigatorio(keyAtual);
+
+// ✅ só podes saltar se NÃO for obrigatório
+const podeSaltarLogico = !finalizado && !obrigatorioAtual;
+
+
 
   const lastKey = paramsAtivos[paramsAtivos.length - 1]?.key;
   const ultimoRegistado = lastKey ? typeof valores[lastKey] === 'number' : false;
@@ -366,14 +408,29 @@ export default function TesteRapidoScreen() {
     return interpolateColor(currentValue, paramAtual.anchors);
   }, [currentValue, paramAtual.anchors]);
 
-  function proximoParametro() {
-    if (idx < paramsAtivos.length - 1) setIdx(idx + 1);
+  function saltarParametro() {
+  if (finalizado) return;
+
+  // se for obrigatório, não deixa saltar (mas mostra mensagem)
+  if (obrigatorioAtual) {
+    Alert.alert('Parâmetro obrigatório', 'Este parâmetro é obrigatório e não pode ser ignorado.');
+    return;
   }
 
-  function saltarParametro() {
-    setValores((prev) => ({ ...prev, [paramAtual.key]: null }));
-    proximoParametro();
+  // regista "saltado"
+  setValores((prev) => ({ ...prev, [keyAtual]: null }));
+
+  // ✅ SE É O ÚLTIMO: finaliza (desbloqueia Aceitar valores)
+  if (isUltimo) {
+    setFinalizado(true);
+    return;
   }
+
+  // senão, avança
+  setIdx((prev) => Math.min(prev + 1, paramsAtivos.length - 1));
+}
+
+
 
   function aceitarValorAtual(vFromSlider?: number) {
   const v =
@@ -382,6 +439,14 @@ export default function TesteRapidoScreen() {
       : currentValueRef.current; // ✅ valor mais fiável
 
   const key = paramAtual.key;
+
+  const isObrigatorio = (key: string) => key === 'cloro_livre' || key === 'ph';
+
+// ✅ Saltar:
+// - nunca no modo PH_CL
+// - nunca em cloro_livre ou ph
+const podeSaltar = modo !== 'PH_CL' && !isObrigatorio(paramAtual.key);
+
 
   setValores((prev) => ({ ...prev, [key]: v }));
 
@@ -397,19 +462,86 @@ export default function TesteRapidoScreen() {
   });
 }
 
-  function aceitarValoresFinal() {
-    Alert.alert('Valores (debug)', JSON.stringify(valores, null, 2));
-    // depois: enviar para FolhaManutencaoScreen / backend
+function repetir() {
+  // 2º clique seguido -> apaga tudo
+  if (repetirArmado) {
+    setValores({});
+    setIdx(0);
+    setFinalizado(false);
+    setRepetirArmado(false);
+    return;
   }
 
-  function aceitarValorBotao() {
-  aceitarValorAtual(); // usa currentValue
+  // 1º clique -> apaga último parâmetro preenchido/saltado
+  for (let i = paramsAtivos.length - 1; i >= 0; i--) {
+    const k = paramsAtivos[i].key;
+    if (k in valores) {
+      setValores((prev) => {
+        const next = { ...prev };
+        delete next[k];
+        return next;
+      });
+      setIdx(i);
+      setFinalizado(false);
+      setRepetirArmado(true);
+      return;
+    }
+  }
+
+  // se não houver nada, só arma (ou ignora)
+  setRepetirArmado(true);
 }
+
+  
+  function aceitarValoresFinal() {
+  const folhaParams = (route.params as any)?.folhaParams;
+  if (!folhaParams) return;
+
+  if (!podeAceitarFinal) {
+    Alert.alert(
+      'Falta preencher',
+      modo === 'PH_CL'
+        ? 'Preenche Cloro Livre e pH antes de aceitar.'
+        : 'Termina o Teste Rápido (ou salta os opcionais) e garante Cloro Livre + pH preenchidos.'
+    );
+    return;
+  }
+
+  // ✅ valoresClean mantém null (saltado) e arredonda números
+  const valoresClean = Object.fromEntries(
+    Object.entries(valores).map(([k, v]) => [
+      k,
+      typeof v === 'number' ? Number(v.toFixed(2)) : v,
+    ])
+  );
+
+  console.log('✅ [TesteRapido] a enviar testeRapido:', valoresClean);
+
+  navigation.dispatch(
+    CommonActions.navigate({
+      name: 'FolhaManutencao',
+      params: {
+        ...folhaParams,
+        testeRapido: valoresClean,
+        fromTesteRapido: true,
+      },
+      merge: true,
+    })
+  );
+
+  // 2) Agora sim, volta (já com os params “colados” na Folha)
+}
+
+
 
 useEffect(() => {
   setFinalizado(false);
 }, [idx, modo]);
 
+const BOX_W = 100;
+const BOX_H = 300;
+const TEX_W = 300;
+const TEX_H = 950;
 
 
   /* =========================================================
@@ -460,7 +592,47 @@ useEffect(() => {
         <View style={styles.scaleRow}>
            {paramAtual.anchors.map((a, i) => (
              <View key={`${paramAtual.key}-a-${i}`} style={styles.scaleItem}>
-              <View style={[styles.scaleSwatch, { backgroundColor: a.color }]} />
+              <View style={[styles.scaleSwatch, { backgroundColor: a.color }]}>
+  
+
+  {/* 1) FIBER (por baixo) */}
+  <Image
+    source={DEFAULT_FIBER_PRESET.source}
+    style={{
+      position: 'absolute',
+      width: OVER,
+      height: OVER,
+      left: (SWATCH - OVER) / 2,
+      top: (SWATCH - OVER) / 2,
+      opacity: DEFAULT_FIBER_PRESET.opacity,
+      transform: [
+        { rotate: `${DEFAULT_FIBER_PRESET.rotationDeg}deg` },
+        { scale: DEFAULT_FIBER_PRESET.scale },
+      ],
+    }}
+    resizeMode="cover"
+  />
+
+  {/* 2) NOISE (por cima) */}
+  <Image
+    source={DEFAULT_NOISE_PRESET.source}
+    style={{
+      position: 'absolute',
+      width: OVER,
+      height: OVER,
+      left: (SWATCH - OVER) / 2,   // centra
+      top: (SWATCH - OVER) / 2,    // centra
+      opacity: DEFAULT_NOISE_PRESET.opacity,
+      transform: [
+        { rotate: `${DEFAULT_NOISE_PRESET.rotationDeg}deg` },
+        { scale: DEFAULT_NOISE_PRESET.scale },
+      ],
+    }}
+    resizeMode="cover"
+  />
+</View>
+
+
                <Text style={styles.scaleValue}>
                  {paramAtual.key === 'ph' ? a.value.toFixed(1) : String(a.value)}
                </Text>
@@ -471,19 +643,7 @@ useEffect(() => {
         {/* Corpo principal — inverter só troca slider ↔ cor */}
         <View style={styles.bodyRow}>
           {invertido ? (
-           <View
-              style={styles.blockZoneRight}
-              pointerEvents="auto"
-              onStartShouldSetResponder={() => true}
-            />
-          ) : (
-           <View
-              style={styles.blockZoneLeft}
-              pointerEvents="auto"
-              onStartShouldSetResponder={() => true}
-            />
-          )}
-          {invertido ? (
+           
             <>
               {/* Slider passa para a esquerda */}
               <View style={styles.sliderColumn}>
@@ -500,9 +660,29 @@ useEffect(() => {
                  }}
                   onDoubleTap={() => aceitarValorAtual()}
                  />
-               <TouchableOpacity onPress={saltarParametro} style={styles.saltarBtnRight}>
-                   <Text style={styles.saltarBtnText}>Saltar</Text>
-               </TouchableOpacity>
+               <TouchableOpacity
+  disabled={finalizado}
+  onPress={() => {
+    if (finalizado) return;
+
+    if (obrigatorioAtual) {
+      Alert.alert(
+        'Parâmetro obrigatório',
+        'Este parâmetro é obrigatório e não pode ser ignorado.'
+      );
+      return;
+    }
+
+    saltarParametro();
+  }}
+  style={[
+    styles.saltarBtnRight,
+    finalizado && { opacity: 0.35 },
+  ]}
+>
+  <Text style={styles.saltarBtnText}>Saltar</Text>
+</TouchableOpacity>
+
               </View>
 
               {/* Coluna do meio (igual) */}
@@ -529,40 +709,118 @@ useEffect(() => {
                   );
                  })}
               </View>
-
+             
               {/* Cor passa para a direita */}
-              <View style={styles.colorColumn}>
-                <Text style={styles.paramTitle}>{paramAtual.label}</Text>
+<View style={styles.colorColumn} pointerEvents="none">
+  <Text style={styles.paramTitle}>{paramAtual.label}</Text>
 
-                <View style={styles.colorBoxWrap}>
-                  <View style={[styles.colorBox, { backgroundColor: dynamicColor }]} />
-                  <View style={styles.valueBadge}>
-                    <Text style={styles.valueBadgeText}>
-                      {paramAtual.key === 'ph'
-                      ? Number(currentValue).toFixed(1)
-                      : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
-                    </Text>
-                  </View>
-                </View>                
-              </View>
+  <View style={styles.colorBoxWrap}>
+    <View style={[styles.colorBox, { backgroundColor: dynamicColor }]}>
+
+      {/* 1) FIBER (por baixo) */}
+      <Image
+        source={BOX_FIBER_PRESET.source}
+        style={{
+          position: 'absolute',
+          width: TEX_W,
+          height: TEX_H,
+          left: (BOX_W - TEX_W) / 2,
+          top: (BOX_H - TEX_H) / 2,
+          opacity: BOX_FIBER_PRESET.opacity,
+          transform: [
+            { rotate: `${BOX_FIBER_PRESET.rotationDeg}deg` },
+            { scale: BOX_FIBER_PRESET.scale },
+          ],
+        }}
+        resizeMode="cover"
+      />
+
+      {/* 2) NOISE (por cima) */}
+      <Image
+        source={BOX_NOISE_PRESET.source}
+        style={{
+          position: 'absolute',
+          width: TEX_W,
+          height: TEX_H,
+          left: (BOX_W - TEX_W) / 2,
+          top: (BOX_H - TEX_H) / 2,
+          opacity: BOX_NOISE_PRESET.opacity,
+          transform: [
+            { rotate: `${BOX_NOISE_PRESET.rotationDeg}deg` },
+            { scale: BOX_NOISE_PRESET.scale },
+          ],
+        }}
+        resizeMode="cover"
+      />
+    </View>
+
+    <View style={styles.valueBadge}>
+      <Text style={styles.valueBadgeText}>
+        {paramAtual.key === 'ph'
+          ? Number(currentValue).toFixed(1)
+          : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
+      </Text>
+    </View>
+  </View>
+</View>
+
             </>
           ) : (
             <>
               {/* Cor na esquerda */}
-              <View style={styles.colorColumn}>
-                <Text style={styles.paramTitle}>{paramAtual.label}</Text>
+<View style={styles.colorColumn} pointerEvents="none">
+  <Text style={styles.paramTitle}>{paramAtual.label}</Text>
 
-                <View style={styles.colorBoxWrap}>
-                  <View style={[styles.colorBox, { backgroundColor: dynamicColor }]} />
-                  <View style={styles.valueBadge}>
-                    <Text style={styles.valueBadgeText}>
-                      {paramAtual.key === 'ph'
-                      ? Number(currentValue).toFixed(1)
-                      : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+  <View style={styles.colorBoxWrap}>
+    <View style={[styles.colorBox, { backgroundColor: dynamicColor }]}>
+
+      {/* 1) FIBER (por baixo) */}
+      <Image
+        source={BOX_FIBER_PRESET.source}
+        style={{
+          position: 'absolute',
+          width: TEX_W,
+          height: TEX_H,
+          left: (BOX_W - TEX_W) / 2,
+          top: (BOX_H - TEX_H) / 2,
+          opacity: BOX_FIBER_PRESET.opacity,
+          transform: [
+            { rotate: `${BOX_FIBER_PRESET.rotationDeg}deg` },
+            { scale: BOX_FIBER_PRESET.scale },
+          ],
+        }}
+        resizeMode="cover"
+      />
+
+      {/* 2) NOISE (por cima) */}
+      <Image
+        source={BOX_NOISE_PRESET.source}
+        style={{
+          position: 'absolute',
+          width: TEX_W,
+          height: TEX_H,
+          left: (BOX_W - TEX_W) / 2,
+          top: (BOX_H - TEX_H) / 2,
+          opacity: BOX_NOISE_PRESET.opacity,
+          transform: [
+            { rotate: `${BOX_NOISE_PRESET.rotationDeg}deg` },
+            { scale: BOX_NOISE_PRESET.scale },
+          ],
+        }}
+        resizeMode="cover"
+      />
+    </View>
+
+    <View style={styles.valueBadge}>
+      <Text style={styles.valueBadgeText}>
+        {paramAtual.key === 'ph'
+          ? Number(currentValue).toFixed(1)
+          : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
+      </Text>
+    </View>
+  </View>
+</View>
+
 
               {/* Coluna do meio (igual) */}
               <View style={styles.listColumn}>
@@ -603,9 +861,29 @@ useEffect(() => {
                     }}
                      onDoubleTap={() => aceitarValorAtual()}
                     />
-                <TouchableOpacity onPress={saltarParametro} style={styles.saltarBtnRight}>
-                   <Text style={styles.saltarBtnText}>Saltar</Text>
-                </TouchableOpacity>
+                <TouchableOpacity
+  disabled={finalizado}
+  onPress={() => {
+    if (finalizado) return;
+
+    if (obrigatorioAtual) {
+      Alert.alert(
+        'Parâmetro obrigatório',
+        'Este parâmetro é obrigatório e não pode ser ignorado.'
+      );
+      return;
+    }
+
+    saltarParametro();
+  }}
+  style={[
+    styles.saltarBtnRight,
+    finalizado && { opacity: 0.35 },
+  ]}
+>
+  <Text style={styles.saltarBtnText}>Saltar</Text>
+</TouchableOpacity>
+
               </View>
             </>
           )}
@@ -614,38 +892,37 @@ useEffect(() => {
         {/* Rodapé */}
         <View style={styles.footerRow}>
           <TouchableOpacity
-                 onPress={() => {
-                 // ✅ Antes de estar finalizado: não faz nada
-                   if (!finalizado) return;
+  onPress={() => {
+    // ✅ 1º clique: apaga só o valor atual e recua 1 passo (se possível)
+    setValores((prev) => ({ ...prev, [keyAtual]: undefined as any }));
+    setFinalizado(false);
 
-                 // ✅ Quando está finalizado: limpa tudo e recomeça
-                   setValores({});
-                   setIdx(0);
-                   setFinalizado(false);                   
-                  }}
-                 style={[
-                   styles.footerBtn,
-                   styles.footerBtnSecondary,
-                   !finalizado && styles.footerBtnDisabled, // opcional para ficar “apagado”
-                  ]}
-                 disabled={!finalizado} // ✅ impede clique antes do fim
-                  >
-                   <Text style={[styles.footerBtnText, styles.footerBtnTextSecondary]}>
-                     Repetir
-                  </Text>
-          </TouchableOpacity>
+    setIdx((prev) => (prev > 0 ? prev - 1 : 0));
+  }}
+  style={[styles.footerBtn, styles.footerBtnSecondary]}
+>
+  <Text style={[styles.footerBtnText, styles.footerBtnTextSecondary]}>
+    Repetir
+  </Text>
+</TouchableOpacity>
+
 
 
           <TouchableOpacity
-            onPress={aceitarValoresFinal}
-            style={[
-            styles.footerBtn,
-            styles.footerBtnPrimary,
-            finalizado && styles.footerBtnHighlight,
-          ]}
-          >
-            <Text style={[styles.footerBtnText, styles.footerBtnTextPrimary]}>Aceitar valores</Text>
-          </TouchableOpacity>
+  disabled={!podeAceitarFinal}
+  onPress={aceitarValoresFinal}
+  style={[
+    styles.footerBtn,
+    styles.footerBtnPrimary,
+    !podeAceitarFinal && styles.footerBtnDisabled,
+    podeAceitarFinal && styles.footerBtnHighlight,
+  ]}
+>
+  <Text style={[styles.footerBtnText, styles.footerBtnTextPrimary]}>
+    Aceitar valores
+  </Text>
+</TouchableOpacity>
+
         </View>
 
         <Text style={styles.subTitle}>
@@ -704,6 +981,8 @@ const styles = StyleSheet.create({
     width: 100,
     height: 300,
     borderRadius: 16,
+    position: 'relative',
+    overflow: 'hidden',
   },
   valueBadge: {
     width: 64,
@@ -768,6 +1047,8 @@ scaleSwatch: {
   width: SWATCH,
   height: SWATCH,
   borderRadius: 6,
+  position: 'relative',
+  overflow: 'hidden',
 },
 scaleItem: {
   alignItems: 'center',
@@ -813,28 +1094,8 @@ scaleValue: {
   fontStyle: 'italic',
   color: '#444',
   marginTop: 10,
+  marginBottom: 30,
   textAlign: 'center'
 },
-blockZoneLeft: {
-  position: 'absolute',
-  left: 0,
-  top: 120,      // ajusta
-  width: 180,
-  height: 420,
-  backgroundColor: 'transparent',
-  zIndex: 50,
-},
-
-blockZoneRight: {
-  position: 'absolute',
-  right: 0,      // ✅ importante
-  top: 120,      // ajusta
-  width: 180,
-  height: 420,
-  backgroundColor: 'transparent',
-  zIndex: 50,
-},
-
-
 });
 

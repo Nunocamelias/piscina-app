@@ -49,33 +49,43 @@ export type RootStackParamList = {
   EquipeHome: { equipeId: number; equipeNome: string };
   EquipesListaManutencoes: { equipeId: number; equipeNome: string }; // Adiciona os parâmetros
   EquipesDiasDaSemana: { equipeId: number; equipeNome: string; atualizarProgressoDia?: string; atualizarProgressoStatus?: string }; // Adiciona os parâmetros
-  EquipesPiscinasPorDia: { equipeId: number; diaSemana: string; equipeNome: string; atualizarStatusClienteId?: number; atualizarStatusCliente?: string };
+  EquipesPiscinasPorDia: { empresaid: number; equipeId: number; diaSemana: string; equipeNome: string; atualizarStatusClienteId?: number; atualizarStatusCliente?: string };
   Administracao: undefined; // Define a tela de administração
   ParametrosQuimicos: undefined;
   FolhaManutencao: {
+    empresaid: number;
+
     clienteId: number;
     nome: string;
     morada: string;
     telefone: string;
     info_acesso: string;
-    volume: number;
     google_maps: string;
+
+    volume: number;    
     tanque_compensacao: boolean;
     cobertura: boolean;
     bomba_calor: boolean;
     equipamentos_especiais: boolean;
+    eletrolise_sal: boolean;
     ultima_substituicao: string;
     status: string;
+
     equipeId: number;
     diaSemana: string;
-    };
+    equipeNome: string;
+    // ✅ NOVO: valores vindos do Teste Rápido
+    testeRapido?: Partial<{
+      dureza: number | null;
+      cloro_total: number | null;
+      cloro_livre: number | null;
+      ph: number | null;
+      alcalinidade: number | null;
+      cya: number | null;
+    }>;
+  };
     TesteRapido: {
-    // provisório: vamos navegar a partir da FolhaManutencao
-    clienteId: number;
-    nome: string;
-    volume: number;
-    // opcional (se quiseres já controlar o modo a partir da Folha)
-    // modo?: 'PH_CL' | 'TODOS';
+    folhaParams: RootStackParamList['FolhaManutencao'];
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;

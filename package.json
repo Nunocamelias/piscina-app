@@ -1,6 +1,6 @@
 {
   "name": "gespoolapp",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -32,6 +32,7 @@
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.25.0",
     "react-native-image-viewing": "^0.2.2",
+    "react-native-keychain": "^10.0.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-notifications": "^5.1.0",
     "react-native-paper": "^5.13.1",

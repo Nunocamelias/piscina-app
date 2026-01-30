@@ -107,6 +107,120 @@ export const CLORO_TOTAL_ANCHORS: Anchor[] = [
   { value: 10.0, color: '#4CA35F' },
 ];
 
+// ======================================================
+// ✅ Textura “fibra” (UI overlay) — SEM alterar a lógica
+// ======================================================
+//
+// A textura NÃO altera a cor (hex). Ela é aplicada no UI (Image overlay).
+// Estes exports servem para os ecrãs usarem SEM duplicar config.
+//
+// ⚠️ Ajusta os paths conforme a tua pasta de assets.
+
+export type TexturePreset = {
+  source: any;        // Image source (require)
+  opacity: number;    // 0.10–0.22 tipicamente
+  rotationDeg: number; // ~45 para replicar a fita real
+  scale: number;
+};
+
+// Texturas (45°) — usa a "MID" como padrão principal
+export const FIBER_TEXTURE_45_LIGHT = require('../assets/textures/fiber_45_light.png');
+export const FIBER_TEXTURE_45_MID   = require('../assets/textures/fiber_45_mid.png');
+export const FIBER_TEXTURE_45_STRONG = require('../assets/textures/fiber_45_strong.png');
+
+// Preset default (bom ponto de partida)
+export const DEFAULT_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0,
+  rotationDeg: 0,
+  scale: 2,
+};
+
+export const BOX_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0,
+  rotationDeg: 0,
+  scale: .35,
+};
+
+// (Opcional) presets por parâmetro (mesmo papel, “efeito” diferente)
+// Ajusta só a opacidade se quiseres mais/menos “fita”.
+export const CLORO_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.15,
+  rotationDeg: 45,
+  scale: 2,
+};
+
+export const PH_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.15,
+  rotationDeg: 45,
+  scale: 3,
+};
+
+export const ALC_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.14,
+  rotationDeg: 45,
+  scale: 1.8,
+};
+
+export const CYA_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.17,
+  rotationDeg: 45,
+  scale: 1.8,
+};
+
+export const DUREZA_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.13,
+  rotationDeg: 45,
+  scale: 1.8,
+};
+
+export const CLORO_TOTAL_FIBER_PRESET: TexturePreset = {
+  source: FIBER_TEXTURE_45_MID,
+  opacity: 0.16,
+  rotationDeg: 0,
+  scale: 1.8,
+};
+export const NOISE_ALPHA_DARK = require('../assets/textures/Fabric062_2K.png');
+
+export type NoisePreset = {
+  source: any;
+  opacity: number;
+  rotationDeg: number; // ~45 para replicar a fita real
+  scale: number;
+};
+
+export const DEFAULT_NOISE_PRESET: NoisePreset = {
+  source: NOISE_ALPHA_DARK,
+  opacity: 0, // 👈 escala de cores
+  rotationDeg: 0,
+  scale: 2,
+};
+
+export const BOX_NOISE_PRESET: NoisePreset = {
+  source: NOISE_ALPHA_DARK,
+  opacity: 0,   // Cor dinamica
+  rotationDeg: 0,
+  scale: .35,     
+};
+
+
+
+// (Opcional) por parâmetro — se quiseres ligeiras diferenças
+export const CLORO_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.12, rotationDeg: 45, scale: 1 };
+export const PH_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.13, rotationDeg: 45, scale: 1 };
+export const ALC_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.12, rotationDeg: 45, scale: 1 };
+export const CYA_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.14, rotationDeg: 45, scale: 1 };
+export const DUREZA_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.11, rotationDeg: 45, scale: 1 };
+export const CLORO_TOTAL_NOISE_PRESET: NoisePreset = { source: NOISE_ALPHA_DARK, opacity: 0.13, rotationDeg: 45, scale: 1 };
+
+
+
 
 
 

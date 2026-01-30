@@ -1539,12 +1539,47 @@ app.get('/manutencao-atual', async (req, res) => {
 
       console.log('Nova manutenção criada com parâmetros padrão.');
     } else {
-      manutencao = manutencaoResult.rows[0];
+  manutencao = manutencaoResult.rows[0];
 
-      // ✅ Garantir que nunca devolves nulls (evita cair em defaults no frontend)
-      manutencao.metodo_analise = manutencao.metodo_analise ?? 'fitas';
-      manutencao.modo_tratamento = manutencao.modo_tratamento ?? 'cloro';
-    }
+  // ✅ Garantir defaults (evita cair em undefined no frontend)
+  manutencao.metodo_analise = manutencao.metodo_analise ?? 'fitas';
+  manutencao.modo_tratamento = manutencao.modo_tratamento ?? 'cloro';
+
+  // ✅ GARANTIR que a manutenção tem TODOS os parâmetros ativos
+  const ensureParametrosQuery = `
+    INSERT INTO manutencoes_parametros (
+      manutencao_id,
+      parametro,
+      valor_ultimo,
+      valor_atual,
+      produto_usado,
+      quantidade_usada,
+      status,
+      empresaid
+    )
+    SELECT
+      $1,
+      pq.parametro,
+      NULL,
+      NULL,
+      NULL,
+      0,
+      'pendente',
+      $2
+    FROM parametros_quimicos pq
+    WHERE pq.empresaid = $2
+      AND pq.ativo = TRUE
+      AND NOT EXISTS (
+        SELECT 1
+        FROM manutencoes_parametros mp
+        WHERE mp.manutencao_id = $1
+          AND mp.parametro = pq.parametro
+          AND mp.empresaid = $2
+      );
+  `;
+
+  await pool.query(ensureParametrosQuery, [manutencao.id, empresaid]);
+}
 
     // ✅ 6) Buscar parâmetros (igual ao teu, só mantive)
     const parametrosQuery = `
@@ -1871,11 +1906,34 @@ app.put('/manutencoes/:id', async (req, res) => {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
   }
 
-  if (!status || !['concluida', 'pendente', 'nao_concluida'].includes(status)) {
-    return res.status(400).json({
-      error: 'Status inválido. Status permitidos: concluida, pendente, nao_concluida.',
-    });
-  }
+  const METODOS_OK = ['fotometro', 'gotas', 'fitas'];
+const MODOS_OK = ['sal', 'cloro'];
+
+const temPrefs = !!metodo_analise || !!modo_tratamento;
+const temStatus = !!status;
+
+// ✅ Se vier só prefs (sem status), deixamos passar
+if (!temStatus && !temPrefs) {
+  return res.status(400).json({
+    error: 'É obrigatório enviar status ou metodo_analise/modo_tratamento.',
+  });
+}
+
+// ✅ Se vier status, valida como já fazias
+if (temStatus && !['concluida', 'pendente', 'nao_concluida'].includes(status)) {
+  return res.status(400).json({
+    error: 'Status inválido. Status permitidos: concluida, pendente, nao_concluida.',
+  });
+}
+
+// ✅ valida prefs (igual ao que já tinhas)
+if (metodo_analise && !METODOS_OK.includes(metodo_analise)) {
+  return res.status(400).json({ error: 'metodo_analise inválido.' });
+}
+if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
+  return res.status(400).json({ error: 'modo_tratamento inválido.' });
+}
+
 
   // ✅ Só exige parâmetros quando for "concluida"
   if (status === 'concluida') {
@@ -1892,9 +1950,6 @@ app.put('/manutencoes/:id', async (req, res) => {
     }
   }
 
-  const METODOS_OK = ['fotometro', 'gotas', 'fitas'];
-const MODOS_OK = ['sal', 'cloro'];
-
 if (metodo_analise && !METODOS_OK.includes(metodo_analise)) {
   return res.status(400).json({ error: 'metodo_analise inválido.' });
 }
@@ -1906,10 +1961,10 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
     // ✅ Atualiza status + motivo (quando nao_concluida) + data_manutencao
     const updateManutencaoQuery = `
   UPDATE manutencoes
-  SET 
-    status = $1::varchar,
-    motivo = CASE 
-      WHEN $1::varchar = 'nao_concluida' THEN $4::text
+  SET
+    status = COALESCE($1::varchar, status),
+    motivo = CASE
+      WHEN COALESCE($1::varchar, status) = 'nao_concluida' THEN $4::text
       ELSE motivo
     END,
     metodo_analise = COALESCE($5::varchar, metodo_analise),
@@ -1920,7 +1975,7 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
 
 
     const manutencaoResult = await pool.query(updateManutencaoQuery, [
-      status,
+      status ?? null,
       id,
       empresaid,
       motivo ?? null,

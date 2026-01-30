@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance, ActivityIndicator, Pressable, Image } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DeviceInfo from 'react-native-device-info';
+import * as Keychain from 'react-native-keychain';
+
+const WATERMARK = require('../assets/images/logo-watermark.png'); 
+// ajusta o caminho conforme a tua estrutura
+
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 const appVersion = DeviceInfo.getVersion();      // ex: "0.9.1"
@@ -13,8 +18,42 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [senhaVisivel, setSenhaVisivel] = useState(false); // Estado para alternar visibilidade da senha
+  const [isLoading, setIsLoading] = useState(false);
+  const [lembrarEmail, setLembrarEmail] = useState(true);
+  const [guardarSenha, setGuardarSenha] = useState(false);
+
+  useEffect(() => {
+  const carregarCredenciais = async () => {
+    try {
+      // 1) Email guardado (UX)
+      const lastEmail = await AsyncStorage.getItem('lastEmail');
+      if (lastEmail) setEmail(lastEmail);
+
+      // 2) Preferências
+      const prefGuardar = await AsyncStorage.getItem('guardarSenha');
+      const guardar = prefGuardar === '1';
+      setGuardarSenha(guardar);
+
+      // 3) Password segura (Keychain)
+      if (guardar) {
+        const creds = await Keychain.getGenericPassword({ service: 'gespool_login' });
+        if (creds) {
+          // creds.username pode ser o email que guardámos, mas tu já tens o email separado
+          setSenha(creds.password || '');
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Falha a carregar credenciais:', e);
+    }
+  };
+
+  carregarCredenciais();
+}, []);
 
   const handleLogin = async () => {
+  if (isLoading) return;          // ✅ evita duplo clique
+  setIsLoading(true);             // ✅ liga loading logo aqui
+
   try {
     const emailLimpo = email.trim().toLowerCase();
     console.log('Iniciando login com:', { email: emailLimpo, senha });
@@ -24,17 +63,37 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       return;
     }
 
-    const response = await axios.post(`${Config.API_URL}/login`, {
-      email: emailLimpo,
-      senha,
-    });
+    const response = await axios.post(
+      `${Config.API_URL}/login`,
+      { email: emailLimpo, senha },
+      { timeout: 12000 } // ✅ 12s
+    );
 
     const { token, user } = response.data;
     console.log('✅ LOGIN user recebido:', user);
     console.log('✅ LOGIN user.id:', user?.id, 'typeof:', typeof user?.id);
 
-    if (!user.empresaid) {
+    if (!user?.empresaid) {
       throw new Error('Empresaid não encontrado no servidor.');
+    }
+
+    // ✅ Guardar email (recomendado)
+    if (lembrarEmail) {
+      await AsyncStorage.setItem('lastEmail', emailLimpo);
+    } else {
+      await AsyncStorage.removeItem('lastEmail');
+    }
+
+    // ✅ Guardar preferência
+    await AsyncStorage.setItem('guardarSenha', guardarSenha ? '1' : '0');
+
+    // ✅ Guardar senha em Keychain (NUNCA em AsyncStorage)
+    if (guardarSenha) {
+      await Keychain.setGenericPassword(emailLimpo, senha, {
+        service: 'gespool_login',
+      });
+    } else {
+      await Keychain.resetGenericPassword({ service: 'gespool_login' });
     }
 
     // Guardar info base
@@ -45,11 +104,11 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
     await AsyncStorage.setItem('userNome', user.nome || '');
 
     console.log('🧪 STORAGE (logo após setItem):', {
-    empresaid: await AsyncStorage.getItem('empresaid'),
-    tipo_usuario: await AsyncStorage.getItem('tipo_usuario'),
-    userId: await AsyncStorage.getItem('userId'),
-    userNome: await AsyncStorage.getItem('userNome'),
-   });
+      empresaid: await AsyncStorage.getItem('empresaid'),
+      tipo_usuario: await AsyncStorage.getItem('tipo_usuario'),
+      userId: await AsyncStorage.getItem('userId'),
+      userNome: await AsyncStorage.getItem('userNome'),
+    });
 
     const userType = user.tipo_usuario;
     const equipeId = user.equipeId;
@@ -60,7 +119,6 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       return;
     }
 
-    // 🔹 Equipas de manutenção (EquipaHome)
     if (userType === 'equipa_manutencao' || userType === 'equipe') {
       if (!equipeId) {
         Alert.alert('Erro', 'ID da equipe não encontrado para este utilizador.');
@@ -74,7 +132,6 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       return;
     }
 
-    // 🔹 Equipas técnicas (EquipeTecHome)
     if (userType === 'equipa_tecnica') {
       if (!equipeId) {
         Alert.alert('Erro', 'ID da equipa técnica não encontrado para este utilizador.');
@@ -88,43 +145,73 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
       return;
     }
 
-    // 🔹 Orçamentação
     if (userType === 'orcamentacao') {
-  navigation.navigate('OrcamentacaoHome', {
-    userId: user.id,
-    userNome: user.nome,
-  });
-  return;
-}
+      navigation.navigate('OrcamentacaoHome', {
+        userId: user.id,
+        userNome: user.nome,
+      });
+      return;
+    }
 
-
-    // 🔹 Contabilidade
     if (userType === 'contabilidade') {
-  navigation.navigate('ContabilidadeHome', {
-    userId: user.id,
-    userNome: user.nome,
-  });
-  return;
-}
+      navigation.navigate('ContabilidadeHome', {
+        userId: user.id,
+        userNome: user.nome,
+      });
+      return;
+    }
 
-
-    // Se cair aqui, é porque veio um tipo não previsto
     Alert.alert('Erro', `Tipo de utilizador desconhecido: ${userType || 'indefinido'}`);
-  } catch (error) {
+  } catch (error: any) {
     console.log('ERRO NO LOGIN:', error);
 
     if (axios.isAxiosError(error)) {
-      Alert.alert('Erro', error.response?.data?.error || 'Credenciais inválidas.');
-    } else {
-      Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
+      const code = error.code; // ex: 'ECONNABORTED'
+      const msgServer = error.response?.data?.error;
+
+      // ✅ TIMEOUT
+      if (code === 'ECONNABORTED') {
+        Alert.alert(
+          'Sem ligação',
+          'Não foi possível ligar ao servidor (timeout). Verifique a internet e tente novamente.'
+        );
+        return;
+      }
+
+      // ✅ SEM RESPOSTA (servidor off / sem net)
+      if (!error.response) {
+        Alert.alert(
+          'Sem ligação',
+          'Não foi possível ligar ao servidor. Verifique a internet e tente novamente.'
+        );
+        return;
+      }
+
+      // ✅ ERRO do servidor (401 etc)
+      Alert.alert('Erro', msgServer || 'Credenciais inválidas.');
+      return;
     }
+
+    Alert.alert('Erro', 'Algo deu errado. Tente novamente.');
+  } finally {
+    setIsLoading(false); // ✅ ISTO resolve a cobrinha presa
   }
 };
 
+
   return (
     <View style={styles.container}>
-      <Text style={isDarkMode ? styles.titleDark : styles.titleLight}>GESPOOL</Text>
 
+       {/* ✅ Marca de água (fica atrás de tudo) */}
+    <Image
+      source={WATERMARK}
+      resizeMode="contain"
+      style={styles.watermark}
+    />
+    <View style={{ position: 'relative', marginBottom: 20 }}>
+  <Text style={styles.titleShadow}>GESPOOL</Text>
+  <Text style={styles.titleLight}>GESPOOL</Text>
+</View>
       {/* 🔹 Input de Email com Validação */}
       <TextInput
         style={isDarkMode ? styles.inputDark : styles.inputLight}
@@ -156,12 +243,48 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
   <Icon name={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="#000" />
 </TouchableOpacity>
 </View>
+{/* ✅ Opções de Login (perto da senha) */}
+<View style={styles.optionsRow}>
+  <Pressable
+    onPress={() => setLembrarEmail((v) => !v)}
+    style={styles.optionItem}
+    hitSlop={10}
+  >
+    <Text style={styles.checkbox}>{lembrarEmail ? '☑' : '☐'}</Text>
+    <Text style={styles.optionText}>Lembrar email</Text>
+  </Pressable>
+
+  <View style={{ width: 18 }} />
+
+  <Pressable
+    onPress={() => setGuardarSenha((v) => !v)}
+    style={styles.optionItem}
+    hitSlop={10}
+  >
+    <Text style={styles.checkbox}>{guardarSenha ? '☑' : '☐'}</Text>
+    <Text style={styles.optionText}>Guardar senha</Text>
+  </Pressable>
+</View>
+
+{/* ✅ Esqueci-me da palavra-passe */}
+<TouchableOpacity
+  style={styles.forgotLink}
+  onPress={() => Alert.alert('Recuperar acesso', 'Por agora, contacte a administração.')}
+>
+  <Text style={styles.forgotText}>Esqueci-me da palavra-passe</Text>
+</TouchableOpacity>
+
+      <TouchableOpacity
+  style={[styles.button, isLoading && { opacity: 0.7 }]}
+  onPress={handleLogin}
+  disabled={isLoading}
+>
+  <Text style={styles.buttonText}>
+    {isLoading ? 'A entrar...' : 'Entrar'}
+  </Text>
+</TouchableOpacity>
 
 
-
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Entrar</Text>
-      </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.navigate('RegisterCompany')}>
         <Text style={isDarkMode ? styles.registerTextDark : styles.registerTextLight}>
@@ -183,18 +306,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
     paddingHorizontal: 20,
+    paddingTop: 140,
+  },
+  titleShadow: {
+    position: 'absolute',
+    top: 3,
+    left: 1,
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000',
+    opacity: 0.15,
   },
   titleLight: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 0,
     color: '#000',
+    opacity: 0.60,
+     // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10,
   },
   titleDark: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 0,
     color: '#333',
+    opacity: 0.80,
+     // 🔹 Sombra 3D leve e elegante
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4.65,
+    elevation: 10,
   },
   labelLight: {
     fontSize: 16,
@@ -256,14 +403,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 40,
     borderRadius: 25,
-    marginBottom: 15,
+    marginBottom: 20,
+    marginTop: 15,
     width: '80%',
     alignItems: 'center',
     height: 50,
-
     // 🔹 Remove o contorno preto
     borderWidth: 0,
-
     // 🔹 Sombra 3D leve e elegante
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -294,7 +440,7 @@ const styles = StyleSheet.create({
     width: '80%',
     height: 50, // 🔹 Controla a altura do campo de senha
     borderWidth: 0,
-    marginBottom: 15,
+    marginBottom: 0,
     borderColor: '#000',
     borderRadius: 25,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
@@ -336,6 +482,52 @@ const styles = StyleSheet.create({
     color: '#666',
     opacity: 0.8,
 },
+optionsRow: {
+  marginTop: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+optionItem: {
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+checkbox: {
+  fontSize: 16,
+  marginRight: 6,
+},
+
+optionText: {
+  fontSize: 13,
+  color: '#333',
+},
+
+forgotLink: {
+  marginTop: 8,
+  alignSelf: 'center',
+},
+
+forgotText: {
+  fontSize: 13,
+  color: '#333',
+  textDecorationLine: 'underline',
+},
+
+buttonDisabled: {
+  opacity: 0.6,
+},
+watermark: {
+  position: 'absolute',
+  alignSelf: 'center',
+  top: 40,            // ajusta (90–130 costuma ficar bem)
+  width: 280,         // ajusta
+  height: 280,        // ajusta
+  opacity: 0.08,      // 0.06–0.12 (marca d’água discreta)
+},
+
+
 });
 
 export default LoginScreen;
