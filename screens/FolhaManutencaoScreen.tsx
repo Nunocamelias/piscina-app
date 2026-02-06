@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform } from 'react-native';
 import Config from 'react-native-config';
 import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
@@ -11,7 +11,7 @@ import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import moment from 'moment';
 import { calcularISL, sugerirAlvosPorISL } from '../utils/isl';
-
+import { gerarMensagensManutencao } from '../services/manutencaoMensagens';
 
 export const getAccessibleUri = async (uri: string): Promise<string | null> => {
   if (uri.startsWith('content://')) {
@@ -118,29 +118,36 @@ function validarPH(ph: number): Alerta | null {
 }
 
 function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
-  if (!Number.isFinite(cl)) return { level: 'hard', title: 'Cloro inválido', msg: 'Introduz um número válido.' };
-  if (cl < 0 || cl > 20) return { level: 'hard', title: 'Cloro inválido', msg: 'O cloro livre deve estar entre 0 e 20 ppm.' };
+  if (!Number.isFinite(cl)) {
+    return { level: 'hard', title: 'Cloro inválido', msg: 'Introduz um número válido.' };
+  }
+  if (cl < 0 || cl > 20) {
+    return { level: 'hard', title: 'Cloro inválido', msg: 'O cloro livre deve estar entre 0 e 20 ppm.' };
+  }
 
+  // ✅ >=10: aviso forte, mas já SEM “interdito” fixo (porque isso agora pode ser tratado na central + neutralizador)
   if (cl >= 10) {
     return {
       level: 'warn',
-      title: 'Cloro muito alto (interdito)',
-      msg: 'Piscina interdita a banhistas. Confirma o valor e aplica a correção (ex.: inibidor de cloro) se necessário.',
+      title: 'Cloro muito alto',
+      msg: 'Confirma o valor. A piscina pode ficar temporariamente interdita. Se necessário, usar neutralizador (a dose aparece no resultado).',
     };
   }
 
+  // ✅ 5–10: aviso moderado
   if (cl > 5) {
     return {
       level: 'warn',
-      title: 'Excesso de cloro',
+      title: 'Cloro acima do recomendado',
       msg: isPiscinaSal
-        ? 'Confirma o valor (pode indicar ORP/Alcalinidade desajustada em piscina a sal).'
+        ? 'Confirma o valor. Em piscina a sal, pode ser setpoint/ORP/TAC. Ajusta a eletrólise se necessário.'
         : 'Confirma o valor e não adiciones cloro.',
     };
   }
 
   return null;
 }
+
 
   const {
   empresaid,
@@ -193,13 +200,16 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
 } | null>(null);
   const [testeRapidoPendente, setTesteRapidoPendente] = useState<any | null>(null);
   // ✅ Estado: quais cartões estão expandidos
-const [expandedParams, setExpandedParams] = useState<Record<string, boolean>>({});
+  const [expandedParams, setExpandedParams] = useState<Record<string, boolean>>({});
+  const lastAutoMsgKeyRef = useRef<string | null>(null);
+  const [procedimentoMsg, setProcedimentoMsg] = useState<ReturnType<typeof gerarMensagensManutencao> | null>(null);
+  const [abrirProcedimentoAposCalcular, setAbrirProcedimentoAposCalcular] = useState(false);
 
-// ✅ ler estado do card (por parâmetro)
-const isExpanded = useCallback(
-  (parametro: string) => !!expandedParams[norm(parametro)],
-  [expandedParams]
-);
+  // ✅ ler estado do card (por parâmetro)
+  const isExpanded = useCallback(
+    (parametro: string) => !!expandedParams[norm(parametro)],
+    [expandedParams]
+  );
 
 // ✅ alternar abrir/fechar um card
 const toggleExpanded = useCallback((parametro: string) => {
@@ -217,11 +227,19 @@ const collapseAllParams = useCallback(() => {
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
 
   // ✅ Bloquear Teste Rápido se já houver pelo menos 1 parâmetro validado/bloqueado
-  const bloquearTesteRapido = (parametrosQuimicos ?? []).some((p) => !!p.bloqueado);
+  // Só estes status contam como “validação real” que bloqueia ações automáticas
+const STATUS_BLOQUEIA_ACOES = ['aplicado', 'sem estoque', 'nao necessario'] as const;
 
-  const testeRapidoPermitido = metodoAnalise === 'fitas';
-  const bloquearTesteRapidoFinal =
-  bloquearTesteRapido || !testeRapidoPermitido;
+const houveValidacaoReal = (parametrosQuimicos ?? []).some((p: any) =>
+  STATUS_BLOQUEIA_ACOES.includes(p?.status)
+);
+
+const bloquearTesteRapido = houveValidacaoReal;   // ignora 'nao ajustavel'
+const bloquearAcoesAuto  = houveValidacaoReal;   // ignora 'nao ajustavel'
+
+// Teste rápido só permitido com FITAS
+const testeRapidoPermitido = metodoAnalise === 'fitas';
+
 
 
   // 🔹 Função para buscar o empresaid
@@ -337,7 +355,9 @@ type ParamKeyTR =
   | 'cloro_livre'
   | 'ph'
   | 'alcalinidade'
-  | 'cya';
+  | 'cya'
+  | 'sal';
+
 
 const mapParametroFolhaToTesteRapido = (parametro: string): ParamKeyTR | null => {
   const p = (parametro ?? '')
@@ -352,6 +372,7 @@ const mapParametroFolhaToTesteRapido = (parametro: string): ParamKeyTR | null =>
   if (p.startsWith('alcal')) return 'alcalinidade';
   if (p.startsWith('durez')) return 'dureza';
   if (p.startsWith('acido cian')) return 'cya';
+  if (p.startsWith('sal')) return 'sal';
 
   return null;
 };
@@ -413,6 +434,7 @@ const abrirTesteRapidoComConfirmacao = () => {
     nome: (route.params as any)?.nome ?? 'Cliente',
     volume: Number(volume ?? 0),
     folhaParams: route.params,
+    modoTratamento,
   });
 };
 
@@ -505,25 +527,22 @@ useEffect(() => {
 
   // ✅ Após receber valores do Teste Rápido, abrir apenas os parâmetros que vieram com valor
   setExpandedParams(() => {
-    const next: Record<string, boolean> = {};
+  const next: Record<string, boolean> = {};
+  const has = (v: any) => String(v ?? '').trim() !== '';
 
-    const has = (v: any) => String(v ?? '').trim() !== '';
+  parametrosQuimicos.forEach((p) => {
+    const keyTR = mapParametroFolhaToTesteRapido(p.parametro);
+    if (!keyTR) return;
 
-    // Mapeamento TR -> nomes da Folha (normalizados)
-    if (has(testeRapidoPendente?.dureza)) next[norm('dureza')] = true;
-    if (has(testeRapidoPendente?.cloro_total)) next[norm('cloro total em ppm')] = true;
-    if (has(testeRapidoPendente?.cloro_livre)) next[norm('cloro livre em ppm')] = true;
-    if (has(testeRapidoPendente?.ph)) next[norm('ph')] = true;
-    if (has(testeRapidoPendente?.alcalinidade)) next[norm('alcalinidade')] = true;
-    if (has(testeRapidoPendente?.cya)) next[norm('acido cianurico')] = true;
-
-    // Se um dia vierem também:
-    if (has((testeRapidoPendente as any)?.sal)) next[norm('sal em kg/m3')] = true;
-    if (has((testeRapidoPendente as any)?.cloro_orp)) next[norm('cloro orp em mv')] = true;
-    if (has((testeRapidoPendente as any)?.oxigenio)) next[norm('oxigenio')] = true;
-
-    return next;
+    const v = (testeRapidoPendente as any)[keyTR];
+    if (has(v)) {
+      next[norm(p.parametro)] = true; // ✅ MESMA KEY do render
+    }
   });
+
+  return next;
+});
+
 
   // ✅ limpa para não reaplicar
   setTesteRapidoPendente(null);
@@ -593,24 +612,47 @@ const fetchDadosManutencao = useCallback(async () => {
     }
 
     const manutencaoData = await manutencaoResponse.json();
-    console.log('🧪 [DEBUG] Manutenção ID:', manutencaoData.manutencao?.id);
-console.log('🧪 [DEBUG] metodo_analise:', manutencaoData.manutencao?.metodo_analise);
-console.log('🧪 [DEBUG] modo_tratamento:', manutencaoData.manutencao?.modo_tratamento);
 
-console.log(
-  '🧪 [DEBUG] Parametros recebidos:',
-  manutencaoData.parametros?.map((p: any) => ({
-    parametro: p.parametro,
-    status: p.status,
-    bloqueado: ['aplicado','sem estoque','nao necessario','nao ajustavel'].includes(p.status),
-    valor_atual: p.valor_atual,
-  }))
-);
+// ✅ DEBUG (Render vs Local) — coloca aqui
+const m = manutencaoData?.manutencao;
+
+console.log('🧪 [DEBUG MANUT] clienteId/diaSemana/empresaid:', {
+  clienteId,
+  diaSemana,
+  empresaid,
+});
+
+console.log('🧪 [DEBUG MANUT] manutencao recebida:', {
+  id: m?.id,
+  status: m?.status,
+  dia_semana: m?.dia_semana ?? m?.diaSemana,     // caso venha com nomes diferentes
+  data_manutencao: m?.data_manutencao ?? m?.data_manutencao_iso,
+  created_at: m?.created_at,
+  metodo_analise: m?.metodo_analise,
+  modo_tratamento: m?.modo_tratamento,
+  parametrosCount: Array.isArray(manutencaoData?.parametros) ? manutencaoData.parametros.length : null,
+});
+
+// (Opcional) ver rapidamente se já vem “bloqueável”
+if (Array.isArray(manutencaoData?.parametros)) {
+  console.log(
+    '🧪 [DEBUG MANUT] parametros resumidos:',
+    manutencaoData.parametros.map((p: any) => ({
+      parametro: p.parametro,
+      status: p.status,
+      valor_atual: p.valor_atual,
+    }))
+  );
+}
+
+// agora sim, segue o teu código normal
+setManutencaoAtual(m || null);
+
 
     setManutencaoAtual(manutencaoData.manutencao || null);
     console.log('✅ Dados da manutenção carregados:', manutencaoData.manutencao);
     // ✅ carregar método/modo guardados na manutenção
-    const m = manutencaoData.manutencao;
+    
 
     setMetodoAnalise((m?.metodo_analise as MetodoAnalise) ?? 'fotometro');
     setModoTratamento((m?.modo_tratamento as ModoTratamento) ?? (clienteData?.eletrolise_sal ? 'sal' : 'cloro'));
@@ -1027,24 +1069,6 @@ const tacBaixoIdeal =
 const tacAltoIdeal =
   Number.isFinite(tacAtual) && Number.isFinite(tacMax) && tacAtual > tacMax;
 
-// ✅ Cenários A/B (só fazem sentido quando estamos a calcular pH OU TAC)
-const alertaAB =
-  (nomeNorm === 'ph' || nomeNorm === 'alcalinidade') &&
-  Number.isFinite(phAtual) && Number.isFinite(tacAtual) &&
-  (
-    (phBaixoIdeal && tacBaixoIdeal) ||
-    (phAltoIdeal && tacAltoIdeal)
-  )
-    ? {
-        level: 'warn' as const,
-        title: '⚠ pH e TAC fora do ideal',
-        msg:
-          phBaixoIdeal && tacBaixoIdeal
-            ? 'pH e Alcalinidade (TAC) estão baixos. Recomenda-se corrigir primeiro o TAC; ao ajustar o TAC, o pH pode subir por arrasto.\n\nConfirmas o cálculo mesmo assim?'
-            : 'pH e Alcalinidade (TAC) estão altos. Ação: corrigir primeiro o pH com redutor de pH; ao baixar o pH, o TAC tende a descer por arrasto.\n\nConfirmas o cálculo mesmo assim?',
-
-      }
-    : null;
 
 // ✅ pH “muito fora” (técnico) — só aviso/confirmar, não bloqueia cálculo
 // (regra C: apenas pH com 6.2–8.2)
@@ -1067,17 +1091,6 @@ const alertaPHTecnico =
         ? Math.abs(valor - ultimoPH)
         : 0;
 
-    const alertaVariacaoPH =
-      nome === 'pH' && diffPH >= 0.3
-        ? {
-            level: 'warn' as const,
-            title: 'Variação grande de pH',
-            msg: `Diferença de ${diffPH.toFixed(
-              2
-            )} desde a última manutenção. Verificar alcalinidade (TAC).`,
-          }
-        : null;
-
     // ✅ validações “hard/warn” existentes
     const alertaBase =
       nome === 'pH'
@@ -1087,8 +1100,7 @@ const alertaPHTecnico =
         : null;
 
     // prioridade: hard do validarPH/validarCloro primeiro, depois A/B, depois variação pH, depois pH técnico
-    const alerta = alertaBase ?? alertaAB ?? alertaVariacaoPH ?? alertaPHTecnico;
-
+    const alerta = alertaBase ?? alertaPHTecnico;
 
     // hard-stop: não calcula
     if (alerta?.level === 'hard') {
@@ -1135,9 +1147,16 @@ const alertaPHTecnico =
           }
         : resultadoBase;
 
+        // ✅ guardar meta de variação pH para o gerador de mensagens (sem popup)
+        const resultadoFinalComMeta: any =
+        nome === 'pH' && diffPH >= 0.3
+        ? { ...resultadoFinal, variacaoPH: diffPH }
+        : resultadoFinal;
+
+
       setParametrosQuimicos((prev) =>
         prev.map((p) =>
-          p.parametro === item.parametro ? { ...p, resultado: resultadoFinal } : p
+          p.parametro === item.parametro ? { ...p, resultado: resultadoFinalComMeta } : p
         )
       );
     };
@@ -1252,22 +1271,137 @@ const calcularTodos = useCallback(() => {
 
   // ⚠ só avisa TAC antes do pH quando ambos fora do ideal
   if (tacForaIdeal && phForaIdeal) {
-    Alert.alert(
-      '⚠ TAC e pH fora do ideal',
-      'Recomenda-se corrigir primeiro a Alcalinidade (TAC). Ao ajustar o TAC, o pH pode subir/descer por arrasto.\n\nQueres calcular tudo na mesma?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Continuar (Dureza → TAC → pH → Cloro)', onPress: executar },
-      ]
-    );
-    return;
-  }
+  // ✅ sem popup antigo — a central de mensagens trata da ordem TAC → pH
+  executar();
+  return;
+}
 
   // (opcional) se quiseres também um aviso quando Dureza está fora do ideal e TAC/pH também,
   // podemos criar cenário, mas por agora fica simples.
 
-  executar();
-}, [parametrosQuimicos, calcularUmParametro, metodoAnalise, toNum, isForaDoIdeal]);
+    executar();
+
+  // ✅ Depois de calcular tudo, gravar Cloro Combinado (se Total + Livre existirem)
+  const getNumFromOrdenada = (keyIncludes: string) => {
+    const it = ordenada.find((p: any) =>
+      String(p?.parametro || '').toLowerCase().includes(keyIncludes)
+    );
+    const s = String(it?.valor_atual ?? '').trim();
+    if (!s) return NaN;
+    return toNum(s);
+  };
+
+  const livre = getNumFromOrdenada('cloro livre');
+  const total = getNumFromOrdenada('cloro total');
+
+  const cc =
+    Number.isFinite(livre) && Number.isFinite(total)
+      ? Math.max(0, total - livre)
+      : NaN;
+
+  if (Number.isFinite(cc)) {
+    setParametrosQuimicos((prev) =>
+      prev.map((p: any) => {
+        const k = String(p.parametro || '').toLowerCase().trim();
+        if (k !== 'cloro combinado em ppm') return p;
+
+        return {
+          ...p,
+          bloqueado: true,
+          valor_atual: String(cc.toFixed(2)), // 👈 grava já formatado
+          status: p.status ?? 'pendente',
+          // fallback para já (sem quantidades de choque)
+          resultado:
+            p.resultado ??
+            { resultado: `Cloro Combinado: ${cc.toFixed(2)} ppm`, quantidade: 0, status: 'pendente' },
+        };
+      })
+    );
+  }
+}, [
+  parametrosQuimicos,
+  calcularUmParametro,
+  metodoAnalise,
+  toNum,
+  isForaDoIdeal,
+  setParametrosQuimicos,
+]);
+
+
+const handleCalcularTodos = useCallback(() => {
+  // 1) faz o cálculo (vai atualizar state de parâmetros)
+  calcularTodos();
+
+  // 2) sinaliza que queremos auto-popup assim que os parâmetros estiverem atualizados
+  setAbrirProcedimentoAposCalcular(true);
+}, [calcularTodos]);
+
+// ✅ Garantir que o gerador recebe os parâmetros com (resultado + status)
+//    (a mesma "shape" que o UI já renderiza com item.resultado e item.status)
+const parametrosParaMensagens = useMemo(() => {
+  // Se já tiveres uma lista "itens" / "parametrosCalculados" usada na FlatList,
+  // substitui "parametrosQuimicos" por essa lista aqui.
+  return (parametrosQuimicos ?? []).map((p: any) => ({
+    ...p,
+    // manter o que já existe; se não existir, fica undefined
+    resultado: p.resultado,
+    status: (p.status ?? p.resultado?.status ?? 'pendente'),
+  }));
+}, [parametrosQuimicos]);
+
+const abrirProcedimento = useCallback(() => {
+  // ✅ DEBUG: confirmar se os parâmetros que vão para o gerador têm resultado
+console.log(
+  'DEBUG parametrosParaMensagens:',
+  (parametrosParaMensagens ?? []).map((p: any) => ({
+    k: p?.parametro,
+    st: p?.status,
+    hasResultado: !!p?.resultado?.resultado,
+    resultado: p?.resultado?.resultado ?? null,
+  }))
+);
+console.log('DEBUG procedimentoMsg existe?', !!procedimentoMsg);
+  const msg =
+    gerarMensagensManutencao({
+      empresaid,
+      clienteId,
+      clienteNome: cliente?.nome,
+      cliente,
+      parametros: parametrosParaMensagens,
+      metodoAnalise,
+      modoTratamento,
+    });
+
+  if (!msg.temMensagem) {
+    Alert.alert('Procedimento', 'Sem mensagens.');
+    return;
+  }
+
+  Alert.alert(
+    msg.titulo,
+    `${msg.resumo}\n\nProcedimento:\n${msg.procedimento.join('\n')}`
+  );
+}, [
+  procedimentoMsg,
+  empresaid,
+  clienteId,
+  cliente,
+  parametrosParaMensagens,
+  metodoAnalise,
+  modoTratamento,
+]);
+
+useEffect(() => {
+  if (!abrirProcedimentoAposCalcular) return;
+
+  // ✅ só abre quando já houver pelo menos 1 resultado calculado (quantidade/mensagem)
+  const jaTemResultados = (parametrosParaMensagens ?? []).some((p: any) => !!p?.resultado?.resultado);
+
+  if (!jaTemResultados) return;
+
+  abrirProcedimento();              // ✅ agora já apanha o state atualizado
+  setAbrirProcedimentoAposCalcular(false);
+}, [abrirProcedimentoAposCalcular, parametrosParaMensagens, abrirProcedimento]);
 
 const getCorData = (data: string) => {
   if (!data) {
@@ -1788,11 +1922,6 @@ useEffect(() => {
   if (Number.isFinite(dur)) setIslDur(String(Math.round(dur)));
 }, [parametrosQuimicos, toNum, setIslPH, setIslAlc, setIslDur]);
 
-const bloquearAcoesAuto = (parametrosQuimicos ?? []).some((p) => !!p.bloqueado);
-
-const ENABLE_SLIDER_COR = false;
-// ✅ TEMP: desligar completamente a ferramenta de cor (escala + slider)
-const ENABLE_COLOR_TOOL = false;
 
 // estados, hooks, helpers, etc...
 
@@ -2301,9 +2430,9 @@ return (
   style={[
     styles.acaoBtnBase,
     styles.testeRapidoBtn,
-    (isSomenteLeitura || bloquearTesteRapidoFinal) && styles.acaoBtnDisabled,
+    (isSomenteLeitura || bloquearTesteRapido) && styles.acaoBtnDisabled,
   ]}
-  disabled={isSomenteLeitura || bloquearTesteRapidoFinal}
+  disabled={isSomenteLeitura || bloquearTesteRapido}
   onPress={() => {
     if (isSomenteLeitura) return;
 
@@ -2318,7 +2447,7 @@ return (
     if (bloquearTesteRapido) {
       Alert.alert(
         'Teste Rápido bloqueado',
-        'Já existe pelo menos 1 parâmetro validado/bloqueado. Conclui a manutenção (ou faz reset) antes de usar o Teste Rápido.'
+        'Já existe pelo menos 1 parâmetro validado. Conclui a manutenção (ou faz reset) antes de usar o Teste Rápido.'
       );
       return;
     }
@@ -2329,32 +2458,32 @@ return (
   <Text style={styles.acaoBtnText}>⚡ Teste rápido</Text>
 </TouchableOpacity>
 
-
   <TouchableOpacity
-    style={[
-      styles.acaoBtnBase,
-      styles.calcularTodosBtn,
-      (isSomenteLeitura || bloquearAcoesAuto) && styles.acaoBtnDisabled,
-    ]}
-    disabled={isSomenteLeitura || bloquearAcoesAuto}
-    onPress={() => {
-      if (bloquearAcoesAuto) {
-        Alert.alert(
-          'Ação bloqueada',
-          'Já existe pelo menos 1 parâmetro validado/bloqueado. Para segurança, não é possível recalcular em massa após validações.'
-        );
-        return;
-      }
-      calcularTodos();
-    }}
-  >
-    <Text style={styles.acaoBtnText}>Calcular todos</Text>
-  </TouchableOpacity>
+  style={[
+    styles.acaoBtnBase,
+    styles.calcularTodosBtn,
+    (isSomenteLeitura || bloquearAcoesAuto) && styles.acaoBtnDisabled,
+  ]}
+  disabled={isSomenteLeitura || bloquearAcoesAuto}
+  onPress={() => {
+    if (bloquearAcoesAuto) {
+      Alert.alert(
+        'Ação bloqueada',
+        'Já existe pelo menos 1 parâmetro validado/bloqueado. Para segurança, não é possível recalcular em massa após validações.'
+      );
+      return;
+    }
+    handleCalcularTodos();
+  }}
+>
+  <Text style={styles.acaoBtnText}>Calcular todos</Text>
+</TouchableOpacity>
+
+<TouchableOpacity onPress={abrirProcedimento} style={styles.botaoProcedimento}>
+  <Text style={styles.botaoProcedimentoTxt}>Info</Text>
+</TouchableOpacity>
+
 </View>
-
-
-
-
 
  {isParametrosExpanded && parametrosOrdenados.length > 0 ? (
   <>
@@ -2365,6 +2494,7 @@ return (
       const isAlc = nomeNorm === 'alcalinidade';
       const isCloroTotal = nomeNorm === 'cloro total em ppm';
       const isCloroLivre = nomeNorm === 'cloro livre em ppm';
+      const isSal = nomeNorm === 'sal';
 
       const totalRaw = getValorAtualRawByNorm('cloro total em ppm');
 const livreRaw = getValorAtualRawByNorm('cloro livre em ppm');
@@ -2401,6 +2531,7 @@ const tituloFinal =
   nomeNorm === 'alcalinidade' ? 'Alcalinidade em ppm' :
   nomeNorm.includes('acido cianurico') ? 'Ácido Cianúrico em ppm' :
   nomeNorm === 'dureza' ? 'Dureza em ppm' :
+  nomeNorm === 'sal' ? 'sal em kg/m³' :
   item.parametro;
 
 // ✅ Aviso CYA: só para FITAS e só quando houver alcalinidade preenchida e < 65
@@ -2440,7 +2571,7 @@ const alvoISL =
 
 const islCreatedAt = islUltimoRegisto?.created_at;
 
-const testeRapidoPermitido = metodoAnalise === 'fitas';
+
 const bloquearTesteRapidoFinal = bloquearTesteRapido || !testeRapidoPermitido;
 
 const corParametro = (() => {
@@ -2956,7 +3087,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+    backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',
   },
   actions: {
     marginTop: 20,
@@ -3055,6 +3186,11 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     marginTop: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 5,
   },
   actionButtons: {
    flexDirection: 'row',
@@ -3132,7 +3268,7 @@ const styles = StyleSheet.create({
   },
   parametroContainer: {
   padding: 12,
-  backgroundColor: '#ECECEC', // cinza claro neutro
+  backgroundColor: '#D3D3D3', // cinza claro neutro
   marginBottom: 8,
   borderRadius: 8,
   shadowColor: '#000',
@@ -3141,9 +3277,6 @@ const styles = StyleSheet.create({
   shadowRadius: 3,
   elevation: 4,
 },
-
-
-
   parametroTitulo: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -3358,6 +3491,11 @@ buttonCalcular: {
   alignItems: 'center',
   alignSelf: 'flex-end',
   backgroundColor: '#adcfae', // usa a tua se já tinhas
+  shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 5,
 },
 // ✅ Linha 2 (o bloco do slider)
 colorTool: {
@@ -3494,7 +3632,7 @@ acoesRow: {
 
 acaoBtnBase: {
   //flex: .5,
-  width: 160,
+  width: 125,
   height: 42,          // 👈 ligeiramente maior (fica mais premium)
   borderRadius: 12,    // 👈 acompanha o novo tamanho
   alignItems: 'center',
@@ -3512,21 +3650,55 @@ acaoBtnBase: {
 },
 acaoBtnText: {
   width: '100%',
-  fontSize: 15,
+  fontSize: 14,
   fontWeight: '600',
   textAlign: 'center',
 },
 acaoBtnDisabled: {
   opacity: 0.45,
 },
+botaoProcedimento: {
+  //flex: .5,
+  width: 65,
+  height: 42,          // 👈 ligeiramente maior (fica mais premium)
+  borderRadius: 12,    // 👈 acompanha o novo tamanho
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 15,
+
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOpacity: 0.12,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+
+  paddingVertical: 0,
+  paddingHorizontal: 0,
+},
+botaoProcedimentoTxt: {
+  width: '100%',
+  fontSize: 14,
+  fontWeight: '600',
+  textAlign: 'center',
+},
 
 // ✅ aqui só COR (mantém as tuas cores atuais)
 testeRapidoBtn: {
   backgroundColor: '#20B8B3', // exemplo: mete a tua
+  shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 10,
 },
 
 calcularTodosBtn: {
   backgroundColor: '#BFD9BF', // exemplo: mete a tua
+  shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 10,
 },
 cornerClip: {
   position: 'absolute',

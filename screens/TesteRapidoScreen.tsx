@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import {
+  hexToRgb,
+  clamp,
   CLORO_ANCHORS,
   CLORO_TOTAL_ANCHORS,
   PH_ANCHORS,
@@ -28,6 +30,7 @@ import {
 } from '../utils/colors';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../App';
+import { globalTouchLock } from '../utils/globalTouchLock.ts'; // ajusta path
 
 
 /* =========================================================
@@ -42,7 +45,8 @@ type ParamKey =
   | 'cloro_livre'
   | 'ph'
   | 'alcalinidade'
-  | 'cya';
+  | 'cya'
+  | 'sal';
 
 type ParametroTR = {
   key: ParamKey;
@@ -98,11 +102,12 @@ const OVER = SWATCH * 3; // 120
 // ✅ ORDEM AquaChek (igual ao rótulo)
 const PARAMS_ALL: ParametroTR[] = [
   { key: 'dureza', label: 'Dureza', short: 'DUR', anchors: DUREZA_ANCHORS, min: 0, max: 1000, step: 10 },
-  { key: 'cloro_total', label: 'Cloro Total', short: 'TCL', anchors: CLORO_TOTAL_ANCHORS, min: 0, max: 10, step: 0.1 },
-  { key: 'cloro_livre', label: 'Cloro Livre', short: 'FCL', anchors: CLORO_ANCHORS, min: 0, max: 10, step: 0.1 },
+  { key: 'cloro_total', label: 'Cloro Total', short: 'Cl-T', anchors: CLORO_TOTAL_ANCHORS, min: 0, max: 10, step: 0.1 },
+  { key: 'cloro_livre', label: 'Cloro Livre', short: 'Cl-L', anchors: CLORO_ANCHORS, min: 0, max: 10, step: 0.1 },
   { key: 'ph', label: 'pH', short: 'pH', anchors: PH_ANCHORS, min: 6.2, max: 8.2, step: 0.1 },
   { key: 'alcalinidade', label: 'Alcalinidade', short: 'TAC', anchors: ALC_ANCHORS, min: 0, max: 240, step: 10 },
-  { key: 'cya', label: 'Ácido Cianúrico', short: 'CYA', anchors: CYA_ANCHORS, min: 0, max: 300, step: 10 },
+  { key: 'cya', label: 'Ácido Cianúrico', short: 'CYA', anchors: CYA_ANCHORS, min: 0, max: 300, step: 5 },
+  { key: 'sal', label: 'Sal', short: 'SAL', anchors: [], min: 0, max: 10, step: 0.1 },
 ];
 
 // ✅ Slider vertical com thumb nosso (double-tap + tamanhos)
@@ -112,6 +117,10 @@ function VerticalThumbSlider({ min, max, step, value, onChange, onDoubleTap, dis
   const [dragging, setDragging] = useState(false);
   // “armed” = quando estás a mexer/ativaste o thumb para poder arrastar
   const [armed, setArmed] = useState(false);
+  const [trackW, setTrackW] = useState(0);
+  const activeTouchIdRef = useRef<string | number | null>(null);
+
+
 
   useEffect(() => {
   const isAtMin = Math.abs(value - min) < 1e-9;
@@ -122,6 +131,19 @@ function VerticalThumbSlider({ min, max, step, value, onChange, onDoubleTap, dis
     lastTapRef.current = 0;
   }
 }, [value, min]);  
+
+const getTouchById = (evt: any, id: string | number | null) => {
+  const touches = evt?.nativeEvent?.touches || [];
+  if (id == null) return touches[0] || null;
+  return touches.find((t: any) => t.identifier === id) || null;
+};
+
+// usa pageY (robusto) + topo real do track (measureInWindow)
+const yToValueFromPageY = (pageY: number) => {
+  const top = trackTopRef.current || 0;
+  const yLocal = pageY - top;
+  return yToValue(yLocal); // a tua função existente
+};
 
   const lastTapRef = useRef<number>(0);
   const startLocalYRef = useRef(0);
@@ -150,9 +172,9 @@ function VerticalThumbSlider({ min, max, step, value, onChange, onDoubleTap, dis
   // - pequena no mínimo (e não armado)
   // - intermédia quando largas (se não está no mínimo)
   const thumbSize = useMemo(() => {
-    if (dragging) return 36;
-    if (!armed && Math.abs(value - min) < 1e-9) return 16;
-    return 24;
+    if (dragging) return 50;
+    if (!armed && Math.abs(value - min) < 1e-9) return 34;
+    return 40;
   }, [dragging, armed, value, min]);
 
   function yToValue(yy: number) {
@@ -180,110 +202,145 @@ function VerticalThumbSlider({ min, max, step, value, onChange, onDoubleTap, dis
   return clamped;
 }
 
-
   const draggingRef = useRef(false);
+
+  const EXTRA_X = 18; // 12 a 24 costuma ser o ideal
+  const EXTRA_Y_TOP = 10;
+  const EXTRA_Y_BOTTOM = 10;
+
+  const inHitArea = (locationX: number, locationY: number) => {
+    return (
+      locationX >= -EXTRA_X &&
+      locationX <= trackW + EXTRA_X &&
+      locationY >= -EXTRA_Y_TOP &&
+      locationY <= trackH + EXTRA_Y_BOTTOM
+    );
+};
+
 
 const panResponder = useMemo(
   () =>
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onMoveShouldSetPanResponder: () => !disabled,
-
-      onPanResponderGrant: (evt) => {
-  if (disabled) return;
-
-  setArmed(true);
-
-  // ✅ ao tocar, se estás no mínimo, "agarra" logo (no telemóvel isto é crucial)
-  const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
-
-  if (isAtMin) {
-    draggingRef.current = true;
-    setDragging(true);
-
-    // opcional: se quiseres que ao tocar no fundo não fique preso no 0,
-    // podes usar um pequeno offset para cima (ex.: -2)
-    const newVal = yToValue(evt.nativeEvent.locationY);
-    onChangeRef.current(newVal);
-  } else {
-    // comportamento atual (não cresce no double-tap)
-    draggingRef.current = false;
-  }
+      onStartShouldSetPanResponder: (evt) => {
+  if (disabled) return false;
+  const { locationX, locationY } = evt.nativeEvent;
+  return inHitArea(locationX, locationY);
 },
 
-onPanResponderMove: (evt, gesture) => {
+onMoveShouldSetPanResponder: (evt, gesture) => {
+  if (disabled) return false;
+  const moved = Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2;
+  if (!moved) return false;
+  const { locationX, locationY } = evt.nativeEvent;
+  return inHitArea(locationX, locationY);
+},
+
+      
+onPanResponderGrant: (evt) => {
   if (disabled) return;
 
-  // ✅ se já estamos a arrastar (ex.: arrancou no mínimo), atualiza logo
-  if (draggingRef.current) {
-    const newVal = yToValue(evt.nativeEvent.locationY);
-    onChangeRef.current(newVal);
-    return;
-  }
+  const firstTouch = evt?.nativeEvent?.touches?.[0];
+  const id = firstTouch?.identifier ?? null;
+  activeTouchIdRef.current = id;
 
-  // ✅ caso não esteja a arrastar ainda, só começa quando há movimento real
-  const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
+  // ✅ LOCK global: este touch é o “dono”
+  globalTouchLock.lock('VerticalThumbSlider', id);
+
+  setArmed(true);
+  draggingRef.current = false;
+  setDragging(false);
+
+  const t = getTouchById(evt, activeTouchIdRef.current);
+  if (t) startLocalYRef.current = t.pageY;
+},
+
+
+
+onPanResponderMove: (evt, gesture) => {
+  if (disabled) return;  
+
+  const t = getTouchById(evt, activeTouchIdRef.current);
+  if (!t) return;
+
+  const moved = Math.abs(gesture.dy) > 4 || Math.abs(gesture.dx) > 4;
   if (!moved) return;
 
-  draggingRef.current = true;
-  setDragging(true);
+  if (!draggingRef.current) {
+    draggingRef.current = true;
+    setDragging(true);
+  }
 
-  const newVal = yToValue(evt.nativeEvent.locationY);
+  const newVal = yToValueFromPageY(t.pageY);
   onChangeRef.current(newVal);
 },
 
-      onPanResponderRelease: (_evt, gesture) => {
-        const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
 
-        if (draggingRef.current) {
-          draggingRef.current = false;
-          setDragging(false);
-          // ✅ foi drag normal, não faz lógica de double-tap aqui
-        } else {
-          // ✅ isto foi TAP (ou double-tap)
-          const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
-          const canDoubleTap = armed && !isAtMin;
 
-          const now = Date.now();
-          const dt = now - lastTapRef.current;
+onPanResponderRelease: (evt, gesture) => {
+  // ✅ só termina quando o dedo DONO foi levantado
+  const changed = evt?.nativeEvent?.changedTouches || [];
+  const id = activeTouchIdRef.current;
 
-          if (dt < 260 && canDoubleTap) {
-            lastTapRef.current = 0;
-            onDoubleTap?.(); // sem mexer valor
-          } else {
-            lastTapRef.current = now;
-          }
-        }
+  if (id != null && !changed.some((t: any) => t.identifier === id)) {
+    return; // levantou outro dedo, mantém o slider preso ao dono
+  }
 
-        // Se está no mínimo, desarma (fica pequeno)
-        const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
-        if (isAtMin) setArmed(false);
-      },
+  activeTouchIdRef.current = null;
+  globalTouchLock.unlock('VerticalThumbSlider');
 
-      onPanResponderTerminate: () => {
-        draggingRef.current = false;
-        setDragging(false);
+  const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
 
-        const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
-        if (isAtMin) setArmed(false);
-      },
+  if (draggingRef.current) {
+    draggingRef.current = false;
+    setDragging(false);
+  } else {
+    // ✅ TAP / double-tap (se quiseres manter)
+    const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
+    const canDoubleTap = armed && !isAtMin;
+
+    const now = Date.now();
+    const dt = now - lastTapRef.current;
+
+    if (dt < 260 && canDoubleTap) {
+      lastTapRef.current = 0;
+      onDoubleTap?.();
+    } else {
+      lastTapRef.current = now;
+    }
+  }
+
+  const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
+  if (isAtMin) setArmed(false);
+},
+
+onPanResponderTerminate: () => {
+  activeTouchIdRef.current = null;
+  globalTouchLock.unlock('VerticalThumbSlider');
+  draggingRef.current = false;
+  setDragging(false);
+
+  const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
+  if (isAtMin) setArmed(false);
+},
+
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
 
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
-    }),
+      }),
   [trackH, armed, disabled]
 );
-
 
   return (
     <View style={vstyles.wrap}>
       <View
       ref={trackRef}
   style={vstyles.trackWrap}
-  onLayout={(e: LayoutChangeEvent) => {
+  onLayout={(e) => {
   setTrackH(e.nativeEvent.layout.height);
+  setTrackW(e.nativeEvent.layout.width);
 
-  // mede o topo real no ecrã (para usar pageY)
   requestAnimationFrame(() => {
     trackRef.current?.measureInWindow((_x, yWin) => {
       trackTopRef.current = yWin;
@@ -315,7 +372,7 @@ onPanResponderMove: (evt, gesture) => {
 const vstyles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
   trackWrap: {
-    height: 300, // podes aumentar/diminuir para bater com o sketch
+    height: 260, // podes aumentar/diminuir para bater com o sketch
     width: 100,
     alignItems: 'center',
     justifyContent: 'center',
@@ -349,12 +406,23 @@ export default function TesteRapidoScreen() {
   const [valores, setValores] = useState<ValoresTR>({});
   const [repetirArmado, setRepetirArmado] = useState(false);
 
-  const { folhaParams } = route.params as RootStackParamList['TesteRapido'];
+  const { folhaParams, modoTratamento } = route.params as RootStackParamList['TesteRapido'];
+
+  const isSal = modoTratamento === 'sal';
 
   const paramsAtivos = useMemo(() => {
-    if (modo === 'PH_CL') return PARAMS_ALL.filter((p) => p.key === 'cloro_livre' || p.key === 'ph');
-    return PARAMS_ALL;
-  }, [modo]);
+  let base =
+    modo === 'PH_CL'
+      ? PARAMS_ALL.filter((p) => p.key === 'cloro_livre' || p.key === 'ph')
+      : PARAMS_ALL;
+
+  if (!isSal) {
+    base = base.filter((p) => p.key !== 'sal');
+  }
+
+  return base;
+}, [modo, isSal]);
+
 
   const [idx, setIdx] = useState(0);
   const paramAtual = paramsAtivos[idx];
@@ -404,9 +472,43 @@ const podeSaltarLogico = !finalizado && !obrigatorioAtual;
   const sliderValue = finalizado ? paramAtual.min : currentValue;
   const sliderDisabled = finalizado;
 
-  const dynamicColor = useMemo(() => {
-    return interpolateColor(currentValue, paramAtual.anchors);
-  }, [currentValue, paramAtual.anchors]);
+  const dynamicVisual = useMemo(() => {
+    // ✅ Caso especial: SAL não usa anchors
+  if (paramAtual.key === 'sal') {
+    const SAL_BASE = '#7DB9FF'; // azul claro (neutro)
+    // opacidades fixas (ou podes calcular por luminância do SAL_BASE)
+    return {
+      color: SAL_BASE,
+      fiberOpacity: 0.10,
+      noiseOpacity: 0.14,
+    };
+  }
+  const color = interpolateColor(currentValue, paramAtual.anchors);
+
+  // luminância perceptiva
+  const { r, g, b } = hexToRgb(color);
+  const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+  // 👉 ajustes pensados PARA O QUADRADO GRANDE
+  const fiberOpacity = clamp(
+    0.08 + (L - 0.5) * 0.08,
+    0.05,
+    0.14
+  );
+
+  const noiseOpacity = clamp(
+    0.14 + (L - 0.5) * 0.25,
+    0.05,
+    0.22
+  );
+
+  return {
+    color,
+    fiberOpacity,
+    noiseOpacity,
+  };
+}, [currentValue, paramAtual.key, paramAtual.anchors]);
+
 
   function saltarParametro() {
   if (finalizado) return;
@@ -462,17 +564,24 @@ const podeSaltar = modo !== 'PH_CL' && !isObrigatorio(paramAtual.key);
   });
 }
 
+const lastRepetirAtRef = useRef<number>(0);
+const REPEAT_DBL_MS = 350; // 300–450ms é bom
+
+
 function repetir() {
-  // 2º clique seguido -> apaga tudo
-  if (repetirArmado) {
+  const now = Date.now();
+  const isDouble = now - lastRepetirAtRef.current <= REPEAT_DBL_MS;
+  lastRepetirAtRef.current = now;
+
+  // ✅ 2º clique seguido (dentro da janela) -> apaga tudo
+  if (isDouble) {
     setValores({});
     setIdx(0);
     setFinalizado(false);
-    setRepetirArmado(false);
     return;
   }
 
-  // 1º clique -> apaga último parâmetro preenchido/saltado
+  // ✅ 1º clique -> apaga último parâmetro preenchido/saltado
   for (let i = paramsAtivos.length - 1; i >= 0; i--) {
     const k = paramsAtivos[i].key;
     if (k in valores) {
@@ -483,18 +592,16 @@ function repetir() {
       });
       setIdx(i);
       setFinalizado(false);
-      setRepetirArmado(true);
       return;
     }
   }
 
-  // se não houver nada, só arma (ou ignora)
-  setRepetirArmado(true);
+  // se não houver nada, não faz nada (ou volta ao primeiro)
 }
+
 
   
   function aceitarValoresFinal() {
-  const folhaParams = (route.params as any)?.folhaParams;
   if (!folhaParams) return;
 
   if (!podeAceitarFinal) {
@@ -539,23 +646,31 @@ useEffect(() => {
 }, [idx, modo]);
 
 const BOX_W = 100;
-const BOX_H = 300;
+const BOX_H = 350;
 const TEX_W = 300;
-const TEX_H = 950;
+const TEX_H = 990;
 
 
   /* =========================================================
      2) RETURN
   ========================================================= */
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        {/* Top bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.topBtn}>
-            <Text style={styles.topBtnText}>← Voltar</Text>
-          </TouchableOpacity>
+ return (
+  <SafeAreaView style={styles.safe}>
+    <View
+      style={styles.container}
+      onStartShouldSetResponderCapture={(evt) => globalTouchLock.shouldCapture(evt)}
+      onMoveShouldSetResponderCapture={(evt) => globalTouchLock.shouldCapture(evt)}
+      onResponderGrant={() => {}}
+      onResponderMove={() => {}}
+      onResponderRelease={() => {}}
+      onResponderTerminationRequest={() => false}
+    >
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.topBtn}>
+          <Text style={styles.topBtnText}>← Voltar</Text>
+        </TouchableOpacity>
 
           <View style={styles.modeRow}>
             <TouchableOpacity
@@ -686,36 +801,90 @@ const TEX_H = 950;
               </View>
 
               {/* Coluna do meio (igual) */}
-              <View style={styles.listColumn}>
-                <Text style={styles.listTitle}>Valores</Text>
-                  {paramsAtivos.map((p) => {
-                  const v = valores[p.key];
-                  const show =
-                    v === null
-                      ? '—'
-                        : v === undefined
-                          ? ''
-                        : p.key === 'ph'
-                      ? Number(v).toFixed(1)
-                    : String(roundToStepForDisplay(Number(v), p.step));
+<View style={styles.listColumn}>
+  <Text style={styles.listTitle}>Valores</Text>
 
-                  const isActive = p.key === paramAtual.key;
+  {paramsAtivos.map((p) => {
+    const v = valores[p.key];
 
-                return (
-                  <View key={p.key} style={[styles.listRow, isActive && styles.listRowActive]}>
-                    <Text style={[styles.listLabel, isActive && styles.listLabelActive]}>{p.short}</Text>
-                    <Text style={[styles.listValue, isActive && styles.listValueActive]}>{show}</Text>
-                  </View>
-                  );
-                 })}
-              </View>
+    const show =
+      v === null
+        ? '—'
+        : v === undefined
+          ? ''
+          : p.key === 'ph'
+            ? Number(v).toFixed(1)
+            : String(roundToStepForDisplay(Number(v), p.step));
+
+    const isActive = p.key === paramAtual.key;
+
+    return (
+      <View key={p.key} style={[styles.listRow, isActive && styles.listRowActive]}>
+        <Text style={[styles.listLabel, isActive && styles.listLabelActive]}>{p.short}</Text>
+        <Text style={[styles.listValue, isActive && styles.listValueActive]}>{show}</Text>
+      </View>
+    );
+  })}
+
+  {/* ✅ Botões fixos no centro (não mudam com inverter) */}
+  <View style={styles.centerActions}>
+    <TouchableOpacity
+      onPress={repetir} // ✅ usa a tua função nova (2 cliques apaga tudo)
+      style={[styles.centerBtn, styles.footerBtn, styles.footerBtnSecondary]}
+    >
+      <Text style={[styles.footerBtnText, styles.footerBtnTextSecondary]}>
+        Repetir
+      </Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      disabled={!podeAceitarFinal}
+      onPress={aceitarValoresFinal}
+      style={[
+        styles.centerBtn,
+        styles.footerBtn,
+        styles.footerBtnPrimary,
+        !podeAceitarFinal && styles.footerBtnDisabled,
+        podeAceitarFinal && styles.footerBtnHighlight,
+      ]}
+    >
+      <Text style={[styles.footerBtnText, styles.footerBtnTextPrimary]}>
+        Validar
+      </Text>
+    </TouchableOpacity>
+  </View>
+</View>
              
               {/* Cor passa para a direita */}
-<View style={styles.colorColumn} pointerEvents="none">
+<View style={styles.colorColumn}>
   <Text style={styles.paramTitle}>{paramAtual.label}</Text>
 
   <View style={styles.colorBoxWrap}>
-    <View style={[styles.colorBox, { backgroundColor: dynamicColor }]}>
+    {/* Header do parâmetro */}
+    <View style={styles.paramHeader}>
+      {/* Badge do valor agora em cima */}
+      <View style={styles.valueBadgeTop}>
+        <Text style={styles.valueBadgeText}>
+          {paramAtual.key === 'ph'
+            ? Number(currentValue).toFixed(1)
+            : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
+        </Text>
+      </View>
+    </View>
+
+   <View style={[styles.colorBox, { backgroundColor: dynamicVisual.color, overflow: 'hidden' }]}>
+  {paramAtual.key === 'sal' ? (
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: `${Math.max(0, Math.min(1, (Number(currentValue) - paramAtual.min) / ((paramAtual.max - paramAtual.min) || 1))) * 100}%`,
+        backgroundColor: '#1E63D6',
+      }}
+    />
+  ) : null}
 
       {/* 1) FIBER (por baixo) */}
       <Image
@@ -726,7 +895,7 @@ const TEX_H = 950;
           height: TEX_H,
           left: (BOX_W - TEX_W) / 2,
           top: (BOX_H - TEX_H) / 2,
-          opacity: BOX_FIBER_PRESET.opacity,
+          opacity: dynamicVisual.fiberOpacity,
           transform: [
             { rotate: `${BOX_FIBER_PRESET.rotationDeg}deg` },
             { scale: BOX_FIBER_PRESET.scale },
@@ -744,7 +913,7 @@ const TEX_H = 950;
           height: TEX_H,
           left: (BOX_W - TEX_W) / 2,
           top: (BOX_H - TEX_H) / 2,
-          opacity: BOX_NOISE_PRESET.opacity,
+          opacity: dynamicVisual.fiberOpacity,
           transform: [
             { rotate: `${BOX_NOISE_PRESET.rotationDeg}deg` },
             { scale: BOX_NOISE_PRESET.scale },
@@ -753,26 +922,42 @@ const TEX_H = 950;
         resizeMode="cover"
       />
     </View>
-
-    <View style={styles.valueBadge}>
-      <Text style={styles.valueBadgeText}>
-        {paramAtual.key === 'ph'
-          ? Number(currentValue).toFixed(1)
-          : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
-      </Text>
-    </View>
   </View>
 </View>
+
 
             </>
           ) : (
             <>
-              {/* Cor na esquerda */}
-<View style={styles.colorColumn} pointerEvents="none">
+             {/* Cor na esquerda */}
+<View style={styles.colorColumn}>
   <Text style={styles.paramTitle}>{paramAtual.label}</Text>
 
   <View style={styles.colorBoxWrap}>
-    <View style={[styles.colorBox, { backgroundColor: dynamicColor }]}>
+    {/* Header do parâmetro */}
+    <View style={styles.paramHeader}>
+      <View style={styles.valueBadgeTop}>
+        <Text style={styles.valueBadgeText}>
+          {paramAtual.key === 'ph'
+            ? Number(currentValue).toFixed(1)
+            : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
+        </Text>
+      </View>
+    </View>
+
+    <View style={[styles.colorBox, { backgroundColor: dynamicVisual.color, overflow: 'hidden' }]}>
+  {paramAtual.key === 'sal' ? (
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: `${Math.max(0, Math.min(1, (Number(currentValue) - paramAtual.min) / ((paramAtual.max - paramAtual.min) || 1))) * 100}%`,
+        backgroundColor: '#1E63D6',
+      }}
+    />
+  ) : null}
 
       {/* 1) FIBER (por baixo) */}
       <Image
@@ -783,7 +968,7 @@ const TEX_H = 950;
           height: TEX_H,
           left: (BOX_W - TEX_W) / 2,
           top: (BOX_H - TEX_H) / 2,
-          opacity: BOX_FIBER_PRESET.opacity,
+          opacity: dynamicVisual.fiberOpacity,
           transform: [
             { rotate: `${BOX_FIBER_PRESET.rotationDeg}deg` },
             { scale: BOX_FIBER_PRESET.scale },
@@ -801,7 +986,7 @@ const TEX_H = 950;
           height: TEX_H,
           left: (BOX_W - TEX_W) / 2,
           top: (BOX_H - TEX_H) / 2,
-          opacity: BOX_NOISE_PRESET.opacity,
+          opacity: dynamicVisual.fiberOpacity,
           transform: [
             { rotate: `${BOX_NOISE_PRESET.rotationDeg}deg` },
             { scale: BOX_NOISE_PRESET.scale },
@@ -810,42 +995,63 @@ const TEX_H = 950;
         resizeMode="cover"
       />
     </View>
+  </View>
+</View>
+              {/* Coluna do meio (igual) */}
+<View style={styles.listColumn}>
+  <Text style={styles.listTitle}>Valores</Text>
 
-    <View style={styles.valueBadge}>
-      <Text style={styles.valueBadgeText}>
-        {paramAtual.key === 'ph'
-          ? Number(currentValue).toFixed(1)
-          : String(roundToStepForDisplay(Number(currentValue), paramAtual.step))}
+  {paramsAtivos.map((p) => {
+    const v = valores[p.key];
+
+    const show =
+      v === null
+        ? '—'
+        : v === undefined
+          ? ''
+          : p.key === 'ph'
+            ? Number(v).toFixed(1)
+            : String(roundToStepForDisplay(Number(v), p.step));
+
+    const isActive = p.key === paramAtual.key;
+
+    return (
+      <View key={p.key} style={[styles.listRow, isActive && styles.listRowActive]}>
+        <Text style={[styles.listLabel, isActive && styles.listLabelActive]}>{p.short}</Text>
+        <Text style={[styles.listValue, isActive && styles.listValueActive]}>{show}</Text>
+      </View>
+    );
+  })}
+
+  {/* ✅ Botões fixos no centro (não mudam com inverter) */}
+  <View style={styles.centerActions}>
+    <TouchableOpacity
+      onPress={repetir} // ✅ usa a tua função nova (2 cliques apaga tudo)
+      style={[styles.centerBtn, styles.footerBtn, styles.footerBtnSecondary]}
+    >
+      <Text style={[styles.footerBtnText, styles.footerBtnTextSecondary]}>
+        Repetir
       </Text>
-    </View>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      disabled={!podeAceitarFinal}
+      onPress={aceitarValoresFinal}
+      style={[
+        styles.centerBtn,
+        styles.footerBtn,
+        styles.footerBtnPrimary,
+        !podeAceitarFinal && styles.footerBtnDisabled,
+        podeAceitarFinal && styles.footerBtnHighlight,
+      ]}
+    >
+      <Text style={[styles.footerBtnText, styles.footerBtnTextPrimary]}>
+        Validar
+      </Text>
+    </TouchableOpacity>
   </View>
 </View>
 
-
-              {/* Coluna do meio (igual) */}
-              <View style={styles.listColumn}>
-                <Text style={styles.listTitle}>Valores</Text>
-                  {paramsAtivos.map((p) => {
-                  const v = valores[p.key];
-                  const show =
-                    v === null
-                      ? '—'
-                        : v === undefined
-                          ? ''
-                        : p.key === 'ph'
-                      ? Number(v).toFixed(1)
-                    : String(roundToStepForDisplay(Number(v), p.step));
-
-                  const isActive = p.key === paramAtual.key;
-
-               return (
-                 <View key={p.key} style={[styles.listRow, isActive && styles.listRowActive]}>
-                   <Text style={[styles.listLabel, isActive && styles.listLabelActive]}>{p.short}</Text>
-                   <Text style={[styles.listValue, isActive && styles.listValueActive]}>{show}</Text>
-                 </View>
-                 );
-                })}
-              </View>
 
               {/* Slider na direita */}
               <View style={styles.sliderColumn}>
@@ -862,28 +1068,26 @@ const TEX_H = 950;
                      onDoubleTap={() => aceitarValorAtual()}
                     />
                 <TouchableOpacity
-  disabled={finalizado}
-  onPress={() => {
-    if (finalizado) return;
+                   disabled={finalizado}
+                   onPress={() => {
+                   if (finalizado) return;
 
-    if (obrigatorioAtual) {
-      Alert.alert(
-        'Parâmetro obrigatório',
-        'Este parâmetro é obrigatório e não pode ser ignorado.'
-      );
-      return;
-    }
-
-    saltarParametro();
-  }}
-  style={[
-    styles.saltarBtnRight,
-    finalizado && { opacity: 0.35 },
-  ]}
->
-  <Text style={styles.saltarBtnText}>Saltar</Text>
-</TouchableOpacity>
-
+                   if (obrigatorioAtual) {
+                      Alert.alert(
+                        'Parâmetro obrigatório',
+                         'Este parâmetro é obrigatório e não pode ser ignorado.'
+                      );
+                    return;
+                  }
+                    saltarParametro();
+                  }}
+                    style={[
+                    styles.saltarBtnRight,
+                    finalizado && { opacity: 0.35 },
+                  ]}
+                  >
+                 <Text style={styles.saltarBtnText}>Saltar</Text>
+                </TouchableOpacity>
               </View>
             </>
           )}
@@ -891,38 +1095,6 @@ const TEX_H = 950;
 
         {/* Rodapé */}
         <View style={styles.footerRow}>
-          <TouchableOpacity
-  onPress={() => {
-    // ✅ 1º clique: apaga só o valor atual e recua 1 passo (se possível)
-    setValores((prev) => ({ ...prev, [keyAtual]: undefined as any }));
-    setFinalizado(false);
-
-    setIdx((prev) => (prev > 0 ? prev - 1 : 0));
-  }}
-  style={[styles.footerBtn, styles.footerBtnSecondary]}
->
-  <Text style={[styles.footerBtnText, styles.footerBtnTextSecondary]}>
-    Repetir
-  </Text>
-</TouchableOpacity>
-
-
-
-          <TouchableOpacity
-  disabled={!podeAceitarFinal}
-  onPress={aceitarValoresFinal}
-  style={[
-    styles.footerBtn,
-    styles.footerBtnPrimary,
-    !podeAceitarFinal && styles.footerBtnDisabled,
-    podeAceitarFinal && styles.footerBtnHighlight,
-  ]}
->
-  <Text style={[styles.footerBtnText, styles.footerBtnTextPrimary]}>
-    Aceitar valores
-  </Text>
-</TouchableOpacity>
-
         </View>
 
         <Text style={styles.subTitle}>
@@ -966,12 +1138,13 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 12,
-    alignItems: 'stretch',
+    alignItems: 'flex-end',
+    paddingBottom: 100,
     justifyContent: 'space-between',
   },
 
-  colorColumn: { flex: 1.1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  listColumn:  { flex: 0.9, padding: 10, borderRadius: 12, backgroundColor: '#F2F2F2', justifyContent: 'center' },
+  colorColumn: { flex: 1.1, alignItems: 'center', justifyContent: 'center', gap: 8, position: 'relative' },
+  listColumn:  { flex: 0.9, padding: 10, borderRadius: 12, backgroundColor: '#F2F2F2', justifyContent: 'center', minHeight: 420, position: 'relative', },
   sliderColumn: { flex: 1.1, alignItems: 'center', justifyContent: 'center', gap: 14 },
 
   paramTitle: { fontSize: 16, fontWeight: '800' },
@@ -979,7 +1152,7 @@ const styles = StyleSheet.create({
   colorBoxWrap: { alignItems: 'center', justifyContent: 'center' },
   colorBox: {
     width: 100,
-    height: 300,
+    height: 350,
     borderRadius: 16,
     position: 'relative',
     overflow: 'hidden',
@@ -1009,7 +1182,7 @@ const styles = StyleSheet.create({
   },
   saltarBtnText: { fontWeight: '700' },
 
-  sliderHint: { fontSize: 12, color: '#444', lineHeight: 16, textAlign: 'center', fontWeight: '700' },
+  sliderHint: { fontSize: 12, color: '#444', lineHeight: 16, textAlign: 'center', fontWeight: '700', marginBottom: 30 },
 
   acceptBtn: {
     marginTop: 6,
@@ -1020,16 +1193,30 @@ const styles = StyleSheet.create({
   },
   acceptBtnText: { color: '#fff', fontWeight: '800' },
 
-  listTitle: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
-  listRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  listTitle: { fontSize: 16, fontWeight: '800', textAlign: 'center', marginBottom: 25 },
+  listRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, marginBottom: 5 },
   listLabel: { fontWeight: '800' },
   listValue: { fontWeight: '800' },
 
-  footerRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  footerBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
+  footerRow: { flexDirection: 'row', gap: 10, marginTop: 30 },
+  footerBtn: {
+  width: '100%',
+  height: 44,           // ✅ altura bonita e consistente
+  borderRadius: 10,
+  alignItems: 'center',
+  justifyContent: 'center', // ✅ centra texto verticalmente
+  paddingHorizontal: 12,
+},
+
   footerBtnPrimary: { backgroundColor: '#111' },
   footerBtnSecondary: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#bbb' },
-  footerBtnText: { fontWeight: '900' },
+  footerBtnText: {
+  fontSize: 15,
+  fontWeight: '700',
+  textAlign: 'center',
+   
+  color: '#111',      // 👈 garante que aparece
+},
   footerBtnTextPrimary: { color: '#fff' },
   footerBtnTextSecondary: { color: '#111' },
 
@@ -1040,7 +1227,7 @@ scaleRow: {
   alignItems: 'flex-start',
   gap: 10,
   paddingHorizontal: 16,
-  marginBottom: 6,
+  marginBottom: 0,
 },
 
 scaleSwatch: {
@@ -1086,8 +1273,8 @@ scaleValue: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#bbb',
-    marginTop: 12,
-    marginBottom: 15,
+    marginTop: 30,
+    marginBottom: 0,
   },
   subTitle: {
   fontSize: 12,
@@ -1097,5 +1284,43 @@ scaleValue: {
   marginBottom: 30,
   textAlign: 'center'
 },
+touchShield: {
+  position: 'absolute',
+  top: -60,
+  left: -30,
+  right: -30,
+  bottom: -240,
+  zIndex: 99999,
+  elevation: 99999,   // ✅ Android
+  backgroundColor: '#000',
+  opacity: 0.2,
+},
+paramHeader: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  marginBottom: 10,
+},
+
+valueBadgeTop: {
+  // reaproveita o teu badge, mas sem depender de "wrap" em baixo
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 14,
+  backgroundColor: '#111',
+  alignSelf: 'center',
+},
+centerActions: {
+  width: '100%',
+  alignItems: 'center',
+  gap: 10,
+  paddingBottom: 0,
+},
+
+centerBtn: {
+  width: '100%',
+  maxWidth: 180,        // ajusta (140–180 costuma ficar top)
+},
+
 });
 

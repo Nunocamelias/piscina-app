@@ -82,10 +82,12 @@ export type RootStackParamList = {
       ph: number | null;
       alcalinidade: number | null;
       cya: number | null;
+      sal: number | null;
     }>;
   };
     TesteRapido: {
     folhaParams: RootStackParamList['FolhaManutencao'];
+    modoTratamento: 'sal' | 'cloro';
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;

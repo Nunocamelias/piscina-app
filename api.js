@@ -1974,8 +1974,9 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
 `;
 
 
+
     const manutencaoResult = await pool.query(updateManutencaoQuery, [
-      status ?? null,
+      status,
       id,
       empresaid,
       motivo ?? null,

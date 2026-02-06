@@ -22,7 +22,7 @@ export function lerp(a: number, b: number, t: number) {
 }
 
 export function interpolateColor(value: number, anchors: Anchor[]) {
-  const sorted = anchors;
+  const sorted = anchors;  
 
   // fora do intervalo
   if (value <= sorted[0].value) return sorted[0].color;
@@ -42,6 +42,14 @@ export function interpolateColor(value: number, anchors: Anchor[]) {
   const B = hexToRgb(b.color);
 
   return rgbToHex(lerp(A.r, B.r, t), lerp(A.g, B.g, t), lerp(A.b, B.b, t));
+}
+
+// ======================================================
+// 🎨 Helpers de luminância (para textura adaptativa)
+// ======================================================
+export function lumaFromHex(hex: string) {
+  const { r, g, b } = hexToRgb(hex);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
 export function buildScale(min: number, max: number, step: number) {
@@ -108,6 +116,34 @@ export const CLORO_TOTAL_ANCHORS: Anchor[] = [
 ];
 
 // ======================================================
+// 🎛️ Ajuste automático de textura por cor
+// ======================================================
+
+export function textureForColor(hexColor: string) {
+  const L = lumaFromHex(hexColor);
+
+  // fibra: sempre subtil
+  const fiberOpacity = clamp(
+    0.10 + (L - 0.5) * 0.10,
+    0.06,
+    0.16
+  );
+
+  // noise: mais visível em cores claras
+  const noiseOpacity = clamp(
+    0.20 + (L - 0.5) * 0.35,
+    0.06,
+    0.30
+  );
+
+  return {
+    fiberOpacity,
+    noiseOpacity,
+  };
+}
+
+
+// ======================================================
 // ✅ Textura “fibra” (UI overlay) — SEM alterar a lógica
 // ======================================================
 //
@@ -124,21 +160,21 @@ export type TexturePreset = {
 };
 
 // Texturas (45°) — usa a "MID" como padrão principal
-export const FIBER_TEXTURE_45_LIGHT = require('../assets/textures/fiber_45_light.png');
+
 export const FIBER_TEXTURE_45_MID   = require('../assets/textures/fiber_45_mid.png');
-export const FIBER_TEXTURE_45_STRONG = require('../assets/textures/fiber_45_strong.png');
+
 
 // Preset default (bom ponto de partida)
 export const DEFAULT_FIBER_PRESET: TexturePreset = {
   source: FIBER_TEXTURE_45_MID,
-  opacity: 0,
+  opacity: 0.1,  // 👈 escala de cores
   rotationDeg: 0,
   scale: 2,
 };
 
 export const BOX_FIBER_PRESET: TexturePreset = {
   source: FIBER_TEXTURE_45_MID,
-  opacity: 0,
+  opacity: 0.1,   // Cor dinamica
   rotationDeg: 0,
   scale: .35,
 };
@@ -186,7 +222,7 @@ export const CLORO_TOTAL_FIBER_PRESET: TexturePreset = {
   rotationDeg: 0,
   scale: 1.8,
 };
-export const NOISE_ALPHA_DARK = require('../assets/textures/Fabric062_2K.png');
+export const NOISE_ALPHA_DARK = require('../assets/textures/pontos_pretos3.png');
 
 export type NoisePreset = {
   source: any;
@@ -197,16 +233,16 @@ export type NoisePreset = {
 
 export const DEFAULT_NOISE_PRESET: NoisePreset = {
   source: NOISE_ALPHA_DARK,
-  opacity: 0, // 👈 escala de cores
+  opacity: 0.15, // 👈 escala de cores
   rotationDeg: 0,
-  scale: 2,
+  scale: 1,
 };
 
 export const BOX_NOISE_PRESET: NoisePreset = {
   source: NOISE_ALPHA_DARK,
-  opacity: 0,   // Cor dinamica
+  opacity: 0.15,   // Cor dinamica
   rotationDeg: 0,
-  scale: .35,     
+  scale: .6,     
 };
 
 
