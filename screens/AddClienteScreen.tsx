@@ -38,6 +38,7 @@ type FormState = {
   bomba_calor: boolean;
   equipamentos_especiais: boolean;
   eletrolise_sal: boolean;
+  tem_orp: boolean;
   ultima_substituicao: string;
   valor_manutencao: string;
   periodicidade: string;
@@ -67,6 +68,7 @@ const AddClienteScreen = ({ navigation }: Props) => {
     bomba_calor: false,
     equipamentos_especiais: false,
     eletrolise_sal: false,
+    tem_orp: false,
     ultima_substituicao: '',
     valor_manutencao: '',
     periodicidade: '1',
@@ -137,21 +139,30 @@ useEffect(() => {
   }, [form.comprimento, form.largura, form.profundidade_media, form.volume]);
 
   const handleChange = (field: keyof typeof form, value: any) => {
-    if (field === 'codigo_postal' && typeof value === 'string') {
-      // Remove tudo que não seja número
-      let formattedValue = value.replace(/\D/g, '');
-      // Aplica o formato 0000-000 automaticamente
-      if (formattedValue.length > 4) {
-        formattedValue = formattedValue.slice(0, 4) + '-' + formattedValue.slice(4);
-      }
-      if (formattedValue.length > 8) {
-        formattedValue = formattedValue.slice(0, 8); // Limita a 8 caracteres
-      }
-      setForm((prevState) => ({ ...prevState, [field]: formattedValue }));
-    } else {
-      setForm((prevState) => ({ ...prevState, [field]: value }));
+  // ✅ Regra: se desligar eletrólise, ORP tem de ficar falso
+  if (field === 'eletrolise_sal') {
+    setForm((prev) => ({
+      ...prev,
+      eletrolise_sal: !!value,
+      tem_orp: value ? prev.tem_orp : false, // 👈 se desligar, força false
+    }));
+    return;
+  }
+
+  if (field === 'codigo_postal' && typeof value === 'string') {
+    let formattedValue = value.replace(/\D/g, '');
+    if (formattedValue.length > 4) {
+      formattedValue = formattedValue.slice(0, 4) + '-' + formattedValue.slice(4);
     }
-  };
+    if (formattedValue.length > 8) {
+      formattedValue = formattedValue.slice(0, 8);
+    }
+    setForm((prevState) => ({ ...prevState, [field]: formattedValue }));
+  } else {
+    setForm((prevState) => ({ ...prevState, [field]: value }));
+  }
+};
+
 
   // Alternar dias
   const toggleCondicionante = (dia: string) => {
@@ -399,6 +410,20 @@ useEffect(() => {
     thumbColor={form.eletrolise_sal ? '#FFF' : '#777'}
   />
 </View>
+
+{form.eletrolise_sal && (
+  <View style={styles.switchContainer}>
+    <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>
+      Tem sonda ORP
+    </Text>
+    <Switch
+      value={form.tem_orp}
+      onValueChange={(value) => handleChange('tem_orp', value)}
+      trackColor={{ false: '#444', true: '#32CD32' }}
+      thumbColor={form.tem_orp ? '#FFF' : '#777'}
+    />
+  </View>
+)}
 
 <View style={styles.switchContainer}>
   <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>

@@ -12,6 +12,8 @@ import RNFS from 'react-native-fs';
 import moment from 'moment';
 import { calcularISL, sugerirAlvosPorISL } from '../utils/isl';
 import { gerarMensagensManutencao } from '../services/manutencaoMensagens';
+import TaylorChart from '../components/TaylorChart';
+
 
 export const getAccessibleUri = async (uri: string): Promise<string | null> => {
   if (uri.startsWith('content://')) {
@@ -41,6 +43,7 @@ type Cliente = {
   bomba_calor?: boolean;
   equipamentos_especiais?: boolean;
   eletrolise_sal?: boolean;
+  tem_orp?: boolean;
   ultima_substituicao?: string | null;
 };
 
@@ -90,10 +93,17 @@ const FolhaManutencaoScreen: React.FC<Props> = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<FolhaRouteProp>();
 
-  const toNum = (v: any) => {
-  const n = Number(String(v ?? '').replace(',', '.'));
+  // ✅ toNum robusto: string vazia NÃO é 0
+const toNum = (v: any) => {
+  if (v === undefined || v === null) return NaN;
+
+  const s = String(v).replace(',', '.').trim();
+  if (!s) return NaN; // 👈 evita Number('') -> 0
+
+  const n = Number(s);
   return Number.isFinite(n) ? n : NaN;
 };
+
 
 const getIdealMinMax = (item: any) => ({
   min: toNum(item?.valor_minimo),
@@ -160,6 +170,8 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   cobertura,
   bomba_calor,
   equipamentos_especiais,
+  eletrolise_sal,
+  tem_orp,
   ultima_substituicao,
 } = route.params;
 
@@ -198,12 +210,15 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   isl: number;
   indicacao: string;
 } | null>(null);
+  const [islEstadoAtual, setIslEstadoAtual] = useState<any | null>(null);
   const [testeRapidoPendente, setTesteRapidoPendente] = useState<any | null>(null);
   // ✅ Estado: quais cartões estão expandidos
   const [expandedParams, setExpandedParams] = useState<Record<string, boolean>>({});
   const lastAutoMsgKeyRef = useRef<string | null>(null);
   const [procedimentoMsg, setProcedimentoMsg] = useState<ReturnType<typeof gerarMensagensManutencao> | null>(null);
   const [abrirProcedimentoAposCalcular, setAbrirProcedimentoAposCalcular] = useState(false);
+  const [taylorOpen, setTaylorOpen] = useState(false);
+
 
   // ✅ ler estado do card (por parâmetro)
   const isExpanded = useCallback(
@@ -569,38 +584,62 @@ const fetchDadosManutencao = useCallback(async () => {
     setCliente(clienteData);
     console.log('✅ Dados do cliente carregados:', clienteData);
 
-    // ✅ Buscar último ISL do cliente (independente da manutenção)
-    try {
-      console.log('📡 Buscando último ISL do cliente...');
-      const islResp = await fetch(
-        `${Config.API_URL}/isl/ultimo?empresaid=${empresaid}&cliente_id=${clienteId}`
-      );
+    // ✅ Buscar estado atual ISL (persistente)
+try {
+  console.log('📡 Buscando ISL estado atual...');
+  const islResp = await fetch(
+    `${Config.API_URL}/isl/estado-atual?empresaid=${empresaid}&cliente_id=${clienteId}`
+  );
 
-      if (islResp.ok) {
-  const islData = await islResp.json();
+  if (islResp.ok) {
+  const st = await islResp.json();
+  setIslEstadoAtual(st || null);
 
-  setIslUltimoRegisto(islData || null);
+  if (st) {
+    // ✅ preencher inputs (inclui temperatura e tds)
+    if (st.ph != null) setIslPH(String(st.ph));
+    if (st.alcalinidade != null) setIslAlc(String(Math.round(Number(st.alcalinidade))));
+    if (st.dureza != null) setIslDur(String(Math.round(Number(st.dureza))));
+    if (st.temperatura != null) setIslTemp(String(st.temperatura));
+    if (st.tds != null) setIslTds(String(Math.round(Number(st.tds))));
 
-  // ✅ Recalcula a sugestão SEM precisar guardar na DB
-  if (islData?.isl !== undefined && islData?.isl !== null) {
-    const sugestao = sugerirAlvosPorISL(Number(islData.isl));
-    setIslSugestao(sugestao);
+    // ✅ sugestão alvo baseada no ISL atual
+    const islNum = Number(st.isl);
+    if (st.isl != null && Number.isFinite(islNum)) {
+      setIslSugestao(sugerirAlvosPorISL(islNum));
+    } else {
+      setIslSugestao(null);
+    }
   } else {
+    // ✅ se não houver estado para o cliente, limpa tudo
+    setIslPH('');
+    setIslAlc('');
+    setIslDur('');
+    setIslTemp('');
+    setIslTds('');
     setIslSugestao(null);
   }
 
-  console.log('✅ Último ISL carregado:', islData);
+  console.log('✅ ISL estado atual carregado:', st);
 } else {
-  console.warn('⚠️ Falha ao buscar ISL. Status:', islResp.status);
-  setIslUltimoRegisto(null);
+  console.warn('⚠️ Falha ao buscar ISL estado atual. Status:', islResp.status);
+  setIslEstadoAtual(null);
+
+  // ✅ limpa tudo
+  setIslPH('');
+  setIslAlc('');
+  setIslDur('');
+  setIslTemp('');
+  setIslTds('');
   setIslSugestao(null);
 }
 
-    } catch (e) {
-  console.warn('⚠️ Erro ao buscar ISL:', e);
-  setIslUltimoRegisto(null);
+} catch (e) {
+  console.warn('⚠️ Erro ao buscar ISL estado atual:', e);
+  setIslEstadoAtual(null);
   setIslSugestao(null);
 }
+
 
     console.log('📡 Buscando dados de manutenção...');
     const manutencaoResponse = await fetch(
@@ -1113,7 +1152,8 @@ const alertaPHTecnico =
       const isPH = nome === 'pH';
       const isAlc = nome === 'Alcalinidade';
 
-      const islCreatedAt = islUltimoRegisto?.created_at;
+      const islCreatedAt = islEstadoAtual?.isl_updated_at || islEstadoAtual?.updated_at || islEstadoAtual?.created_at;
+
       const islValido =
         !!islCreatedAt &&
         Date.now() - new Date(islCreatedAt).getTime() <= 60 * 24 * 60 * 60 * 1000; // 60 dias
@@ -1265,9 +1305,43 @@ const calcularTodos = useCallback(() => {
   const tacForaIdeal = !!tacItem && isForaDoIdeal(tacItem, tacValor);
   const phForaIdeal  = !!phItem  && isForaDoIdeal(phItem,  phValor);
 
-  const executar = () => {
-    ordenada.forEach((p) => calcularUmParametro(p));
-  };
+ // ✅ (Opção A) Recalcular ISL antes do CalcularTodos (sem guardar BD)
+// Regra: só recalcula se tiver pH + TAC + Dureza + Temperatura + TDS.
+// Sem defaults -> se não preencherem Temp/TDS, então "não há ISL".
+const tempValor = toNum(islTemp);
+const tdsValor  = toNum(islTds);
+
+const temBaseISL =
+  Number.isFinite(phValor) &&
+  Number.isFinite(tacValor) &&
+  Number.isFinite(durValor);
+
+const temTemp = Number.isFinite(tempValor);
+const temTds  = Number.isFinite(tdsValor);
+
+const podeRecalcularISL = temBaseISL && temTemp && temTds;
+
+if (podeRecalcularISL) {
+  const resISL = calcularISL({
+    pH: String(phValor),
+    alcalinidade: String(tacValor),
+    dureza: String(durValor),
+    temperatura: String(tempValor),
+    tds: String(tdsValor),
+  });
+
+  if (Number.isFinite(resISL.isl)) {
+    setIslResultado(resISL);
+    setIslSugestao(sugerirAlvosPorISL(Number(resISL.isl)));
+    console.log('🧪 ISL recalculado no CalcularTodos:', resISL);
+  }
+}
+
+// (Se NÃO pode recalcular: não mexe em nada — mantém o último ISL/sugestão que já exista)
+
+const executar = () => {
+  ordenada.forEach((p) => calcularUmParametro(p));
+};
 
   // ⚠ só avisa TAC antes do pH quando ambos fora do ideal
   if (tacForaIdeal && phForaIdeal) {
@@ -1325,8 +1399,13 @@ const calcularTodos = useCallback(() => {
   toNum,
   isForaDoIdeal,
   setParametrosQuimicos,
+  islTemp,
+  islTds,
+  calcularISL,
+  sugerirAlvosPorISL,
+  setIslResultado,
+  setIslSugestao,
 ]);
-
 
 const handleCalcularTodos = useCallback(() => {
   // 1) faz o cálculo (vai atualizar state de parâmetros)
@@ -1350,17 +1429,6 @@ const parametrosParaMensagens = useMemo(() => {
 }, [parametrosQuimicos]);
 
 const abrirProcedimento = useCallback(() => {
-  // ✅ DEBUG: confirmar se os parâmetros que vão para o gerador têm resultado
-console.log(
-  'DEBUG parametrosParaMensagens:',
-  (parametrosParaMensagens ?? []).map((p: any) => ({
-    k: p?.parametro,
-    st: p?.status,
-    hasResultado: !!p?.resultado?.resultado,
-    resultado: p?.resultado?.resultado ?? null,
-  }))
-);
-console.log('DEBUG procedimentoMsg existe?', !!procedimentoMsg);
   const msg =
     gerarMensagensManutencao({
       empresaid,
@@ -1372,17 +1440,31 @@ console.log('DEBUG procedimentoMsg existe?', !!procedimentoMsg);
       modoTratamento,
     });
 
+  // ✅ DEBUGS — depois de msg existir
+  console.log('DEBUG msg.temMensagem?', msg.temMensagem);
+  console.log(
+    'DEBUG msg.procedimento.linhas?',
+    Array.isArray(msg.procedimento) ? msg.procedimento.length : 'nao-array'
+  );
+
   if (!msg.temMensagem) {
     Alert.alert('Procedimento', 'Sem mensagens.');
     return;
   }
 
+  const resumoStr = Array.isArray(msg.resumo)
+    ? msg.resumo.join('\n')
+    : String(msg.resumo ?? '');
+
+  const procStr = Array.isArray(msg.procedimento)
+    ? msg.procedimento.join('\n')
+    : String(msg.procedimento ?? '');
+
   Alert.alert(
     msg.titulo,
-    `${msg.resumo}\n\nProcedimento:\n${msg.procedimento.join('\n')}`
+    `${resumoStr}\n\nProcedimento:\n${procStr}`
   );
 }, [
-  procedimentoMsg,
   empresaid,
   clienteId,
   cliente,
@@ -1752,6 +1834,56 @@ const atualizarPrefsManutencao = useCallback(
       quantidade_usada: p.resultado?.quantidade || 0,
     }));
 
+    // ✅ 3.5) Guardar ISL automaticamente ao concluir (se existir cálculo/valores)
+try {
+  const temBaseISL =
+    String(islPH || '').trim() !== '' &&
+    String(islAlc || '').trim() !== '' &&
+    String(islDur || '').trim() !== '' &&
+    String(islTemp || '').trim() !== '';
+
+  // Preferência: só guarda automaticamente se já foi calculado (islResultado)
+  // (evita gravar lixo se alguém escreveu valores mas não calculou)
+  const podeGuardar = temBaseISL && !!islResultado?.isl;
+
+  if (podeGuardar) {
+    const payloadISL = {
+      empresaid,
+      cliente_id: clienteId,
+      manutencao_id: manutencaoAtual?.id ?? null,
+      ph: Number(islPH),
+      alcalinidade: Number(islAlc),
+      dureza: Number(islDur),
+      temperatura: Number(islTemp),
+      tds: islTds ? Number(islTds) : null,
+      isl: Number(islResultado!.isl),
+      indicacao: String(islResultado!.indicacao || ''),
+    };
+
+    console.log('📤 [AUTO] A gravar ISL antes de concluir:', payloadISL);
+
+    // Se já tens PATCH /isl/estado, usa-o aqui.
+    // Se ainda não tens, usa o POST /isl (o teu endpoint atual).
+    const respISL = await fetch(`${Config.API_URL}/isl`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadISL),
+    });
+
+    const dataISL = await respISL.json().catch(() => null);
+    console.log('📥 [AUTO] Resposta ISL:', respISL.status, dataISL);
+
+    // Não bloqueia a conclusão por causa do ISL, mas deixa log claro
+    if (!respISL.ok) {
+      console.warn('⚠️ [AUTO] Falha ao guardar ISL automaticamente:', dataISL);
+    }
+  } else {
+    console.log('ℹ️ [AUTO] ISL não foi guardado (sem cálculo ou campos incompletos).');
+  }
+} catch (e) {
+  console.warn('⚠️ [AUTO] Erro inesperado ao guardar ISL:', e);
+}
+
   try {
     const response = await fetch(`${Config.API_URL}/manutencoes/${manutencaoAtual.id}`, {
       method: 'PUT',
@@ -1983,8 +2115,6 @@ const parametrosOrdenados: Parametro[] = [...parametrosVisiveis].sort((a, b) => 
   return norm(a.parametro).localeCompare(norm(b.parametro));
 });
 
-
-
       const cc = calcCloroCombinado();
       const limiteCloroCombinado = metodoAnalise === 'fotometro' ? 0.5 : 0.5;
       const mostrarAlertaCC = Number.isFinite(cc) && cc > limiteCloroCombinado;
@@ -1995,7 +2125,15 @@ const parametrosOrdenados: Parametro[] = [...parametrosVisiveis].sort((a, b) => 
   return p?.valor_atual;
 };
 
-
+const fmtDataCurta = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+};
 
 return (
   <FlatList
@@ -2052,28 +2190,41 @@ return (
 
   {islExpanded && (
     <View style={styles.expandedContent}>
-      {/* pH */}
-      <Text style={styles.label}>pH</Text>
-      <View style={styles.parametroLinha}>
-        <TextInput
-          style={[styles.input, styles.inputPequeno]}
-          placeholder="Ex: 7.2"
-          keyboardType="decimal-pad"
-          value={islPH}
-          onChangeText={(t) =>
-            setIslPH(
-              t
-                .replace(',', '.')
-                .replace(/[^0-9.]/g, '')
-                .replace(/(\..*?)\..*/g, '$1')
-            )
-          }
-          placeholderTextColor="#888"
-        />
-      </View>
+  {/* pH */}
+  <View style={styles.labelRow}>
+    <Text style={styles.label}>pH</Text>
+    <Text style={styles.updateDate}>
+      {fmtDataCurta(islEstadoAtual?.ph_updated_at)}
+    </Text>
+  </View>
+
+  <View style={styles.parametroLinha}>
+    <TextInput
+      style={[styles.input, styles.inputPequeno]}
+      placeholder="Ex: 7.2"
+      keyboardType="decimal-pad"
+      value={islPH}
+      onChangeText={(t) =>
+        setIslPH(
+          t
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1')
+        )
+      }
+      placeholderTextColor="#888"
+    />
+  </View>
+
+
 
       {/* Alcalinidade */}
+       <View style={styles.labelRow}>
       <Text style={styles.label}>Alcalinidade (ppm)</Text>
+      <Text style={styles.updateDate}>
+      {fmtDataCurta(islEstadoAtual?.alcalinidade_updated_at)}
+    </Text>
+    </View>
       <View style={styles.parametroLinha}>
         <TextInput
           style={[styles.input, styles.inputPequeno]}
@@ -2086,7 +2237,12 @@ return (
       </View>
 
       {/* Dureza */}
+      <View style={styles.labelRow}>
       <Text style={styles.label}>Dureza (ppm)</Text>
+      <Text style={styles.updateDate}>
+      {fmtDataCurta(islEstadoAtual?.dureza_updated_at)}
+    </Text>
+    </View>
       <View style={styles.parametroLinha}>
         <TextInput
           style={[styles.input, styles.inputPequeno]}
@@ -2099,7 +2255,12 @@ return (
       </View>
 
       {/* Temperatura */}
+      <View style={styles.labelRow}>
       <Text style={styles.label}>Temperatura (°C)</Text>
+      <Text style={styles.updateDate}>
+      {fmtDataCurta(islEstadoAtual?.temperatura_updated_at)}
+    </Text>
+    </View>
       <View style={styles.parametroLinha}>
         <TextInput
           style={[styles.input, styles.inputPequeno]}
@@ -2119,7 +2280,12 @@ return (
       </View>
 
       {/* TDS opcional */}
+      <View style={styles.labelRow}>
       <Text style={styles.label}>TDS (ppm) — opcional</Text>
+      <Text style={styles.updateDate}>
+      {fmtDataCurta(islEstadoAtual?.temperatura_updated_at)}
+    </Text>
+    </View>
       <View style={styles.parametroLinha}>
         <TextInput
           style={[styles.input, styles.inputPequeno]}
@@ -2151,7 +2317,7 @@ return (
           <Text style={styles.details}>
             (D={islResultado.D} | A={islResultado.A} | T={islResultado.T} | S={islResultado.S})
           </Text>
-
+   
           {islSugestao && (
             <Text style={styles.details}>
               🎯 Sugestão alvo: pH {islSugestao.phAlvo} | Alcalinidade {islSugestao.alcAlvo} ppm
@@ -2204,6 +2370,30 @@ return (
     </View>
   );
 })()}
+           <TouchableOpacity
+  style={styles.buttonCalcular}
+  onPress={() => setTaylorOpen((v) => !v)}
+>
+  <Text style={styles.buttonText}>{taylorOpen ? 'Ocultar gráfico' : 'Ver gráfico'}</Text>
+</TouchableOpacity>
+
+{taylorOpen && (
+  <View style={styles.taylorWrapper}>
+    <Text style={styles.taylorTitle}>Tabela de Taylor</Text>
+
+    <TaylorChart
+      width={260}
+      height={460}
+      ph={toNum(islPH)}
+      tac={toNum(islAlc)}
+      th={toNum(islDur)}
+      phAlvo={islSugestao?.phAlvo ?? null}
+      tacAlvo={islSugestao?.alcAlvo ?? null}
+      thAlvo={null}
+    />
+  </View>
+)}
+
 
           {/* ✅ Guardar ISL (Opção A) */}
           <TouchableOpacity
@@ -2569,8 +2759,11 @@ const alvoISL =
   isAlc ? islSugestao?.alcAlvo :
   null;
 
-const islCreatedAt = islUltimoRegisto?.created_at;
-
+const islCreatedAt =
+  islEstadoAtual?.isl_updated_at ||
+  islEstadoAtual?.updated_at ||
+  islEstadoAtual?.created_at ||
+  null;
 
 const bloquearTesteRapidoFinal = bloquearTesteRapido || !testeRapidoPermitido;
 
@@ -2626,7 +2819,7 @@ const corParametro = (() => {
       {mostrarAlvoISL && (
         <Text style={styles.details}>
           🎯 Alvo ISL: {alvoISL}{isAlc ? ' ppm' : ''} • Atualizado em:{' '}
-          {new Date(islCreatedAt!).toLocaleDateString()}
+          {fmtDataCurta(islCreatedAt)}
         </Text>
       )}
 
@@ -3719,7 +3912,29 @@ parametroDiamond: {
   borderRadius: 5, // arredonda o “bico”
   transform: [{ rotate: '45deg' }],
 },
+updateDate: {
+  marginLeft: 10,
+  fontSize: 12,
+  color: '#777',
+},
+labelRow: {
+  flexDirection: 'row',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  marginTop: 8,
+},
+taylorWrapper: {
+  alignItems: 'center',     // 👈 centra horizontalmente
+  marginTop: 12,
+  marginBottom: 16,
+},
 
+taylorTitle: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#444',
+  marginBottom: 8,
+},
 
 });
 

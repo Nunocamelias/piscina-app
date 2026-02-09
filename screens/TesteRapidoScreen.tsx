@@ -1139,7 +1139,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     alignItems: 'flex-end',
-    paddingBottom: 100,
+    paddingBottom: 60,
     justifyContent: 'space-between',
   },
 

@@ -68,6 +68,7 @@ export type RootStackParamList = {
     bomba_calor: boolean;
     equipamentos_especiais: boolean;
     eletrolise_sal: boolean;
+    tem_orp: boolean;
     ultima_substituicao: string;
     status: string;
 

@@ -125,21 +125,21 @@ useEffect(() => {
   };
 
   const handleChange = (field: keyof typeof form, value: string | boolean) => {
-    if (field === 'codigo_postal' && typeof value === 'string') {
-      // Remove tudo que não seja número
-      let formattedValue = value.replace(/\D/g, '');
-      // Aplica automaticamente o formato 0000-000
-      if (formattedValue.length > 4) {
-        formattedValue = formattedValue.slice(0, 4) + '-' + formattedValue.slice(4);
-      }
-      if (formattedValue.length > 8) {
-        formattedValue = formattedValue.slice(0, 8); // Limita a 8 caracteres
-      }
-      setForm((prev: typeof form) => ({ ...prev, [field]: formattedValue }));
-    } else {
-      setForm((prev: typeof form) => ({ ...prev, [field]: value }));
+  if (field === 'codigo_postal' && typeof value === 'string') {
+    let formattedValue = value.replace(/\D/g, '');
+    if (formattedValue.length > 4) {
+      formattedValue = formattedValue.slice(0, 4) + '-' + formattedValue.slice(4);
     }
-  };
+    if (formattedValue.length > 8) {
+      formattedValue = formattedValue.slice(0, 8);
+    }
+    setForm((prev: typeof form) => ({ ...prev, [field]: formattedValue }));
+  } else {
+    setForm((prev: typeof form) => ({ ...prev, [field]: value }));
+  }
+};
+
+
 if (loading || !form) {
     return (
       <View style={styles.container}>
@@ -322,6 +322,21 @@ if (loading || !form) {
     thumbColor={form.eletrolise_sal ? '#FFF' : '#777'}
   />
 </View>
+
+{form.eletrolise_sal && (
+  <View style={styles.switchContainer}>
+    <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>
+      Tem sonda ORP
+    </Text>
+    <Switch
+      value={!!form.tem_orp}
+      onValueChange={(value) => handleChange('tem_orp', value)}
+      disabled={!isEditable}
+      trackColor={{ false: '#444', true: '#32CD32' }}
+      thumbColor={form.tem_orp ? '#FFF' : '#777'}
+    />
+  </View>
+)}
 
 <View style={styles.switchContainer}>
   <Text style={isDarkMode ? styles.switchLabelDark : styles.switchLabelLight}>Tanque de Compensação</Text>

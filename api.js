@@ -53,7 +53,6 @@ const formatArrayForPostgres = (array) => {
   return '{}'; // Retorna array vazio como padrão
 };
 
-
 // Endpoint POST para adicionar cliente
 app.post('/clientes', async (req, res) => {
   const {
@@ -75,6 +74,7 @@ app.post('/clientes', async (req, res) => {
     bomba_calor,
     equipamentos_especiais,
     eletrolise_sal,
+    tem_orp, // ✅ NOVO
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
@@ -88,8 +88,22 @@ app.post('/clientes', async (req, res) => {
   try {
     const query = `
       INSERT INTO clientes 
-      (empresaid, nome, morada, localidade, codigo_postal, google_maps, email, telefone, info_acesso, comprimento, largura, profundidade_media, volume, tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais, eletrolise_sal, ultima_substituicao, valor_manutencao, periodicidade, condicionantes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+      (
+        empresaid, nome, morada, localidade, codigo_postal, google_maps,
+        email, telefone, info_acesso,
+        comprimento, largura, profundidade_media, volume,
+        tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais,
+        eletrolise_sal, tem_orp,
+        ultima_substituicao, valor_manutencao, periodicidade, condicionantes
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9,
+        $10, $11, $12, $13,
+        $14, $15, $16, $17,
+        $18, $19,
+        $20, $21, $22, $23
+      )
       RETURNING *;
     `;
 
@@ -112,7 +126,8 @@ app.post('/clientes', async (req, res) => {
       bomba_calor,
       equipamentos_especiais,
       eletrolise_sal,
-      ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null, // ✅ esta é a correção
+      eletrolise_sal ? !!tem_orp : false, // ✅ regra de segurança
+      ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null,
       parseFloat(valor_manutencao),
       sanitizeString(periodicidade),
       formatArrayForPostgres(condicionantes),
@@ -149,7 +164,6 @@ app.get('/empresas/:id', async (req, res) => {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    console.log('🏢 Dados da empresa retornados:', result.rows[0]);
     res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error('❌ Erro ao buscar empresa:', error);
@@ -214,6 +228,7 @@ app.put('/clientes/:id', async (req, res) => {
     bomba_calor,
     equipamentos_especiais,
     eletrolise_sal,
+    tem_orp, // ✅ NOVO
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
@@ -241,9 +256,9 @@ app.put('/clientes/:id', async (req, res) => {
       UPDATE clientes 
       SET nome = $1, morada = $2, localidade = $3, codigo_postal = $4, google_maps = $5, email = $6, telefone = $7, 
           info_acesso = $8, comprimento = $9, largura = $10, profundidade_media = $11, volume = $12, 
-          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17, 
-          ultima_substituicao = $18, valor_manutencao = $19, periodicidade = $20, condicionantes = $21, updated_at = NOW()
-      WHERE id = $22 AND empresaid = $23
+          tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17, tem_orp = $18,
+ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22, updated_at = NOW()
+WHERE id = $23 AND empresaid = $24
       RETURNING *;
     `;
     const values = [
@@ -264,7 +279,8 @@ app.put('/clientes/:id', async (req, res) => {
       bomba_calor,
       equipamentos_especiais,
       eletrolise_sal,
-      moment(ultima_substituicao).format('YYYY-MM-DD'),
+      tem_orp,
+      ultima_substituicao ? moment(ultima_substituicao).format('YYYY-MM-DD') : null, // ✅ evita crash se vier vazio
       parseFloat(valor_manutencao),
       periodicidade,
       `{${condicionantes?.join(',')}}`,
@@ -1976,53 +1992,79 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
 
 
     const manutencaoResult = await pool.query(updateManutencaoQuery, [
-      status,
+  status,
+  id,
+  empresaid,
+  motivo ?? null,
+  metodo_analise ?? null,
+  modo_tratamento ?? null,
+]);
+
+if (manutencaoResult.rowCount === 0) {
+  return res.status(400).json({ error: 'Erro ao atualizar status da manutenção.' });
+}
+
+console.log(
+  `🔄 Manutenção ${id} atualizada para status: ${status} (motivo=${motivo ?? 'null'})`
+);
+
+// ✅ Só atualiza parâmetros quando "concluida"
+if (status === 'concluida') {
+  console.log('📊 Atualizando parâmetros para manutenção:', id);
+
+  for (const parametro of parametros || []) {
+    const updateParametroQuery = `
+      INSERT INTO manutencoes_parametros (
+        manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, empresaid
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (manutencao_id, parametro)
+      DO UPDATE SET 
+        valor_atual = $3,
+        produto_usado = $4,
+        quantidade_usada = $5,
+        empresaid = $6;
+    `;
+
+    const parametroValues = [
       id,
+      parametro.parametro,
+      parametro.valor_atual || null,
+      parametro.produto_usado || null,
+      parametro.quantidade_usada || 0,
       empresaid,
-      motivo ?? null,
-      metodo_analise ?? null,
-      modo_tratamento ?? null,
-    ]);
+    ];
 
-    if (manutencaoResult.rowCount === 0) {
-      return res.status(400).json({ error: 'Erro ao atualizar status da manutenção.' });
+    console.log('🛠 Atualizando parâmetro:', parametroValues);
+    await pool.query(updateParametroQuery, parametroValues);
+  }
+
+  // ✅ Snapshot ISL semanal (apenas quando conclui)
+  try {
+    const cliente_id = manutencaoResult.rows[0]?.cliente_id;
+
+    if (cliente_id) {
+      const snap = await criarSnapshotISLSemanalSeNecessario({
+        empresaid,
+        cliente_id,
+        manutencao_id: Number(id),
+      });
+
+      console.log('🧪 ISL snapshot semanal:', snap);
+    } else {
+      console.warn('⚠️ Sem cliente_id no RETURNING da manutenção. Snapshot ISL ignorado.');
     }
+  } catch (e) {
+    // ⚠️ não bloquear a conclusão por falha no snapshot
+    console.warn('⚠️ Falha ao criar snapshot ISL semanal:', e);
+  }
+}
 
-    console.log(`🔄 Manutenção ${id} atualizada para status: ${status} (motivo=${motivo ?? 'null'})`);
+return res.status(200).json({
+  message: 'Manutenção atualizada com sucesso!',
+  manutencao: manutencaoResult.rows[0],
+});
 
-    // ✅ Só atualiza parâmetros quando "concluida"
-    if (status === 'concluida') {
-      console.log('📊 Atualizando parâmetros para manutenção:', id);
-
-      for (const parametro of parametros) {
-        const updateParametroQuery = `
-          INSERT INTO manutencoes_parametros (
-            manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada, empresaid
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (manutencao_id, parametro)
-          DO UPDATE SET 
-            valor_atual = $3,
-            produto_usado = $4,
-            quantidade_usada = $5,
-            empresaid = $6;
-        `;
-
-        const parametroValues = [
-          id,
-          parametro.parametro,
-          parametro.valor_atual || null,
-          parametro.produto_usado || null,
-          parametro.quantidade_usada || 0,
-          empresaid,
-        ];
-
-        console.log('🛠 Atualizando parâmetro:', parametroValues);
-        await pool.query(updateParametroQuery, parametroValues);
-      }
-    }
-
-    return res.status(200).json({ message: 'Manutenção atualizada com sucesso!', manutencao: manutencaoResult.rows[0] });
   } catch (error) {
     console.error('❌ Erro ao atualizar manutenção:', error);
     return res.status(500).json({ error: 'Erro ao atualizar manutenção.' });
@@ -2657,9 +2699,98 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
   }
 });
 
+async function criarSnapshotISLSemanalSeNecessario({ empresaid, cliente_id, manutencao_id }) {
+  console.log('🟦 [ISL SNAPSHOT] Verificar snapshot semanal', {
+    empresaid,
+    cliente_id,
+    manutencao_id,
+  });
+
+  // 1) buscar estado atual (fonte de verdade)
+  const st = await pool.query(
+    `SELECT * FROM isl_estado_atual WHERE empresaid=$1 AND cliente_id=$2 LIMIT 1`,
+    [empresaid, cliente_id]
+  );
+
+  const estado = st.rows[0];
+
+  if (!estado) {
+    console.log('🟨 [ISL SNAPSHOT] Sem estado atual ISL → nada a fazer');
+    return { ok: false, reason: 'Sem estado ISL.' };
+  }
+
+  if (estado.isl == null) {
+    console.log('🟨 [ISL SNAPSHOT] Estado ISL existe mas sem valor calculado → skip', {
+      estado,
+    });
+    return { ok: false, reason: 'Sem estado ISL calculado.' };
+  }
+
+  console.log('🟩 [ISL SNAPSHOT] Estado ISL válido encontrado', {
+    isl: estado.isl,
+    ph: estado.ph,
+    alcalinidade: estado.alcalinidade,
+    dureza: estado.dureza,
+    temperatura: estado.temperatura,
+    tds: estado.tds,
+  });
+
+  // 2) verificar se já existe snapshot nesta semana
+  const qCheck = `
+    SELECT 1
+    FROM isl_registos
+    WHERE empresaid = $1 AND cliente_id = $2
+      AND date_trunc('week', created_at) = date_trunc('week', NOW())
+    LIMIT 1;
+  `;
+  const ck = await pool.query(qCheck, [empresaid, cliente_id]);
+
+  if (ck.rowCount > 0) {
+    console.log('🟦 [ISL SNAPSHOT] Já existe snapshot ISL nesta semana → ignorado');
+    return { ok: true, skipped: true };
+  }
+
+  // 3) inserir snapshot (histórico)
+  console.log('🟩 [ISL SNAPSHOT] A criar novo snapshot semanal ISL');
+
+  const qIns = `
+    INSERT INTO isl_registos (
+      cliente_id, manutencao_id, empresaid,
+      ph, alcalinidade, dureza, temperatura, tds,
+      isl, indicacao
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    RETURNING *;
+  `;
+
+  const vals = [
+    cliente_id,
+    manutencao_id || null,
+    empresaid,
+    estado.ph,
+    estado.alcalinidade,
+    estado.dureza,
+    estado.temperatura,
+    estado.tds,
+    estado.isl,
+    estado.indicacao || null,
+  ];
+
+  const ins = await pool.query(qIns, vals);
+
+  console.log('✅ [ISL SNAPSHOT] Snapshot semanal criado com sucesso', {
+    id: ins.rows[0]?.id,
+    created_at: ins.rows[0]?.created_at,
+    isl: ins.rows[0]?.isl,
+  });
+
+  return { ok: true, created: true, registo: ins.rows[0] };
+}
+
 // Criar registo ISL - ISL (Langelier) 
 app.post('/isl', async (req, res) => {
   console.log('📥 Dados recebidos no POST /isl:', req.body);
+
   const {
     empresaid,
     cliente_id,
@@ -2683,18 +2814,23 @@ app.post('/isl', async (req, res) => {
   if (isl === undefined || isl === null) return res.status(400).json({ error: 'isl é obrigatório.' });
   if (!indicacao) return res.status(400).json({ error: 'indicacao é obrigatório.' });
 
+  const client = await pool.connect();
+
   try {
-    const query = `
+    await client.query('BEGIN');
+
+    // 1) HISTÓRICO (isl_registos)
+    const qHist = `
       INSERT INTO isl_registos (
         cliente_id, manutencao_id, empresaid,
         ph, alcalinidade, dureza, temperatura, tds,
         isl, indicacao
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
     `;
 
-    const values = [
+    const vHist = [
       cliente_id,
       manutencao_id || null,
       empresaid,
@@ -2707,11 +2843,76 @@ app.post('/isl', async (req, res) => {
       indicacao,
     ];
 
-    const result = await pool.query(query, values);
-    return res.status(201).json(result.rows[0]);
+    const hist = await client.query(qHist, vHist);
+
+    // 2) ESTADO ATUAL (isl_estado_atual) — UPSERT com datas por campo
+    // Nota: aqui não meto ph_alvo/alc_alvo porque são calculados no front (islSugestao)
+    // Se quiseres, depois também gravamos estes dois.
+    const qUpsert = `
+  INSERT INTO isl_estado_atual (
+    empresaid, cliente_id,
+    ph, ph_updated_at,
+    alcalinidade, alcalinidade_updated_at,
+    dureza, dureza_updated_at,
+    temperatura, temperatura_updated_at,
+    tds, tds_updated_at,
+    isl, isl_updated_at,
+    indicacao,
+    updated_at, created_at
+  )
+  VALUES (
+    $1, $2,
+    $3, NOW(),
+    $4, NOW(),
+    $5, NOW(),
+    $6, NOW(),
+    $7, NOW(),
+    $8, NOW(),
+    $9,
+    NOW(), NOW()
+  )
+  ON CONFLICT (empresaid, cliente_id)
+  DO UPDATE SET
+    ph = EXCLUDED.ph,
+    ph_updated_at = NOW(),
+    alcalinidade = EXCLUDED.alcalinidade,
+    alcalinidade_updated_at = NOW(),
+    dureza = EXCLUDED.dureza,
+    dureza_updated_at = NOW(),
+    temperatura = EXCLUDED.temperatura,
+    temperatura_updated_at = NOW(),
+    tds = EXCLUDED.tds,
+    tds_updated_at = NOW(),
+    isl = EXCLUDED.isl,
+    isl_updated_at = NOW(),
+    indicacao = EXCLUDED.indicacao,
+    updated_at = NOW();
+`;
+
+const vUpsert = [
+  empresaid,          // $1
+  cliente_id,         // $2
+  ph,                 // $3
+  alcalinidade,       // $4
+  dureza,             // $5
+  temperatura,        // $6
+  tds ?? null,        // $7
+  isl,                // $8
+  indicacao || null,  // $9
+];
+
+await client.query(qUpsert, vUpsert);
+
+
+    await client.query('COMMIT');
+
+    return res.status(201).json(hist.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erro ao criar ISL:', error);
     return res.status(500).json({ error: 'Erro ao criar registo ISL.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -2763,14 +2964,206 @@ app.get('/isl/historico', async (req, res) => {
   }
 });
 
+// Estado atual do ISL (persistente) - 1 linha por cliente
+app.get('/isl/estado-atual', async (req, res) => {
+  const { empresaid, cliente_id } = req.query;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+
+  try {
+    const q = `
+      SELECT *
+      FROM isl_estado_atual
+      WHERE empresaid = $1 AND cliente_id = $2
+      LIMIT 1;
+    `;
+    const r = await pool.query(q, [empresaid, cliente_id]);
+    return res.status(200).json(r.rows[0] || null);
+  } catch (e) {
+    console.error('❌ Erro ao buscar isl_estado_atual:', e);
+    return res.status(500).json({ error: 'Erro ao buscar estado atual do ISL.' });
+  }
+});
+
+// Atualiza estado atual do ISL (persistente) — NÃO grava histórico aqui
+app.post('/isl/estado', async (req, res) => {
+  console.log('📥 Dados recebidos no POST /isl/estado:', req.body);
+
+  const {
+    empresaid,
+    cliente_id,
+    ph,
+    alcalinidade,
+    dureza,
+    temperatura,
+    tds,          // opcional
+    isl,
+    indicacao,
+  } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+  if (ph === undefined || ph === null) return res.status(400).json({ error: 'ph é obrigatório.' });
+  if (alcalinidade === undefined || alcalinidade === null) return res.status(400).json({ error: 'alcalinidade é obrigatório.' });
+  if (dureza === undefined || dureza === null) return res.status(400).json({ error: 'dureza é obrigatório.' });
+  if (temperatura === undefined || temperatura === null) return res.status(400).json({ error: 'temperatura é obrigatório.' });
+  if (isl === undefined || isl === null) return res.status(400).json({ error: 'isl é obrigatório.' });
+
+  try {
+    const qUpsert = `
+      INSERT INTO isl_estado_atual (
+        empresaid, cliente_id,
+        ph, ph_updated_at,
+        alcalinidade, alcalinidade_updated_at,
+        dureza, dureza_updated_at,
+        temperatura, temperatura_updated_at,
+        tds, tds_updated_at,
+        isl, isl_updated_at,
+        indicacao,
+        updated_at, created_at
+      )
+      VALUES (
+        $1, $2,
+        $3, NOW(),
+        $4, NOW(),
+        $5, NOW(),
+        $6, NOW(),
+        $7, NOW(),
+        $8, NOW(),
+        $9, NOW(),
+        $10,
+        NOW(), NOW()
+      )
+      ON CONFLICT (empresaid, cliente_id)
+      DO UPDATE SET
+        ph = EXCLUDED.ph,
+        ph_updated_at = NOW(),
+        alcalinidade = EXCLUDED.alcalinidade,
+        alcalinidade_updated_at = NOW(),
+        dureza = EXCLUDED.dureza,
+        dureza_updated_at = NOW(),
+        temperatura = EXCLUDED.temperatura,
+        temperatura_updated_at = NOW(),
+        tds = EXCLUDED.tds,
+        tds_updated_at = NOW(),
+        isl = EXCLUDED.isl,
+        isl_updated_at = NOW(),
+        indicacao = EXCLUDED.indicacao,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+
+    const vUpsert = [
+      empresaid,          // $1
+      cliente_id,         // $2
+      ph,                 // $3
+      alcalinidade,       // $4
+      dureza,             // $5
+      temperatura,        // $6
+      tds ?? null,        // $7
+      isl,                // $8
+      indicacao || null,  // $9
+    ];
+
+    const r = await pool.query(qUpsert, vUpsert);
+    return res.status(200).json(r.rows[0]);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar ISL estado:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar estado ISL.' });
+  }
+});
+
+app.patch('/isl/estado', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+
+    // podem vir 1 ou vários
+    ph,
+    alcalinidade,
+    dureza,
+    temperatura,
+    tds,
+
+    // resultado calculado (pode vir do front)
+    isl,
+    indicacao,
+    ph_alvo,
+    alc_alvo,
+  } = req.body;
+
+  if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  if (!cliente_id) return res.status(400).json({ error: 'cliente_id é obrigatório.' });
+
+  try {
+    const now = new Date().toISOString();
+
+    const cols = [];
+    const vals = [empresaid, cliente_id];
+    let idx = 3;
+
+    const add = (col, value) => {
+      cols.push({ col, idx });
+      vals.push(value);
+      idx++;
+    };
+
+    // Valores + datas por campo
+    if (ph !== undefined) { add('ph', ph); add('ph_updated_at', now); }
+    if (alcalinidade !== undefined) { add('alcalinidade', alcalinidade); add('alcalinidade_updated_at', now); }
+    if (dureza !== undefined) { add('dureza', dureza); add('dureza_updated_at', now); }
+    if (temperatura !== undefined) { add('temperatura', temperatura); add('temperatura_updated_at', now); }
+    if (tds !== undefined) { add('tds', tds); add('tds_updated_at', now); }
+
+    // Resultado ISL + alvos (se vierem)
+    if (isl !== undefined) { add('isl', isl); add('isl_updated_at', now); }
+    if (indicacao !== undefined) add('indicacao', indicacao);
+    if (ph_alvo !== undefined) add('ph_alvo', ph_alvo);
+    if (alc_alvo !== undefined) add('alc_alvo', alc_alvo);
+
+    // Sempre
+    add('updated_at', now);
+
+    // Se só veio updated_at, devolve o estado atual
+    if (cols.length === 1) {
+      const r0 = await pool.query(
+        `SELECT * FROM isl_estado_atual WHERE empresaid=$1 AND cliente_id=$2 LIMIT 1`,
+        [empresaid, cliente_id]
+      );
+      return res.status(200).json(r0.rows[0] || null);
+    }
+
+    const setSql = cols.map((c) => `${c.col} = $${c.idx}`).join(', ');
+
+    const q = `
+      INSERT INTO isl_estado_atual (empresaid, cliente_id)
+      VALUES ($1, $2)
+      ON CONFLICT (empresaid, cliente_id)
+      DO UPDATE SET ${setSql}
+      RETURNING *;
+    `;
+
+    const r = await pool.query(q, vals);
+    return res.status(200).json(r.rows[0]);
+  } catch (e) {
+    console.error('❌ Erro PATCH /isl/estado:', e);
+    return res.status(500).json({ error: 'Erro ao atualizar estado atual do ISL.' });
+  }
+});
+
 app.post('/manutencoes/concluir', async (req, res) => {
-  const { cliente_id, equipe_id, dia_semana, parametros, status, empresaid } = req.body;
+  const { cliente_id, equipe_id, dia_semana, parametros, status, empresaid, isl_payload } = req.body;
 
   if (!cliente_id || !equipe_id || !dia_semana || !empresaid) {
     return res.status(400).json({ error: 'Dados incompletos para concluir a manutenção ou empresaid ausente.' });
   }
 
+  const client = await pool.connect();
+
   try {
+    await client.query('BEGIN');
+
     // Validação do `empresaid`
     const validaEmpresaQuery = `
       SELECT 1 
@@ -2778,23 +3171,24 @@ app.post('/manutencoes/concluir', async (req, res) => {
       JOIN equipes e ON e.id = $2
       WHERE c.id = $1 AND c.empresaid = $3 AND e.empresaid = $3;
     `;
-    const validaEmpresaResult = await pool.query(validaEmpresaQuery, [cliente_id, equipe_id, empresaid]);
+    const validaEmpresaResult = await client.query(validaEmpresaQuery, [cliente_id, equipe_id, empresaid]);
 
     if (validaEmpresaResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Cliente ou equipe não pertencem à empresa especificada.' });
     }
 
+    // 1) Criar manutenção
     const query = `
       INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao)
       VALUES ($1, $2, $3, $4, NOW())
       RETURNING *;
     `;
     const values = [cliente_id, equipe_id, dia_semana, status];
-    const result = await pool.query(query, values);
-
+    const result = await client.query(query, values);
     const manutencaoId = result.rows[0].id;
 
-    // Insira parâmetros associados
+    // 2) Inserir parâmetros associados
     if (parametros && parametros.length > 0) {
       for (const parametro of parametros) {
         const validaParametroQuery = `
@@ -2802,7 +3196,7 @@ app.post('/manutencoes/concluir', async (req, res) => {
           FROM parametros_quimicos 
           WHERE parametro = $1 AND empresaid = $2 AND ativo = TRUE;
         `;
-        const validaParametroResult = await pool.query(validaParametroQuery, [parametro.parametro, empresaid]);
+        const validaParametroResult = await client.query(validaParametroQuery, [parametro.parametro, empresaid]);
 
         if (validaParametroResult.rows.length === 0) {
           console.warn(`Parâmetro ${parametro.parametro} não pertence à empresa ${empresaid}. Ignorado.`);
@@ -2813,7 +3207,7 @@ app.post('/manutencoes/concluir', async (req, res) => {
           INSERT INTO manutencoes_parametros (manutencao_id, parametro, valor_atual, produto_usado, quantidade_usada)
           VALUES ($1, $2, $3, $4, $5);
         `;
-        await pool.query(parametroQuery, [
+        await client.query(parametroQuery, [
           manutencaoId,
           parametro.parametro,
           parametro.valor_atual || null,
@@ -2823,10 +3217,90 @@ app.post('/manutencoes/concluir', async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: 'Manutenção concluída com sucesso.', id: manutencaoId });
+    // 3) Se veio ISL do front, atualiza estado atual (isl_estado_atual)
+    if (isl_payload && isl_payload.isl !== undefined && isl_payload.isl !== null) {
+      const {
+        ph, alcalinidade, dureza, temperatura, tds, isl, indicacao,
+      } = isl_payload;
+
+      const qUpsert = `
+        INSERT INTO isl_estado_atual (
+          empresaid, cliente_id,
+          ph, ph_updated_at,
+          alcalinidade, alcalinidade_updated_at,
+          dureza, dureza_updated_at,
+          temperatura, temperatura_updated_at,
+          tds, tds_updated_at,
+          isl, isl_updated_at,
+          indicacao,
+          updated_at, created_at
+        )
+        VALUES (
+          $1, $2,
+          $3, NOW(),
+          $4, NOW(),
+          $5, NOW(),
+          $6, NOW(),
+          $7, NOW(),
+          $8, NOW(),
+          $9, NOW(),
+          $10,
+          NOW(), NOW()
+        )
+        ON CONFLICT (empresaid, cliente_id)
+        DO UPDATE SET
+          ph = EXCLUDED.ph,
+          ph_updated_at = NOW(),
+          alcalinidade = EXCLUDED.alcalinidade,
+          alcalinidade_updated_at = NOW(),
+          dureza = EXCLUDED.dureza,
+          dureza_updated_at = NOW(),
+          temperatura = EXCLUDED.temperatura,
+          temperatura_updated_at = NOW(),
+          tds = EXCLUDED.tds,
+          tds_updated_at = NOW(),
+          isl = EXCLUDED.isl,
+          isl_updated_at = NOW(),
+          indicacao = EXCLUDED.indicacao,
+          updated_at = NOW();
+      `;
+
+      const vUpsert = [
+        empresaid,
+        cliente_id,
+        ph,
+        alcalinidade,
+        dureza,
+        temperatura,
+        tds ?? null,
+        isl,
+        indicacao || null,
+      ];
+
+      await client.query(qUpsert, vUpsert);
+    }
+
+    await client.query('COMMIT');
+
+    // 4) Snapshot semanal DEPOIS do estado estar correto
+    try {
+      const snap = await criarSnapshotISLSemanalSeNecessario({
+        empresaid,
+        cliente_id,
+        manutencao_id: manutencaoId,
+      });
+      console.log('📌 Snapshot ISL semanal:', snap);
+    } catch (e) {
+      console.warn('⚠️ Snapshot ISL falhou (não bloqueia conclusão):', e?.message || e);
+    }
+
+    return res.status(201).json({ message: 'Manutenção concluída com sucesso.', id: manutencaoId });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Erro ao concluir manutenção:', error);
-    res.status(500).json({ error: 'Erro ao concluir manutenção.' });
+    return res.status(500).json({ error: 'Erro ao concluir manutenção.' });
+  } finally {
+    client.release();
   }
 });
 

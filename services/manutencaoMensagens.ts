@@ -28,6 +28,7 @@ export type Cliente = {
   bomba_calor?: boolean;
   equipamentos_especiais?: boolean;
   eletrolise_sal?: boolean;
+  tem_orp?: boolean;
   ultima_substituicao?: string | null;
 };
 
@@ -81,6 +82,69 @@ export type MensagensManutencaoOutput = {
   temMensagem: boolean; // true se há algo útil para mostrar
   key: string;          // “assinatura” do estado atual (p/ não repetir alert)
 };
+
+// ======================================================
+// ACTIONS (modelo novo, migração faseada)
+// ======================================================
+
+export type ActionLevel = 0 | 1 | 2 | 3 | 4;
+
+export type ActionType =
+  // 🔴 BLOQUEIO / SEGURANÇA
+  | 'BLOQUEIO_INTERDICAO_BANHO'
+  | 'BLOQUEIO_AGUARDAR_ESTABILIZACAO'
+
+  // 🟠 DIAGNÓSTICO / CORREÇÃO AVANÇADA
+  | 'RENOVAR_AGUA_TOTAL_CYA'
+  | 'RENOVAR_AGUA_PARCIAL_CYA'
+  | 'TRATAMENTO_CHOQUE_CLORAMINAS'
+  | 'TRATAMENTO_CHOQUE'
+  | 'TRATAMENTO_FLOCULACAO'
+  | 'TRATAMENTO_ALGICIDA'
+  | 'REAVALIAR_MEDICOES'
+  | 'CONFIRMAR_VALOR'
+  | 'MEDIR_VALOR'
+
+  // 🟡 OPERAÇÃO / FILTRAÇÃO
+  | 'LIMPAR_PRE_FILTRO'
+  | 'SUBSTITUIR_CESTO_PRE_FILTRO'
+  | 'LAVAGEM_FILTRO'
+  | 'RETROLAVAGEM'
+  | 'LIMPAR_TURBINA_MOTOR'
+  | 'LIMPAR_TANQUE_COMPENSACAO'
+  | 'LIMPAR_TANQUE_COBERTURA'
+
+  // 🔵 EQUILÍBRIO DA ÁGUA
+  | 'AJUSTAR_DUREZA'
+  | 'AJUSTAR_TAC'
+  | 'AJUSTAR_PH'
+  | 'AJUSTAR_CYA'
+  | 'AJUSTAR_SALINIDADE'
+
+  // 🟢 DESINFEÇÃO
+  | 'CALIBRAR_ORP_SONDA'
+  | 'CALIBRAR_PH_SONDA'
+  | 'AJUSTAR_SETPOINT_ELETROLISE'          // com ORP (última alternativa)
+  | 'AJUSTAR_NIVEL_PRODUCAO_ELETROLISE'    // sem ORP
+  | 'APLICAR_CLORO_MANUAL'
+  | 'NEUTRALIZAR_CLORO';
+
+export type Action = {
+  type: ActionType;
+  level: ActionLevel;
+  // texto curto para UI/log
+  title?: string;
+  // dados dinâmicos p/ mensagens (ex.: m3, ppm, horas)
+  payload?: Record<string, any>;
+};
+
+// helper simples para não repetir
+const A = (type: ActionType, level: ActionLevel, title?: string, payload?: Record<string, any>): Action => ({
+  type,
+  level,
+  title,
+  payload,
+});
 
 // ✅ ORDEM que definiste (com desinfeção no fim)
 const ORDEM_CORRECAO = ['dureza', 'alcalinidade', 'ph', 'acido_cianurico', 'desinfeccao'] as const;
@@ -347,6 +411,71 @@ export function calcularVolumeTrocaAguaParaCYA(
   return Math.round(volumeM3 * fracClamped * 10) / 10; // 1 casa decimal
 }
 
+// ======================================================
+// BUILD ACTIONS (v1: mínimo, sem reescrever mensagens)
+// ======================================================
+
+function buildActions(input: {
+  cliente?: Cliente | null;
+  modoTratamento?: ModoTratamento;
+  parametros: Parametro[];
+  tacBaixa?: boolean;
+}): Action[] {
+  const { cliente, modoTratamento, parametros, tacBaixa } = input;
+  const actions: Action[] = [];
+
+  const get = (k: string) => parametros.find(p => normParametroNome(p.parametro) === k);
+
+  const pCl = get('cloro_livre');
+  const pCya = get('acido_cianurico');
+  const pTac = get('alcalinidade');
+
+  const cl = pCl ? toNum(String(pCl.valor_atual ?? '').trim()) : NaN;
+  const cya = pCya ? toNum(String(pCya.valor_atual ?? '').trim()) : NaN;
+  const tac = pTac ? toNum(String(pTac.valor_atual ?? '').trim()) : NaN;
+
+  const isSal = (modoTratamento === 'sal') || !!cliente?.eletrolise_sal;
+  const temOrp = !!cliente?.tem_orp;
+
+  // 🔴 Bloqueio por cloro muito alto (manténs também os Alerts por agora)
+  if (Number.isFinite(cl) && cl >= 10) {
+    actions.push(A('BLOQUEIO_INTERDICAO_BANHO', 0, 'Piscina interdita (cloro muito alto)', { cl }));
+  }
+
+  // 🟠 CYA alto -> renovação água (nota: se não tens TAC medido, pedimos medir/confirmar)
+  // (aqui NÃO calculo m3 ainda; só levo dados para as mensagens atuais consumirem depois)
+  const cyaMin = toNum(pCya?.valor_minimo);
+  const cyaMax = toNum(pCya?.valor_maximo);
+
+  const cyaAlto =
+    Number.isFinite(cya) &&
+    Number.isFinite(cyaMax) &&
+    cya > cyaMax;
+
+  if (cyaAlto) {
+    const tacTemValor = Number.isFinite(tac);
+
+    if (!tacTemValor) {
+      actions.push(A('MEDIR_VALOR', 1, 'Medir TAC antes de decidir renovação de água', { parametro: 'TAC' }));
+      actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'Renovação de água (CYA alto)', { cya, precisaConfirmarTAC: true }));
+    } else {
+      // recomendado: total, mínimo: parcial (a mensagem final decide o copy)
+      actions.push(A('RENOVAR_AGUA_TOTAL_CYA', 1, 'Recomenda-se renovação total (CYA alto)', { cya, tac }));
+      actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'No mínimo renovação parcial (CYA alto)', { cya, tac }));
+    }
+  }
+
+  // 🟢 Eletrólise: separar ORP vs sem ORP (não “manda já”, só regista)
+  if (isSal) {
+    actions.push(
+      temOrp
+        ? A('AJUSTAR_SETPOINT_ELETROLISE', 4, 'Eletrólise com ORP: setpoint é última alternativa', { exigeTAC_CYA: true, tacBaixa: !!tacBaixa })
+        : A('AJUSTAR_NIVEL_PRODUCAO_ELETROLISE', 4, 'Eletrólise sem ORP: ajustar produção', {})
+    );
+  }
+
+  return actions;
+}
 
 /* =========================================================
    (5) GERADOR PRINCIPAL: RESUMO + PROCEDIMENTO (ORDEM CORRETA)
@@ -389,6 +518,15 @@ export function gerarMensagensManutencao(input: MensagensManutencaoInput): Mensa
   const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
   const tacTemValor = !!pTAC && String(pTAC.valor_atual ?? '').trim() !== '';
   const tacAtivo = isAtivoNoProcedimento(pTAC);
+  const tac = tacValor(parametrosFiltrados);
+  const tacBaixa = Number.isFinite(tac) && tac < 65;
+
+  const actions = buildActions({
+  cliente,
+  modoTratamento,
+  parametros: parametrosFiltrados,
+  tacBaixa,
+});
 
 
 // mais à frente, quando montas o output:
@@ -509,8 +647,7 @@ linhasResumo.push(`• ${icon} ${nome}: ${atual} — ${linhaExtra}`);
 const proc: string[] = [];
 
 // helpers de contexto (usar SEMPRE filtrados ✅)
-const tac = tacValor(parametrosFiltrados);
-const tacBaixa = Number.isFinite(tac) && tac < 65;
+
 
 const psMedidos = parametrosFiltrados.filter((p) =>
   String((p as any).valor_atual ?? '').trim() !== ''
@@ -537,7 +674,13 @@ if (choqueLinhas.length) {
 }
 
 // limpar linhas vazias
-const procedimento = proc.map(s => String(s).trim()).filter(Boolean);
+const procedimentoLinhas = proc
+  .map(s => String(s ?? '').trim())
+  .filter(Boolean);
+
+// 🔑 devolve como string (o UI quase de certeza espera string)
+const procedimento = proc.map(s => String(s ?? '').trim()).filter(Boolean);
+
 
   // ✅ mensagem existe se houver algo útil para mostrar
   const temMensagem = linhasResumo.length > 0 || procedimento.length > 0;
@@ -553,28 +696,34 @@ const procedimento = proc.map(s => String(s).trim()).filter(Boolean);
     .join('|');
 
   const key = `${empresaid}|${clienteId}|${metodoAnalise}|${modoTratamento}|${keyBase}`;
-
-  return {
-    titulo,
-    resumo,
-    procedimento,
-    debug: {
-  empresaid,
-  clienteId,
-  metodoAnalise,
-  modoTratamento,
-  tac,
-  tacBaixa,
-  resultadosPorParametro: (parametrosFiltrados || []).map(p => ({
-    k: normParametroNome(p.parametro),
-    st: (p.status ?? 'pendente'),
-    atual: String(p.valor_atual ?? ''),
-    hasResultado: !!p.resultado?.resultado,
-    resultado: p.resultado?.resultado ?? null,
-  })),
-},    temMensagem,
-    key,
-  };
+return {
+  titulo,
+  resumo,
+  procedimento,
+  debug: {
+    empresaid,
+    clienteId,
+    metodoAnalise,
+    modoTratamento,
+    tac,
+    tacBaixa,
+    resultadosPorParametro: (parametrosFiltrados || []).map((p) => ({
+      k: normParametroNome(p.parametro),
+      st: (p.status ?? 'pendente'),
+      atual: String((p as any).valor_atual ?? ''),
+      hasResultado: !!p.resultado?.resultado,
+      resultado: p.resultado?.resultado ?? null,
+    })),
+    actions: actions.map((a) => ({
+      type: a.type,
+      level: a.level,
+      title: a.title,
+      payload: a.payload,
+    })),
+  },
+  temMensagem,
+  key,
+};
 
 }
 
@@ -616,7 +765,7 @@ function procedimentoDureza(parametros: Parametro[]): string[] {
   const acao = inferirAcao(p);
 if (tacOuPhAtivo && acao === 'descer') {
   linhas.push('   ⚠️ Ao diminuir a dureza, a Alcalinidade e o pH podem descer;');
-  linhas.push('   Aguardar 2–4 horAguardar 12–24h em circulação e voltar a medir TAC e pH.');
+  linhas.push('   Aguardar 12–24h em circulação e voltar a medir TAC e pH.');
 } else if (tacOuPhAtivo && acao === 'subir') {
   linhas.push('   - Após correção, aguardar 2–4 horas e reavaliar antes de avançar para TAC/pH.');
 } else if (acao === 'subir' || acao === 'descer') {
@@ -843,13 +992,18 @@ function procedimentoDesinfeccao(
   const piscinaSal = (modoTratamento === 'sal') || !!cliente?.eletrolise_sal;
 
   const appendAlternativaNeutralizador = () => {
-  const alt = pCloroLivre?.resultado?.resultado; // isto já traz "Adicionar X kg de CTX-12..."
-  if (alt) {
-    linhas.push(`   - Alternativa: ${alt}`);
-  } else {
-    linhas.push('   - Alternativa: neutralizador apenas se necessário.');
+  const txt = pCloroLivre?.resultado?.resultado;
+
+  // Se existir cálculo (normalmente já traz quantidade + produto)
+  if (txt) {
+    linhas.push(`   - Alternativa (se necessário): ${txt}`);
+    return;
   }
+
+  // Fallback curto (quando ainda não há doseamento)
+  linhas.push('   - Alternativa (se necessário): aplicar neutralizador de cloro.');
 };
+
 
   // ----------------------------------------------------
   // (A) PISCINA A SAL (ORP)
@@ -863,16 +1017,15 @@ function procedimentoDesinfeccao(
       linhas.push(`   - Sal: ${linhaPrincipal(pSal)}`);
     }
 
-    // 2) Contexto ORP só quando faz sentido (há TAC/CYA ativos)
-    // 2) Contexto ORP: só mostrar a linha genérica quando NÃO há ação de Cloro Livre
-// (se houver Cloro Livre ativo, a linha "Ação: ..." já inclui o aviso)
-if ((tacAtivo || cyaAtivo) && !cloroAtivo) {
-  linhas.push('   - Eletrólise (ORP): ajustar setpoint só após confirmar Sal, TAC e CYA.');
-}
+    
+const cloroLivreTemValor = !!pCloroLivre && temValor(pCloroLivre);
 
-// Nota TAC baixo pode aparecer sempre que fizer sentido (é um alerta útil)
-if (tacBaixa && tacAtivo) {
-  linhas.push('   - TAC baixo pode distorcer ORP. Corrigir TAC e reavaliar cloro.');
+// 2) Contexto ORP só quando NÃO vamos dar já instrução concreta de cloro/setpoint
+if ((tacAtivo || cyaAtivo) && !cloroLivreTemValor) {
+  linhas.push('   - Eletrólise (ORP): ajustar setpoint só após confirmar Sal, TAC e CYA.');
+  if (tacBaixa && tacAtivo) {
+    linhas.push('   - TAC baixo pode distorcer ORP. Corrigir TAC e reavaliar cloro.');
+  }
 }
 
 
@@ -975,7 +1128,8 @@ function alertaChoque(ps: Parametro[]) {
   const ph = numOrNaN((pPH as any)?.valor_atual);
 
   const linhas: string[] = [];
-  linhas.push('Cloro Combinado > 0.5 ppm (cloraminas). Recomenda-se tratamento de choque.');
+  linhas.push(`Cloro Combinado = ${cc.toFixed(2)} ppm (> 0.5). Recomenda-se tratamento de choque.`);
+
 
   // (sem dose por agora)
   linhas.push('Dose de choque: será apresentada quando o doseamento estiver associado ao Cloro Combinado.');
