@@ -47,9 +47,24 @@ export default function TaylorChart({
   const xPhLeft = xPhCenter - phBandHalfWidth;
   const xPhRight = xPhCenter + phBandHalfWidth;
 
+  // largura da faixa (ajusta fino se quiseres)
+  // ✅ Faixas TAC/TH com a MESMA largura do pH (metade para cada lado)
+  const tacBandHalfWidth = 12;
+  const thBandHalfWidth  = 12; // reutiliza o mesmo aperto
+
+  const xTacCenter = x(g.xTac);
+  const xThCenter  = x(g.xTH);
+
+  const xTacLeft  = xTacCenter - tacBandHalfWidth;
+  const xTacRight = xTacCenter + tacBandHalfWidth;
+
+  const xThLeft   = xThCenter - thBandHalfWidth;
+  const xThRight  = xThCenter + thBandHalfWidth;
+
+
 
   const tacTicks = [1000, 600, 400, 300, 250, 200, 150, 120, 100, 80, 60, 40, 30, 20];
-  const phTicks  = [5.9, 6.6, 6.8, 7.0, 7.2, 7.4, 7.6, 7.8, 8.0, 9.2];
+  const phTicks  = [6.0, 6.6, 6.8, 7.0, 7.2, 7.4, 7.6, 7.8, 8.0, 9.2];
 
 
   return (
@@ -77,6 +92,46 @@ export default function TaylorChart({
       x={xPhLeft}
       y={yTop}
       width={xPhRight - xPhLeft}
+      height={Math.max(1, yBot - yTop)}
+      fill="#2E7D32"
+      opacity={0.25}
+    />
+  );
+})()}
+
+{/* Faixa verde de referência TAC 80–150 */}
+{(() => {
+  const y80  = yLog(80, h);
+  const y150 = yLog(150, h);
+
+  const yTop = y(Math.min(y80, y150));
+  const yBot = y(Math.max(y80, y150));
+
+  return (
+    <Rect
+      x={xTacLeft}
+      y={yTop}
+      width={xTacRight - xTacLeft}
+      height={Math.max(1, yBot - yTop)}
+      fill="#2E7D32"
+      opacity={0.25}
+    />
+  );
+})()}
+
+{/* Faixa verde de referência TH 175–300 */}
+{(() => {
+  const y175 = yLog(175, h);
+  const y300 = yLog(300, h);
+
+  const yTop = y(Math.min(y175, y300));
+  const yBot = y(Math.max(y175, y300));
+
+  return (
+    <Rect
+      x={xThLeft}
+      y={yTop}
+      width={xThRight - xThLeft}
       height={Math.max(1, yBot - yTop)}
       fill="#2E7D32"
       opacity={0.25}

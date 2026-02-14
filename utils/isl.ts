@@ -175,29 +175,32 @@ export function calcularISL(params: {
  * Helper opcional: se quiseres um “alvo” recomendado.
  * Mantém limites práticos (7.0 a 7.6) e alcalinidade (80 a 150).
  */
-export function sugerirAlvosPorISL(isl: number): { phAlvo: number; alcAlvo: number } {
-  let phAlvo = 7.2;
-  let alcAlvo = 100;
+export function sugerirAlvosPorISL(isl: number): { phAlvo: number | null; alcAlvo: number | null; modo?: 'manter' | 'ajustar' } {
+  // default
+  let phAlvo: number | null = 7.2;
+  let alcAlvo: number | null = 100;
 
-  if (!Number.isFinite(isl)) return { phAlvo, alcAlvo };
+  if (!Number.isFinite(isl)) return { phAlvo, alcAlvo, modo: 'ajustar' };
 
-  if (isl < -0.5) {
-    phAlvo = 7.4;
-    alcAlvo = 140;
-  } else if (isl < 0) {
-    phAlvo = 7.3;
-    alcAlvo = 120;
-  } else if (isl > 0.5) {
-    phAlvo = 7.0;
-    alcAlvo = 80;
-  } else if (isl > 0) {
-    phAlvo = 7.1;
-    alcAlvo = 90;
+  // ✅ zona estável: NÃO sugerir alteração
+  if (Math.abs(isl) <= 0.15) {
+    return { phAlvo: null, alcAlvo: null, modo: 'manter' };
   }
 
-  // clamps
+  // ✅ mapeamento antigo (menos ping-pong)
+  if (isl < -0.5) {
+    phAlvo = 7.4; alcAlvo = 140;
+  } else if (isl < 0) {
+    phAlvo = 7.3; alcAlvo = 120;
+  } else if (isl > 0.5) {
+    phAlvo = 7.0; alcAlvo = 80;
+  } else if (isl > 0) {
+    phAlvo = 7.1; alcAlvo = 90;
+  }
+
+  // clamps (se quiseres manter)
   phAlvo = Math.min(7.6, Math.max(7.0, phAlvo));
   alcAlvo = Math.min(150, Math.max(80, alcAlvo));
 
-  return { phAlvo, alcAlvo };
+  return { phAlvo, alcAlvo, modo: 'ajustar' };
 }

@@ -105,7 +105,7 @@ const PARAMS_ALL: ParametroTR[] = [
   { key: 'cloro_total', label: 'Cloro Total', short: 'Cl-T', anchors: CLORO_TOTAL_ANCHORS, min: 0, max: 10, step: 0.1 },
   { key: 'cloro_livre', label: 'Cloro Livre', short: 'Cl-L', anchors: CLORO_ANCHORS, min: 0, max: 10, step: 0.1 },
   { key: 'ph', label: 'pH', short: 'pH', anchors: PH_ANCHORS, min: 6.2, max: 8.2, step: 0.1 },
-  { key: 'alcalinidade', label: 'Alcalinidade', short: 'TAC', anchors: ALC_ANCHORS, min: 0, max: 240, step: 10 },
+  { key: 'alcalinidade', label: 'Alcalinidade', short: 'TAC', anchors: ALC_ANCHORS, min: 0, max: 240, step: 5 },
   { key: 'cya', label: 'Ácido Cianúrico', short: 'CYA', anchors: CYA_ANCHORS, min: 0, max: 300, step: 5 },
   { key: 'sal', label: 'Sal', short: 'SAL', anchors: [], min: 0, max: 10, step: 0.1 },
 ];
@@ -401,7 +401,7 @@ export default function TesteRapidoScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute();
 
-  const [modo, setModo] = useState<ModoTeste>('TODOS');
+  const [modo, setModo] = useState<ModoTeste>('PH_CL');
   const [invertido, setInvertido] = useState(false);
   const [valores, setValores] = useState<ValoresTR>({});
   const [repetirArmado, setRepetirArmado] = useState(false);

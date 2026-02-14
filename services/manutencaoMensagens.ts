@@ -83,6 +83,8 @@ export type MensagensManutencaoOutput = {
   key: string;          // “assinatura” do estado atual (p/ não repetir alert)
 };
 
+
+
 // ======================================================
 // ACTIONS (modelo novo, migração faseada)
 // ======================================================
@@ -108,7 +110,6 @@ export type ActionType =
   // 🟡 OPERAÇÃO / FILTRAÇÃO
   | 'LIMPAR_PRE_FILTRO'
   | 'SUBSTITUIR_CESTO_PRE_FILTRO'
-  | 'LAVAGEM_FILTRO'
   | 'RETROLAVAGEM'
   | 'LIMPAR_TURBINA_MOTOR'
   | 'LIMPAR_TANQUE_COMPENSACAO'
@@ -414,14 +415,18 @@ export function calcularVolumeTrocaAguaParaCYA(
 // ======================================================
 // BUILD ACTIONS (v1: mínimo, sem reescrever mensagens)
 // ======================================================
+const precisaCorrecaoLocal = (p: Parametro) => precisaCorrecao(p);
 
 function buildActions(input: {
   cliente?: Cliente | null;
   modoTratamento?: ModoTratamento;
+  metodoAnalise?: string; // ✅ NOVO
   parametros: Parametro[];
   tacBaixa?: boolean;
 }): Action[] {
-  const { cliente, modoTratamento, parametros, tacBaixa } = input;
+
+  const { cliente, modoTratamento, metodoAnalise, parametros, tacBaixa } = input;
+
   const actions: Action[] = [];
 
   const get = (k: string) => parametros.find(p => normParametroNome(p.parametro) === k);
@@ -429,10 +434,35 @@ function buildActions(input: {
   const pCl = get('cloro_livre');
   const pCya = get('acido_cianurico');
   const pTac = get('alcalinidade');
+  const pPH = get('ph');
+  const pCC = get('cloro_combinado');
 
   const cl = pCl ? toNum(String(pCl.valor_atual ?? '').trim()) : NaN;
   const cya = pCya ? toNum(String(pCya.valor_atual ?? '').trim()) : NaN;
   const tac = pTac ? toNum(String(pTac.valor_atual ?? '').trim()) : NaN;
+  const ccDireto = pCC ? toNum(String((pCC as any).valor_atual ?? '').trim()) : NaN;
+
+   // fallback: se não houver CC preenchido, tenta calcular de Total - Livre (quando existirem)
+  const pTotal = get('cloro_total');
+  const total = pTotal ? toNum(String((pTotal as any).valor_atual ?? '').trim()) : NaN;
+
+  const cc =
+    Number.isFinite(ccDireto) ? ccDireto :
+    (Number.isFinite(total) && Number.isFinite(cl)) ? Math.max(0, total - cl) :
+    NaN;
+
+  if (Number.isFinite(cc) && cc > 0.5) {
+    const deltaBreakpoint = +(10 * cc).toFixed(2); // “regra mestre”: 10x cloro combinado
+
+    actions.push(
+      A(
+        'TRATAMENTO_CHOQUE_CLORAMINAS',
+        0,
+        'Cloro combinado alto: choque necessário',
+        { cc: +cc.toFixed(2), deltaBreakpoint }
+      )
+    );
+  }
 
   const isSal = (modoTratamento === 'sal') || !!cliente?.eletrolise_sal;
   const temOrp = !!cliente?.tem_orp;
@@ -441,6 +471,75 @@ function buildActions(input: {
   if (Number.isFinite(cl) && cl >= 10) {
     actions.push(A('BLOQUEIO_INTERDICAO_BANHO', 0, 'Piscina interdita (cloro muito alto)', { cl }));
   }
+
+  // 🟠 Cloro Combinado elevado → choque por cloraminas
+  if (Number.isFinite(cc) && cc > 0.5) {
+    actions.push(
+      A(
+        'TRATAMENTO_CHOQUE_CLORAMINAS',
+        1,
+        'Tratamento de choque necessário (cloraminas)',
+        { cc }
+      )
+    );
+  }
+
+  // 🔵 TAC (Alcalinidade) — Equilíbrio da água
+if (pTac && !isIgnoravel(pTac.status)) {
+  const st = (pTac.status ?? 'pendente');
+
+  const tacMin = toNum((pTac as any).valor_minimo);
+  const tacMax = toNum((pTac as any).valor_maximo);
+  const tacAlvo = toNum((pTac as any).valor_alvo);
+
+  const tacTemValor = Number.isFinite(tac);
+
+  // se não há valor, mas o TAC está "ativo" (precisa decisão), pede medição
+  const tacAtivo =
+    (st === 'pendente' && !dentroDoIntervalo(pTac)) ||
+    isProblema(st) ||
+    isAplicado(st) ||
+    st === 'sem estoque';
+
+  if (!tacTemValor && tacAtivo) {
+    actions.push(A('MEDIR_VALOR', 2, 'Medir TAC (Alcalinidade)', { parametro: 'TAC' }));
+  }
+
+  // Só cria AJUSTAR_TAC quando há valor numérico e está fora do intervalo
+  const fora =
+    tacTemValor &&
+    Number.isFinite(tacMin) &&
+    Number.isFinite(tacMax) &&
+    (tac < tacMin || tac > tacMax);
+
+  if (fora) {
+    const direcao = tac < tacMin ? 'subir' : 'descer';
+
+    actions.push(
+      A('AJUSTAR_TAC', 3, 'Ajustar TAC', {
+        direcao,
+        tac,
+        tacMin,
+        tacMax,
+        tacAlvo: Number.isFinite(tacAlvo) ? tacAlvo : undefined,
+        status: st,
+      })
+    );
+  }
+
+  // Se TAC foi “aplicado” nesta visita → aguardar estabilização e reavaliar
+  if (st === 'aplicado') {
+    actions.push(
+      A('BLOQUEIO_AGUARDAR_ESTABILIZACAO', 2, 'Aguardar estabilização após TAC', {
+        motivo: 'TAC',
+        horasMin: 4,
+        horasMax: 6,
+        reavaliar: ['TAC', 'pH'],
+      })
+    );
+    actions.push(A('REAVALIAR_MEDICOES', 2, 'Reavaliar TAC e pH após estabilização', { parametros: ['TAC', 'pH'] }));
+  }
+}
 
   // 🟠 CYA alto -> renovação água (nota: se não tens TAC medido, pedimos medir/confirmar)
   // (aqui NÃO calculo m3 ainda; só levo dados para as mensagens atuais consumirem depois)
@@ -458,7 +557,18 @@ function buildActions(input: {
     if (!tacTemValor) {
       actions.push(A('MEDIR_VALOR', 1, 'Medir TAC antes de decidir renovação de água', { parametro: 'TAC' }));
       actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'Renovação de água (CYA alto)', { cya, precisaConfirmarTAC: true }));
-    } else {
+    }
+    const isFotometro = String(metodoAnalise || '').toLowerCase() === 'fotometro';
+if (!isFotometro) {
+  actions.push(A(
+    'CONFIRMAR_VALOR',
+    1,
+    'Confirmar CYA com fotómetro antes de renovar água',
+    { parametro: 'CYA', metodoAnalise }
+  ));
+}
+
+    else {
       // recomendado: total, mínimo: parcial (a mensagem final decide o copy)
       actions.push(A('RENOVAR_AGUA_TOTAL_CYA', 1, 'Recomenda-se renovação total (CYA alto)', { cya, tac }));
       actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'No mínimo renovação parcial (CYA alto)', { cya, tac }));
@@ -473,6 +583,25 @@ function buildActions(input: {
         : A('AJUSTAR_NIVEL_PRODUCAO_ELETROLISE', 4, 'Eletrólise sem ORP: ajustar produção', {})
     );
   }
+
+  // 🔵 pH → ação de ajuste
+if (pPH && !isIgnoravel(pPH.status)) {
+  const st = (pPH.status ?? 'pendente');
+
+  const phDentro = dentroDoIntervalo(pPH);
+
+  const phAtivo =
+  (st === 'pendente' ? !phDentro : (isProblema(st) || isAplicado(st) || st === 'sem estoque'));
+
+
+  if (phAtivo) {
+    actions.push(
+      A('AJUSTAR_PH', 2, 'Ajustar pH', {
+        ph: toNum(String((pPH as any).valor_atual ?? '').trim()),
+      })
+    );
+  }
+}
 
   return actions;
 }
@@ -520,10 +649,10 @@ export function gerarMensagensManutencao(input: MensagensManutencaoInput): Mensa
   const tacAtivo = isAtivoNoProcedimento(pTAC);
   const tac = tacValor(parametrosFiltrados);
   const tacBaixa = Number.isFinite(tac) && tac < 65;
-
   const actions = buildActions({
   cliente,
   modoTratamento,
+  metodoAnalise,          // ✅ agora passa isto
   parametros: parametrosFiltrados,
   tacBaixa,
 });
@@ -648,25 +777,33 @@ const proc: string[] = [];
 
 // helpers de contexto (usar SEMPRE filtrados ✅)
 
-
 const psMedidos = parametrosFiltrados.filter((p) =>
   String((p as any).valor_atual ?? '').trim() !== ''
 );
 
+// ✅ PRIORIDADE por ACTION (sem heurísticas de texto)
+const temRenovacaoCYA = actions.some(a =>
+  a.type === 'RENOVAR_AGUA_TOTAL_CYA' || a.type === 'RENOVAR_AGUA_PARCIAL_CYA'
+);
+
+if (temRenovacaoCYA) {
+  proc.push(...procedimentoCYA(ps, cliente, tacBaixa, metodoAnalise));
+  proc.push('');
+}
 
 proc.push('=== Equilíbrio da água ===');
 proc.push(...procedimentoDureza(relevantesProc));
-proc.push(...procedimentoTAC(relevantesProc));
-proc.push(...procedimentoPH(relevantesProc));
-proc.push(...procedimentoCYA(psMedidos, cliente, tacBaixa));
-
+proc.push(...procedimentoTAC(relevantesProc, actions));
+proc.push(...procedimentoPH(relevantesProc, actions));
+if (!temRenovacaoCYA) {
+proc.push(...procedimentoCYA(psMedidos, cliente, tacBaixa, metodoAnalise));
+}
 
 proc.push('');
 proc.push('=== Desinfeção ===');
 proc.push(...procedimentoDesinfeccao(relevantesProc, cliente, modoTratamento, tacBaixa));
 
-// ✅ NOVO: Choque (só aparece se Cloro Combinado > 0.5)
-const choqueLinhas = procedimentoChoque(relevantesProc);
+const choqueLinhas = procedimentoChoque(relevantesProc, actions);
 if (choqueLinhas.length) {
   proc.push('');
   proc.push('=== Choque ===');
@@ -767,7 +904,7 @@ if (tacOuPhAtivo && acao === 'descer') {
   linhas.push('   ⚠️ Ao diminuir a dureza, a Alcalinidade e o pH podem descer;');
   linhas.push('   Aguardar 12–24h em circulação e voltar a medir TAC e pH.');
 } else if (tacOuPhAtivo && acao === 'subir') {
-  linhas.push('   - Após correção, aguardar 2–4 horas e reavaliar antes de avançar para TAC/pH.');
+  linhas.push('   - Após correção, aguardar 12–24 horas e reavaliar antes de avançar para TAC/pH.');
 } else if (acao === 'subir' || acao === 'descer') {
   // ✅ opcional: mensagem neutra, sem falar em TAC/pH
   linhas.push('   - Após correção, aguardar 2–4 horas em circulação e reavaliar.');
@@ -775,7 +912,7 @@ if (tacOuPhAtivo && acao === 'descer') {
   return linhas;
 }
 
-function procedimentoTAC(parametros: Parametro[]): string[] {
+function procedimentoTAC(parametros: Parametro[], actions: Action[]): string[] {
   const p = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
   if (!p || isIgnoravel(p.status)) return [];
 
@@ -789,6 +926,11 @@ function procedimentoTAC(parametros: Parametro[]): string[] {
 
   const linhas: string[] = [];
   linhas.push('2) Alcalinidade');
+
+  const actAjustar = actions.find(a => a.type === 'AJUSTAR_TAC');
+  const actAguardar = actions.find(a => a.type === 'BLOQUEIO_AGUARDAR_ESTABILIZACAO' && a.payload?.motivo === 'TAC');
+
+  if (!actAjustar && !actAguardar) return [];
 
   // ✅ 1ª linha do procedimento = a mensagem do cálculo, se existir
   // (ex.: "Adicionar X kg de …" / "Dentro do intervalo ideal")
@@ -804,48 +946,62 @@ function procedimentoTAC(parametros: Parametro[]): string[] {
   const phAtivo = isAtivoNoProcedimento(pPH);
 
   // ✅ regras curtas só quando há ação real
-  const acao = inferirAcao(p);
-if (phAtivo && acao === 'subir') {
-  linhas.push('   - Aumentar TAC tende a subir o pH. Reavaliar pH depois.');
-  linhas.push('   - Aguardar 4–6h em circulação e voltar a medir TAC e pH.');
-} else if (phAtivo && acao === 'descer') {
-  linhas.push('   - Diminuir TAC tende a descer o pH. Reavaliar pH depois.');
-  linhas.push('   - Aguardar 4–6h em circulação e voltar a medir TAC e pH.');
-} else if (acao === 'subir' || acao === 'descer') {
-  // ✅ opcional: manter só as linhas “neutras” sem falar no pH
-  linhas.push('   - Aguardar 4–6h em circulação e voltar a medir TAC e pH.');
+  
+if (actAguardar) {
+  const h1 = Number(actAguardar.payload?.horasMin);
+  const h2 = Number(actAguardar.payload?.horasMax);
+
+  if (Number.isFinite(h1) && Number.isFinite(h2)) {
+    linhas.push(`   - Aguardar ${h1}–${h2}h em circulação e voltar a medir TAC e pH.`);
+  } else {
+    linhas.push('   - Aguardar estabilização em circulação e voltar a medir TAC e pH.');
+  }
 }
 
   return linhas;
 }
 
-function procedimentoPH(parametros: Parametro[]): string[] {
+function procedimentoPH(parametros: Parametro[], actions: Action[]): string[] {
   const p = parametros.find(x => normParametroNome(x.parametro) === 'ph');
   if (!p || isIgnoravel(p.status)) return [];
 
   const st = (p.status ?? 'pendente');
+
+  // ✅ pendente + dentro do ideal => não aparece
   if (st === 'pendente' && dentroDoIntervalo(p)) return [];
+
+  // ✅ só interessa se há ação real / já aplicado / sem stock
   if (!(isProblema(st) || isAplicado(st) || st === 'sem estoque')) return [];
-
-  const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
-  const tacAtivo = isAtivoNoProcedimento(pTAC);
-
-  // ✅ NOVO: TAC foi medido nesta visita? (tem valor_atual preenchido)
-  const tacTemValor = !!pTAC && String(pTAC.valor_atual ?? '').trim() !== '';
-
-  // ✅ NOVO: ler variacaoPH guardada no resultado do pH
-  const variacaoPH = (p as any)?.resultado?.variacaoPH;
-  const variacaoRelevante = Number.isFinite(variacaoPH) && Math.abs(variacaoPH) >= 0.3;
-
 
   const linhas: string[] = [];
   linhas.push('3) pH');
 
-  // ✅ só fala de TAC se TAC estiver ativo nesta visita
-  if (tacAtivo) {
-    linhas.push('   - Regra: pH só deve ser ajustado após a Alcalinidade (TAC) estar estável.');
+  // --- contexto TAC (só didático) ---
+  const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
+  const tacTemValor = !!pTAC && String((pTAC as any).valor_atual ?? '').trim() !== '';
+
+  // --- actions que controlam se o pH deve aparecer / aguardar ---
+  const actAjustarPH = actions.find(a => a.type === 'AJUSTAR_PH');
+  const actAguardarPH = actions.find(
+    a => a.type === 'BLOQUEIO_AGUARDAR_ESTABILIZACAO' && a.payload?.motivo === 'PH'
+  );
+
+  // ✅ se não há action relevante, não diz nada
+  if (!actAjustarPH && !actAguardarPH) return [];
+
+  // ✅ regra: pH depois do TAC quando TAC está a ser mexido nesta visita
+  const actAjustar = actions.find(a => a.type === 'AJUSTAR_PH');
+  if (!actAjustar) return [];
+
+  const actAjustarTAC = actions.find(a => a.type === 'AJUSTAR_TAC');
+  const actAguardarTAC = actions.find(
+    a => a.type === 'BLOQUEIO_AGUARDAR_ESTABILIZACAO' && a.payload?.motivo === 'TAC'
+  );
+  if (actAjustarTAC || actAguardarTAC) {
+    linhas.push('   - Regra: ajustar pH só após a Alcalinidade (TAC) estar estável.');
   }
 
+  // ✅ 1ª linha do procedimento = resultado calculado, se existir
   if (p.resultado?.resultado) {
     linhas.push(`   - ${p.resultado.resultado}`);
   } else if (st === 'aplicado') {
@@ -855,27 +1011,59 @@ function procedimentoPH(parametros: Parametro[]): string[] {
   } else {
     linhas.push(`   - ${fraseAcao(p)}`);
   }
-  // ✅ Exceção: variação grande de pH só interessa se TAC NÃO foi medido
+
+  // ✅ variação pH (só alerta forte quando TAC não foi medida)
+  const variacaoPH = (p as any)?.resultado?.variacaoPH;
+  const variacaoRelevante = Number.isFinite(variacaoPH) && Math.abs(variacaoPH) >= 0.3;
+
   if (variacaoRelevante) {
-  if (!tacTemValor) {
-    linhas.push(` ΔpH ⚠ ${Number(variacaoPH).toFixed(2)} — confirmar TAC nesta visita.`);
-  } else {
-    linhas.push(` ΔpH ⚠ ${Number(variacaoPH).toFixed(2)} — monitorizar tendência (próxima visita).`);
+    if (!tacTemValor) {
+      linhas.push(`   - ΔpH ⚠ ${Number(variacaoPH).toFixed(2)} — confirmar TAC nesta visita.`);
+    } else {
+      linhas.push(`   - ΔpH ⚠ ${Number(variacaoPH).toFixed(2)} — monitorizar tendência (próxima visita).`);
+    }
   }
-}
 
+  // ✅ aguardar só quando existe action de “aguardar estabilização”
+  if (actAguardarPH) {
+    const h1 = Number(actAguardarPH.payload?.horasMin);
+    const h2 = Number(actAguardarPH.payload?.horasMax);
 
-  // ✅ só mostra este aviso se TAC estiver ativo (senão não faz sentido)
-  if (tacAtivo) {
-    linhas.push('   - Se TAC foi ajustada hoje, aguardar 2–4 horas em circulação - Reavaliar e corrigir pH.');
+    if (Number.isFinite(h1) && Number.isFinite(h2)) {
+      linhas.push(`   - Aguardar ${h1}–${h2}h em circulação e voltar a medir pH (e TAC).`);
+    } else {
+      linhas.push('   - Aguardar estabilização em circulação e voltar a medir pH (e TAC).');
+    }
   }
 
   return linhas;
 }
 
-function procedimentoCYA(parametros: Parametro[], cliente?: Cliente | null, tacBaixa?: boolean): string[] {
+function procedimentoCYA(
+  parametros: Parametro[],
+  cliente?: Cliente | null,
+  tacBaixa?: boolean,
+  metodoAnalise?: string
+): string[] {
+
   const p = parametros.find(x => normParametroNome(x.parametro) === 'acido_cianurico');
   if (!p || isIgnoravel(p.status)) return [];
+
+    const st = (p.status ?? 'pendente');
+
+  // ✅ CYA dentro do ideal só deve aparecer se houve ajuste nesta visita
+  const cyaDentroIdeal = dentroDoIntervalo(p);
+
+  const qtd = toNum((p as any)?.resultado?.quantidade);
+  const temQtd = Number.isFinite(qtd) && qtd > 0;
+
+  const temResultadoTxt = !!p.resultado?.resultado;
+
+  const houveAjuste = isAplicado(st) && (temQtd || temResultadoTxt);
+
+  // ✅ se está dentro do ideal e NÃO houve ajuste, não mostrar a secção CYA
+  if (cyaDentroIdeal && !houveAjuste) return [];
+
   if (!(isProblema(p.status) || isAplicado(p.status))) return [];
 
   const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
@@ -897,6 +1085,11 @@ function procedimentoCYA(parametros: Parametro[], cliente?: Cliente | null, tacB
   const acao = inferirAcao(p);
   if (acao === 'descer') {
   linhas.push('   - Para diminuir CYA, recomenda-se renovação parcial de água (não é correção química direta).');
+    if (String(metodoAnalise || '').toLowerCase() !== 'fotometro') {
+    linhas.push('   🚨 Decisão importante: confirmar CYA com fotómetro antes de renovar água.');
+    linhas.push('   - Em fitas, o CYA pode ter desvios; evite trocar água com base apenas em fitas.');
+  }
+  linhas.push('   ⚠ Se houver renovação de água, adiar correções que seriam desperdiçadas (ex.: dureza) até depois da renovação.');
 
   // ✅ Só damos m³ se TAC foi medido e está dentro do ideal
   if (!tacMedido || !tacOk) {
@@ -919,7 +1112,6 @@ function procedimentoCYA(parametros: Parametro[], cliente?: Cliente | null, tacB
   return linhas;
 }
 
-  const st = (p.status ?? 'pendente');
 if (p.resultado?.resultado) {
   linhas.push(`   - ${p.resultado.resultado}`);
 } else if (st === 'aplicado') {
@@ -929,7 +1121,10 @@ if (p.resultado?.resultado) {
 } else {
   linhas.push(`   - ${fraseAcao(p)}`);
 }
-  linhas.push('   - Após ajuste, aguardar estabilização e confirmar CYA na visita seguinte.');
+    // ✅ só mostra “Após ajuste…” quando houve mesmo ajuste nesta visita
+  if (houveAjuste) {
+    linhas.push('   - Após ajuste, aguardar estabilização e confirmar CYA na visita seguinte.');
+  }
 
   return linhas;
 }
@@ -943,7 +1138,14 @@ function procedimentoDesinfeccao(
   const linhas: string[] = [];
 
   const pCloroLivre = parametros.find(x => normParametroNome(x.parametro) === 'cloro_livre');
+  
   const pSal = parametros.find(x => normParametroNome(x.parametro) === 'sal');
+
+  const pCloroTotal = parametros.find(x => normParametroNome(x.parametro) === 'cloro_total');
+
+  // ✅ Cloro de referência: Livre (se existir) senão Total (caso gotas)
+  const pCloroRef = pCloroLivre ?? pCloroTotal;
+  const cloroLabel = pCloroLivre ? 'Cloro Livre' : 'Cloro Total';
 
   const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
   const pCYA = parametros.find(x => normParametroNome(x.parametro) === 'acido_cianurico');
@@ -958,7 +1160,7 @@ function procedimentoDesinfeccao(
     return (isProblema(st) || isAplicado(st) || st === 'sem estoque');
   };
 
-  const cloroAtivo = isAtivo(pCloroLivre);
+  const cloroAtivo = isAtivo(pCloroRef);
   const salAtivo = isAtivo(pSal);
   if (!cloroAtivo && !salAtivo) return [];
 
@@ -972,7 +1174,7 @@ function procedimentoDesinfeccao(
     return Number.isFinite(n) ? n : NaN;
   };
 
-  const cloro = getNum(pCloroLivre?.valor_atual);
+  const cloro = getNum(pCloroRef?.valor_atual);
   const temCloro = Number.isFinite(cloro);
 
   const salVal = getNum(pSal?.valor_atual);
@@ -991,23 +1193,43 @@ function procedimentoDesinfeccao(
   // Detecta "piscina a sal"
   const piscinaSal = (modoTratamento === 'sal') || !!cliente?.eletrolise_sal;
 
-  const appendAlternativaNeutralizador = () => {
-  const txt = pCloroLivre?.resultado?.resultado;
+  const appendNeutralizador = (modo: 'direto' | 'alternativa' | 'alternativa_sem_dose') => {
+  const txt = pCloroRef?.resultado?.resultado;
 
-  // Se existir cálculo (normalmente já traz quantidade + produto)
-  if (txt) {
-    linhas.push(`   - Alternativa (se necessário): ${txt}`);
+  // ✅ caso especial: queremos SEM dose, mesmo que exista cálculo
+  if (modo === 'alternativa_sem_dose') {
+    linhas.push('   - Alternativa (se necessário): aplicar neutralizador de cloro.');
     return;
   }
 
-  // Fallback curto (quando ainda não há doseamento)
-  linhas.push('   - Alternativa (se necessário): aplicar neutralizador de cloro.');
-};
+  if (txt) {
+    if (modo === 'direto') {
+      // ✅ cenário forte: mostra a dose diretamente, sem “Alternativa”
+      linhas.push(`   - ${txt}`);
+    } else {
+      // ✅ cenário moderado: fica como alternativa (com dose)
+      linhas.push(`   - Alternativa (se necessário): ${txt}`);
+    }
+    return;
+  }
 
+
+  // fallback quando ainda não há cálculo
+  if (modo === 'direto') {
+    linhas.push('   - Aplicar neutralizador de cloro.');
+  } else {
+    linhas.push('   - Alternativa (se necessário): aplicar neutralizador de cloro.');
+  }
+};
 
   // ----------------------------------------------------
   // (A) PISCINA A SAL (ORP)
   // ----------------------------------------------------
+  const temOrp = !!cliente?.tem_orp;
+  const txtReducao = temOrp
+    ? 'reduzir o setpoint da eletrólise (ORP)'
+    : 'reduzir o nível de produção da eletrólise';
+
   if (piscinaSal) {
     const tacAtivo = isAtivo(pTAC);
     const cyaAtivo = isAtivo(pCYA);
@@ -1016,58 +1238,58 @@ function procedimentoDesinfeccao(
     if (salAtivo && pSal && temValor(pSal)) {
       linhas.push(`   - Sal: ${linhaPrincipal(pSal)}`);
     }
-
     
-const cloroLivreTemValor = !!pCloroLivre && temValor(pCloroLivre);
+// 2) Contexto ORP só quando NÃO vamos escrever instruções concretas para Cloro Livre nesta visita
+const cloroTemValor = !!pCloroRef && temValor(pCloroRef);
 
-// 2) Contexto ORP só quando NÃO vamos dar já instrução concreta de cloro/setpoint
-if ((tacAtivo || cyaAtivo) && !cloroLivreTemValor) {
+if ((tacAtivo || cyaAtivo) && !cloroTemValor) {
   linhas.push('   - Eletrólise (ORP): ajustar setpoint só após confirmar Sal, TAC e CYA.');
   if (tacBaixa && tacAtivo) {
     linhas.push('   - TAC baixo pode distorcer ORP. Corrigir TAC e reavaliar cloro.');
   }
 }
 
-
     // 3) Cloro Livre (mensagem principal = setpoint; produto = plano B)
-    if (cloroAtivo && pCloroLivre) {
-      // a) Muito alto / interdição
+    if (cloroAtivo && pCloroRef) {
+      // a) Excesso / interdição
       if (temCloro && cloro >= INTERDITO_CLORO) {
-        linhas.push(`   - Cloro Livre: muito alto (${cloro}).`);
-        linhas.push('   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, reduzir setpoint da eletrólise (ORP).');
-        appendAlternativaNeutralizador();
+        linhas.push(`   - ${cloroLabel}: muito alto (${cloro}).`);
+        linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
+        appendNeutralizador('direto');
         return linhas;
       }
 
-      // b) Excesso (>=5) mas <10
-      if (temCloro && cloro >= EXCESSO_CLORO) {
-        linhas.push(`   - Cloro Livre: excesso (${cloro}).`);
-        linhas.push('   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, reduzir setpoint da eletrólise (ORP).');
-        appendAlternativaNeutralizador();
+      // b) Excesso (>=5) mas <10  → alternativa COM dose (se existir)
+if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
+  linhas.push(`   - ${cloroLabel}: excesso (${cloro}).`);
+  linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
+  appendNeutralizador('alternativa'); // ✅ aqui queres COM dose quando houver cálculo
+  return linhas;
+}
 
-        return linhas;
-      }
 
-      // c) Acima do ideal (>3) mas abaixo de excesso
-      if (temCloro && cloro > IDEAL_MAX_CLORO) {
-        linhas.push(`   - Cloro Livre: acima do ideal (${cloro}).`);
-        linhas.push('   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, reduzir setpoint da eletrólise (ORP).');
-        return linhas;
-      }
+      // c) Acima do ideal (>3) mas <5 → alternativa SEM dose
+if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
+  linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro}).`);
+  linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
+  appendNeutralizador('alternativa_sem_dose'); // ✅ como pediste
+  return linhas;
+}
+
 
       // d) Baixo / precisa correção (ou sem número, mas status diz que precisa)
       linhas.push(
         temCloro
-          ? `   - Cloro Livre: baixo (${cloro} ppm).`
-          : '   - Cloro Livre: baixo.'
+          ? `   - ${cloroLabel}: baixo (${cloro} ppm).`
+          : `   - ${cloroLabel}: baixo.`
       );
       linhas.push('   - Ação: aumentar setpoint da eletrólise (após confirmar Sal, TAC e CYA).');
 
       // Plano B: só mostra o produto se existir resultado calculado
-      const produtoPlanoB = pCloroLivre?.resultado?.resultado;
+      const produtoPlanoB = pCloroRef?.resultado?.resultado;
       if (produtoPlanoB) {
-        linhas.push(` - Se não for possível ajustar a eletrólise: ${produtoPlanoB}`);
-      }
+  linhas.push(`   - Se não for possível ajustar a eletrólise: ${produtoPlanoB}`);
+}
 
       return linhas;
     }
@@ -1078,33 +1300,40 @@ if ((tacAtivo || cyaAtivo) && !cloroLivreTemValor) {
   // ----------------------------------------------------
   // (B) PISCINA A CLORO (não-sal)
   // ----------------------------------------------------
-  if (cloroAtivo && pCloroLivre) {
+  if (cloroAtivo && pCloroRef) {
     if (temCloro && cloro >= INTERDITO_CLORO) {
-      linhas.push(`   - Cloro Livre: muito alto (${cloro}). Piscina interditada a banhistas.`);
-      linhas.push(' - Confirmar valor.');
-// ✅ se a Folha calculou neutralizador, aparece aqui com quantidade
-if (pCloroLivre?.resultado?.resultado) {
-  linhas.push(` - ${pCloroLivre.resultado.resultado}`);
-} else {
-  linhas.push(' - Aplicar neutralizador se necessário.');
+  linhas.push(`   - ${cloroLabel}: excesso (${cloro}). Piscina interditada a banhistas.`);
+  linhas.push('   - Confirmar valor.');
+  const txt = pCloroRef?.resultado?.resultado;
+  if (txt) {
+    linhas.push(`   - ${txt}`); // ✅ direto com dose
+  } else {
+    linhas.push('   - Aplicar neutralizador de cloro se necessário.');
+  }
+  return linhas;
 }
-return linhas;
 
-    }
 
-    if (temCloro && cloro >= EXCESSO_CLORO) {
-      linhas.push(`   - Cloro Livre: excesso (${cloro}).`);
-      linhas.push('   - Confirmar valor e não adicionar cloro.');
-      return linhas;
-    }
+
+    if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
+  linhas.push(`   - ${cloroLabel}: muito alto (${cloro}).`);
+  linhas.push('   - Confirmar valor e não adicionar cloro.');
+  const txt = pCloroRef?.resultado?.resultado;
+  if (txt) {
+    linhas.push(`   - Alternativa (se necessário): ${txt}`); // ✅ com dose
+  } else {
+    linhas.push('   - Alternativa (se necessário): aplicar neutralizador de cloro.');
+  }
+  return linhas;
+}
 
     if (temCloro && cloro > IDEAL_MAX_CLORO) {
-      linhas.push(`   - Cloro Livre: acima do ideal (${cloro}). Não adicionar cloro.`);
+      linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro}). Não adicionar cloro.`);
       return linhas;
     }
 
     // baixo: aqui sim faz sentido “produto”
-    linhas.push(`   - Cloro Livre: ${linhaPrincipal(pCloroLivre)}`);
+    linhas.push(`   - ${cloroLabel}: ${linhaPrincipal(pCloroRef)}`);
 
     // aviso final só se TAC/pH estiverem ativos nesta visita
     const tacAtivo = isAtivo(pTAC);
@@ -1148,15 +1377,35 @@ function alertaChoque(ps: Parametro[]) {
   return { titulo: '🚨 Tratamento de Choque Necessário', linhas, cc };
 }
 
-function procedimentoChoque(ps: Parametro[]): string[] {
-  const choque = alertaChoque(ps);
-  if (!choque) return [];
+function procedimentoChoque(parametros: Parametro[], actions: Action[]): string[] {
+  const act = actions.find(a => a.type === 'TRATAMENTO_CHOQUE_CLORAMINAS');
+  if (!act) return [];
+
+  const cc = Number(act.payload?.cc);
+  const delta = Number(act.payload?.deltaBreakpoint);
 
   const linhas: string[] = [];
   linhas.push('6) Choque');
-  choque.linhas.forEach(l => linhas.push(`   - ${l}`));
+
+  if (Number.isFinite(cc)) {
+    linhas.push(`- Cloro Combinado = ${cc.toFixed(2)} ppm (> 0.5).`);
+  } else {
+    linhas.push('- Cloro Combinado > 0.5 ppm (cloraminas).');
+  }
+
+  linhas.push('- Recomenda-se tratamento de choque.');
+
+  if (Number.isFinite(delta)) {
+    linhas.push(`- Alvo (breakpoint): aumentar Cloro Livre em ~${delta.toFixed(2)} ppm (10x o Cloro Combinado).`);
+  }
+
+  linhas.push('- Se ajustares pH nesta visita: pH primeiro, aguardar 30–60 min, depois choque.');
+  linhas.push('- Após choque: aguardar 12 h antes de Algicida/Floculante.');
+  linhas.push('- Banho interdito até Cloro Livre < 4.0 ppm.');
+
   return linhas;
 }
+
 
 
 

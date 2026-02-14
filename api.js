@@ -2794,14 +2794,16 @@ app.post('/isl', async (req, res) => {
   const {
     empresaid,
     cliente_id,
-    manutencao_id, // opcional
+    manutencao_id,
     ph,
     alcalinidade,
     dureza,
     temperatura,
-    tds,          // opcional
+    tds,
     isl,
     indicacao,
+    ph_alvo,
+    alc_alvo,
   } = req.body;
 
   // validações mínimas (mantém simples)
@@ -2824,9 +2826,10 @@ app.post('/isl', async (req, res) => {
       INSERT INTO isl_registos (
         cliente_id, manutencao_id, empresaid,
         ph, alcalinidade, dureza, temperatura, tds,
-        isl, indicacao
+        isl, indicacao,
+        ph_alvo, alc_alvo
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `;
 
@@ -2841,6 +2844,8 @@ app.post('/isl', async (req, res) => {
       tds ?? null,
       isl,
       indicacao,
+      ph_alvo ?? null,
+      alc_alvo ?? null,
     ];
 
     const hist = await client.query(qHist, vHist);
@@ -2858,19 +2863,24 @@ app.post('/isl', async (req, res) => {
     tds, tds_updated_at,
     isl, isl_updated_at,
     indicacao,
+    ph_alvo, alc_alvo, alvos_updated_at,
     updated_at, created_at
   )
   VALUES (
-    $1, $2,
-    $3, NOW(),
-    $4, NOW(),
-    $5, NOW(),
-    $6, NOW(),
-    $7, NOW(),
-    $8, NOW(),
-    $9,
-    NOW(), NOW()
-  )
+  $1, $2,
+  $3, NOW(),
+  $4, NOW(),
+  $5, NOW(),
+  $6, NOW(),
+  $7, NOW(),
+  $8, NOW(),
+  $9, NOW(),
+  $10,
+
+  $11, $12, CASE WHEN ($11 IS NOT NULL OR $12 IS NOT NULL) THEN NOW() ELSE NULL END,
+
+  NOW(), NOW()
+)
   ON CONFLICT (empresaid, cliente_id)
   DO UPDATE SET
     ph = EXCLUDED.ph,
@@ -2886,7 +2896,14 @@ app.post('/isl', async (req, res) => {
     isl = EXCLUDED.isl,
     isl_updated_at = NOW(),
     indicacao = EXCLUDED.indicacao,
-    updated_at = NOW();
+    ph_alvo = COALESCE(EXCLUDED.ph_alvo, isl_estado_atual.ph_alvo),
+    alc_alvo = COALESCE(EXCLUDED.alc_alvo, isl_estado_atual.alc_alvo),
+    alvos_updated_at = CASE
+      WHEN EXCLUDED.ph_alvo IS NOT NULL OR EXCLUDED.alc_alvo IS NOT NULL THEN NOW()
+      ELSE isl_estado_atual.alvos_updated_at
+    END,
+    updated_at = NOW()
+  RETURNING *;
 `;
 
 const vUpsert = [
@@ -2898,7 +2915,9 @@ const vUpsert = [
   temperatura,        // $6
   tds ?? null,        // $7
   isl,                // $8
-  indicacao || null,  // $9
+  indicacao || null,  // $10  (no SQL é $10)
+  ph_alvo ?? null,    // $11
+  alc_alvo ?? null,   // $12
 ];
 
 await client.query(qUpsert, vUpsert);
@@ -2997,9 +3016,11 @@ app.post('/isl/estado', async (req, res) => {
     alcalinidade,
     dureza,
     temperatura,
-    tds,          // opcional
+    tds,          
     isl,
     indicacao,
+    ph_alvo,
+    alc_alvo,
   } = req.body;
 
   if (!empresaid) return res.status(400).json({ error: 'Empresaid é obrigatório.' });
@@ -3012,59 +3033,71 @@ app.post('/isl/estado', async (req, res) => {
 
   try {
     const qUpsert = `
-      INSERT INTO isl_estado_atual (
-        empresaid, cliente_id,
-        ph, ph_updated_at,
-        alcalinidade, alcalinidade_updated_at,
-        dureza, dureza_updated_at,
-        temperatura, temperatura_updated_at,
-        tds, tds_updated_at,
-        isl, isl_updated_at,
-        indicacao,
-        updated_at, created_at
-      )
-      VALUES (
-        $1, $2,
-        $3, NOW(),
-        $4, NOW(),
-        $5, NOW(),
-        $6, NOW(),
-        $7, NOW(),
-        $8, NOW(),
-        $9, NOW(),
-        $10,
-        NOW(), NOW()
-      )
-      ON CONFLICT (empresaid, cliente_id)
-      DO UPDATE SET
-        ph = EXCLUDED.ph,
-        ph_updated_at = NOW(),
-        alcalinidade = EXCLUDED.alcalinidade,
-        alcalinidade_updated_at = NOW(),
-        dureza = EXCLUDED.dureza,
-        dureza_updated_at = NOW(),
-        temperatura = EXCLUDED.temperatura,
-        temperatura_updated_at = NOW(),
-        tds = EXCLUDED.tds,
-        tds_updated_at = NOW(),
-        isl = EXCLUDED.isl,
-        isl_updated_at = NOW(),
-        indicacao = EXCLUDED.indicacao,
-        updated_at = NOW()
-      RETURNING *;
-    `;
+  INSERT INTO isl_estado_atual (
+    empresaid, cliente_id,
+    ph, ph_updated_at,
+    alcalinidade, alcalinidade_updated_at,
+    dureza, dureza_updated_at,
+    temperatura, temperatura_updated_at,
+    tds, tds_updated_at,
+    isl, isl_updated_at,
+    indicacao,
+    ph_alvo, alc_alvo, alvos_updated_at,
+    updated_at, created_at
+  )
+  VALUES (
+    $1, $2,
+    $3, NOW(),
+    $4, NOW(),
+    $5, NOW(),
+    $6, NOW(),
+    $7, NOW(),
+    $8, NOW(),
+    $9,
+    $10, $11,
+    CASE WHEN ($10 IS NOT NULL OR $11 IS NOT NULL) THEN NOW() ELSE NULL END,
+    NOW(), NOW()
+  )
+  ON CONFLICT (empresaid, cliente_id)
+  DO UPDATE SET
+    ph = EXCLUDED.ph,
+    ph_updated_at = NOW(),
+    alcalinidade = EXCLUDED.alcalinidade,
+    alcalinidade_updated_at = NOW(),
+    dureza = EXCLUDED.dureza,
+    dureza_updated_at = NOW(),
+    temperatura = EXCLUDED.temperatura,
+    temperatura_updated_at = NOW(),
+    tds = EXCLUDED.tds,
+    tds_updated_at = NOW(),
+    isl = EXCLUDED.isl,
+    isl_updated_at = NOW(),
+    indicacao = EXCLUDED.indicacao,
+
+    ph_alvo = COALESCE(EXCLUDED.ph_alvo, isl_estado_atual.ph_alvo),
+    alc_alvo = COALESCE(EXCLUDED.alc_alvo, isl_estado_atual.alc_alvo),
+    alvos_updated_at = CASE
+      WHEN EXCLUDED.ph_alvo IS NOT NULL OR EXCLUDED.alc_alvo IS NOT NULL THEN NOW()
+      ELSE isl_estado_atual.alvos_updated_at
+    END,
+
+    updated_at = NOW()
+  RETURNING *;
+`;
 
     const vUpsert = [
-      empresaid,          // $1
-      cliente_id,         // $2
-      ph,                 // $3
-      alcalinidade,       // $4
-      dureza,             // $5
-      temperatura,        // $6
-      tds ?? null,        // $7
-      isl,                // $8
-      indicacao || null,  // $9
-    ];
+  empresaid,          // $1
+  cliente_id,         // $2
+  ph,                 // $3
+  alcalinidade,       // $4
+  dureza,             // $5
+  temperatura,        // $6
+  tds ?? null,        // $7
+  isl,                // $8
+  indicacao || null,  // $9
+  ph_alvo ?? null,    // $10
+  alc_alvo ?? null,   // $11
+];
 
     const r = await pool.query(qUpsert, vUpsert);
     return res.status(200).json(r.rows[0]);
