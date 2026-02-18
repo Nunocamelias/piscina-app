@@ -150,17 +150,53 @@ useEffect(() => {
   }
 
   if (field === 'codigo_postal' && typeof value === 'string') {
-    let formattedValue = value.replace(/\D/g, '');
-    if (formattedValue.length > 4) {
-      formattedValue = formattedValue.slice(0, 4) + '-' + formattedValue.slice(4);
-    }
-    if (formattedValue.length > 8) {
-      formattedValue = formattedValue.slice(0, 8);
-    }
-    setForm((prevState) => ({ ...prevState, [field]: formattedValue }));
+  const s = value.trim();
+
+  // Verifica se o utilizador acabou de escrever um separador
+  const endsWithSep = /[-/.\s]$/.test(s);
+
+  // Mantém só os números
+  const digits = s.replace(/\D/g, '').slice(0, 7); // 4 + 3 = 7 dígitos
+
+  let out = '';
+
+  if (digits.length <= 4) {
+    out = digits;
   } else {
-    setForm((prevState) => ({ ...prevState, [field]: value }));
+    out = `${digits.slice(0, 4)}-${digits.slice(4)}`;
   }
+
+  // Se escreveu separador depois dos 4 primeiros dígitos,
+  // mostra logo o traço mesmo sem escrever o próximo número
+  if (endsWithSep && digits.length === 4 && !out.endsWith('-')) {
+    out += '-';
+  }
+
+  setForm((prevState) => ({ ...prevState, codigo_postal: out.slice(0, 8) }));
+  return;
+}
+
+  // ✅ Campos numéricos com vírgula → ponto automático
+if (
+  field === 'comprimento' ||
+  field === 'largura' ||
+  field === 'profundidade_media'
+) {
+  if (typeof value === 'string') {
+    let formatted = value.replace(/,/g, '.'); // vírgula vira ponto
+
+    // mantém só números e 1 ponto decimal
+    formatted = formatted
+      .replace(/[^0-9.]/g, '')      // remove lixo
+      .replace(/(\..*)\./g, '$1');  // impede dois pontos
+
+    setForm((prev) => ({
+      ...prev,
+      [field]: formatted,
+    }));
+  }
+  return;
+}
 };
 
 

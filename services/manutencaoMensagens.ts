@@ -431,7 +431,12 @@ function buildActions(input: {
 
   const get = (k: string) => parametros.find(p => normParametroNome(p.parametro) === k);
 
-  const pCl = get('cloro_livre');
+  const pClLivre = get('cloro_livre');
+  const pClTotal = get('cloro_total');
+  const pCl = pClLivre ?? pClTotal;
+  const cloroLabel = pClLivre ? 'Cloro Livre' : 'Cloro Total';
+
+  const pDur = get('dureza');
   const pCya = get('acido_cianurico');
   const pTac = get('alcalinidade');
   const pPH = get('ph');
@@ -513,19 +518,29 @@ if (pTac && !isIgnoravel(pTac.status)) {
     (tac < tacMin || tac > tacMax);
 
   if (fora) {
-    const direcao = tac < tacMin ? 'subir' : 'descer';
+  const direcao = tac < tacMin ? 'subir' : 'descer';
 
-    actions.push(
-      A('AJUSTAR_TAC', 3, 'Ajustar TAC', {
-        direcao,
-        tac,
-        tacMin,
-        tacMax,
-        tacAlvo: Number.isFinite(tacAlvo) ? tacAlvo : undefined,
-        status: st,
-      })
-    );
-  }
+  actions.push(
+    A('AJUSTAR_TAC', 3, 'Ajustar TAC', {
+      direcao,
+      tac,
+      tacMin,
+      tacMax,
+      tacAlvo: Number.isFinite(tacAlvo) ? tacAlvo : undefined,
+      status: st,
+    })
+  );
+
+  // ✅ só aqui
+  actions.push(
+    A('BLOQUEIO_AGUARDAR_ESTABILIZACAO', 2, 'Aguardar estabilização após ajuste de TAC', {
+      motivo: 'TAC',
+      horasMin: 4,
+      horasMax: 6,
+      reavaliar: ['TAC', 'pH'],
+    })
+  );
+}
 
   // Se TAC foi “aplicado” nesta visita → aguardar estabilização e reavaliar
   if (st === 'aplicado') {
@@ -602,7 +617,53 @@ if (pPH && !isIgnoravel(pPH.status)) {
     );
   }
 }
+// 🔵 DUREZA → ação de ajuste + aguardar estabilização (12–24h)
+if (pDur && !isIgnoravel(pDur.status)) {
+  const st = (pDur.status ?? 'pendente');
+  const durDentro = dentroDoIntervalo(pDur);
 
+  const durAtivo =
+    !(st === 'pendente' && durDentro) &&
+    (isProblema(st) || isAplicado(st) || st === 'sem estoque');
+
+  const dur = toNum(String((pDur as any).valor_atual ?? '').trim());
+
+  // Só cria AJUSTAR_DUREZA quando há valor numérico e está fora do intervalo
+  const durMin = toNum(pDur.valor_minimo);
+  const durMax = toNum(pDur.valor_maximo);
+  const durAlvo = toNum(pDur.valor_alvo);
+
+  const temValor = Number.isFinite(dur);
+  const fora =
+    temValor &&
+    Number.isFinite(durMin) &&
+    Number.isFinite(durMax) &&
+    (dur < durMin || dur > durMax);
+
+  if (durAtivo && fora) {
+    const direcao = dur < durMin ? 'subir' : 'descer';
+
+    actions.push(
+      A('AJUSTAR_DUREZA', 2, 'Ajustar Dureza', {
+        direcao,
+        dur,
+        durMin,
+        durMax,
+        durAlvo: Number.isFinite(durAlvo) ? durAlvo : undefined,
+        status: st,
+      })
+    );
+
+    actions.push(
+      A(
+        'BLOQUEIO_AGUARDAR_ESTABILIZACAO',
+        2,
+        'Aguardar estabilização após ajuste de Dureza',
+        { motivo: 'DUREZA', horasMin: 12, horasMax: 24 }
+      )
+    );
+  }
+}
   return actions;
 }
 
@@ -690,7 +751,12 @@ if (choque) {
 });
 
 
-const obrigatorios = new Set(['ph', 'cloro_livre']); // se quiseres incluir cloro_total em gotas, diz-me
+const cloroObrigatorio = (String(metodoAnalise || '').toLowerCase() === 'gotas')
+  ? 'cloro_total'
+  : 'cloro_livre';
+
+const obrigatorios = new Set<ParamKey>(['ph', cloroObrigatorio]);
+ // se quiseres incluir cloro_total em gotas, diz-me
 
 const parametrosComValorOuObrigatorio = parametrosFiltrados.filter((p) => {
   const k = normParametroNome(p.parametro);
@@ -726,17 +792,18 @@ const parametrosComValorOuObrigatorio = parametrosFiltrados.filter((p) => {
    if (k === 'sal' && !(modoTratamento === 'sal' || cliente?.eletrolise_sal)) continue;
   // Cloro Total nunca entra no resumo.
   // Cloro Combinado entra APENAS se > 0.5 (para justificar o choque).
-  if (k === 'cloro_total') continue;
+  // ✅ só ignora cloro_total quando existe cloro_livre (para não duplicar)
+if (k === 'cloro_total') {
+  const temLivre = candidatos.some(x => normParametroNome(x.parametro) === 'cloro_livre');
+  if (temLivre) continue;
+}
+
 
   if (k === 'cloro_combinado') {
     const cc = numOrNaN((p as any).valor_atual);
     if (!Number.isFinite(cc) || cc <= 0.5) continue;
   }
-  const nome = labelParametro(p.parametro);
-  const atual =
-  p.valor_atual == null || String(p.valor_atual).trim() === ''
-    ? '—'
-    : String(p.valor_atual);
+  
 
 const st = (p.status ?? 'pendente');
 
@@ -763,10 +830,26 @@ const icon =
   (st === 'pendente' && !dentroDoIntervalo(p)) ? '🟡' :
   '🟢';
 
-// ✅ linha final curta (sem (st) e sem (subir/descer))
-linhasResumo.push(`• ${icon} ${nome}: ${atual} — ${linhaExtra}`);
-}
+  const nome = labelParametro(p.parametro);
 
+const atualStr =
+  p.valor_atual == null || String(p.valor_atual).trim() === ''
+    ? '—'
+    : String(p.valor_atual).trim();
+
+// ✅ ppm também para Dureza e TAC (Alcalinidade)
+const atualComUnidade =
+  (k === 'cloro_livre' ||
+    k === 'cloro_total' ||
+    k === 'cloro_combinado' ||
+    k === 'dureza' ||
+    k === 'alcalinidade' ||
+    k === 'acido_cianurico')
+    ? (atualStr === '—' ? '—' : `${atualStr} ppm`)
+    : atualStr;
+
+linhasResumo.push(`• ${icon} ${nome}: ${atualComUnidade} — ${linhaExtra}`);
+}
   const resumo =
     linhasResumo.length > 0
       ? linhasResumo.join('\n')
@@ -792,7 +875,7 @@ if (temRenovacaoCYA) {
 }
 
 proc.push('=== Equilíbrio da água ===');
-proc.push(...procedimentoDureza(relevantesProc));
+proc.push(...procedimentoDureza(relevantesProc, actions));
 proc.push(...procedimentoTAC(relevantesProc, actions));
 proc.push(...procedimentoPH(relevantesProc, actions));
 if (!temRenovacaoCYA) {
@@ -868,7 +951,8 @@ return {
    (6) BLOCOS DE PROCEDIMENTO (por secção, fáceis de ajustar)
    ========================================================= */
 
-function procedimentoDureza(parametros: Parametro[]): string[] {
+function procedimentoDureza(parametros: Parametro[], actions: Action[]): string[] {
+
   const p = parametros.find(x => normParametroNome(x.parametro) === 'dureza');
   if (!p || isIgnoravel(p.status)) return [];
 
@@ -883,6 +967,14 @@ function procedimentoDureza(parametros: Parametro[]): string[] {
   const linhas: string[] = [];
   linhas.push('1) Dureza');
 
+  const actAjustar = actions.find(a => a.type === 'AJUSTAR_DUREZA');
+  const actAguardar = actions.find(
+    a => a.type === 'BLOQUEIO_AGUARDAR_ESTABILIZACAO' && a.payload?.motivo === 'DUREZA'
+  );
+
+  // ✅ se não há action relevante, não diz nada
+  if (!actAjustar && !actAguardar) return [];
+
   // ✅ 1ª linha do procedimento = a mensagem do cálculo, se existir
   if (p.resultado?.resultado) {
     linhas.push(`   - ${p.resultado.resultado}`);
@@ -894,21 +986,42 @@ function procedimentoDureza(parametros: Parametro[]): string[] {
     linhas.push(`   - ${fraseAcao(p)}`);
   }
 
-  const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
+    const pTAC = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
   const pPH  = parametros.find(x => normParametroNome(x.parametro) === 'ph');
   const tacOuPhAtivo = isAtivoNoProcedimento(pTAC) || isAtivoNoProcedimento(pPH);
 
-  // regra: dureza mexe em TAC/pH (quando se diminui) ou estabiliza (quando se aumenta)
+  // regra: dureza mexe em TAC/pH (sobretudo ao diminuir)
   const acao = inferirAcao(p);
-if (tacOuPhAtivo && acao === 'descer') {
-  linhas.push('   ⚠️ Ao diminuir a dureza, a Alcalinidade e o pH podem descer;');
-  linhas.push('   Aguardar 12–24h em circulação e voltar a medir TAC e pH.');
-} else if (tacOuPhAtivo && acao === 'subir') {
-  linhas.push('   - Após correção, aguardar 12–24 horas e reavaliar antes de avançar para TAC/pH.');
-} else if (acao === 'subir' || acao === 'descer') {
-  // ✅ opcional: mensagem neutra, sem falar em TAC/pH
-  linhas.push('   - Após correção, aguardar 2–4 horas em circulação e reavaliar.');
+
+  const direcao = String(actAjustar?.payload?.direcao ?? '');
+
+// ⚠️ só quando a action diz mesmo “descer”
+if (tacOuPhAtivo && direcao === 'descer') {
+  linhas.push('   ⚠ Ao diminuir a dureza, a Alcalinidade (TAC) e o pH podem descer.');
+  // o tempo vem do actAguardar (já adicionas em baixo)
 }
+
+  // ✅ tempo vem das Actions (12–24h)
+  if (actAguardar) {
+  const h1 = Number(actAguardar.payload?.horasMin);
+  const h2 = Number(actAguardar.payload?.horasMax);
+
+  if (Number.isFinite(h1) && Number.isFinite(h2)) {
+    linhas.push(`   - Aguardar ${h1}–${h2}h em circulação e reavaliar.`);
+  } else {
+    linhas.push('   - Aguardar estabilização em circulação e reavaliar.');
+  }
+
+  const pTAC2 = parametros.find(x => normParametroNome(x.parametro) === 'alcalinidade');
+  const pPH2  = parametros.find(x => normParametroNome(x.parametro) === 'ph');
+  const tacOuPhAtivo2 = isAtivoNoProcedimento(pTAC2) || isAtivoNoProcedimento(pPH2);
+
+  // ✅ reforço só quando TAC/pH entram no procedimento nesta visita
+  if (tacOuPhAtivo2) {
+    linhas.push('   - Voltar a medir TAC e pH após a estabilização.');
+  }
+}
+
   return linhas;
 }
 
@@ -1253,7 +1366,7 @@ if ((tacAtivo || cyaAtivo) && !cloroTemValor) {
     if (cloroAtivo && pCloroRef) {
       // a) Excesso / interdição
       if (temCloro && cloro >= INTERDITO_CLORO) {
-        linhas.push(`   - ${cloroLabel}: muito alto (${cloro}).`);
+        linhas.push(`   - ${cloroLabel}: excesso (${cloro} ppm).`);
         linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
         appendNeutralizador('direto');
         return linhas;
@@ -1261,7 +1374,7 @@ if ((tacAtivo || cyaAtivo) && !cloroTemValor) {
 
       // b) Excesso (>=5) mas <10  → alternativa COM dose (se existir)
 if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
-  linhas.push(`   - ${cloroLabel}: excesso (${cloro}).`);
+  linhas.push(`   - ${cloroLabel}: muito alto (${cloro} ppm).`);
   linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
   appendNeutralizador('alternativa'); // ✅ aqui queres COM dose quando houver cálculo
   return linhas;
@@ -1270,7 +1383,7 @@ if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
 
       // c) Acima do ideal (>3) mas <5 → alternativa SEM dose
 if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
-  linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro}).`);
+  linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro} ppm).`);
   linhas.push(`   - Ação: após confirmar Sal, TAC e CYA dentro do ideal, ${txtReducao}.`);
   appendNeutralizador('alternativa_sem_dose'); // ✅ como pediste
   return linhas;
@@ -1287,9 +1400,16 @@ if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
 
       // Plano B: só mostra o produto se existir resultado calculado
       const produtoPlanoB = pCloroRef?.resultado?.resultado;
-      if (produtoPlanoB) {
-  linhas.push(`   - Se não for possível ajustar a eletrólise: ${produtoPlanoB}`);
+
+if (produtoPlanoB) {
+  const txt = String(produtoPlanoB);
+
+  const pareceDose = /adicionar/i.test(txt) && !/não adicionar/i.test(txt);
+  if (pareceDose) {
+    linhas.push(` - Se não for possível ajustar a eletrólise: ${txt}`);
+  }
 }
+
 
       return linhas;
     }
@@ -1302,7 +1422,7 @@ if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
   // ----------------------------------------------------
   if (cloroAtivo && pCloroRef) {
     if (temCloro && cloro >= INTERDITO_CLORO) {
-  linhas.push(`   - ${cloroLabel}: excesso (${cloro}). Piscina interditada a banhistas.`);
+  linhas.push(`   - ${cloroLabel}: excesso (${cloro} ppm). Piscina interditada a banhistas.`);
   linhas.push('   - Confirmar valor.');
   const txt = pCloroRef?.resultado?.resultado;
   if (txt) {
@@ -1316,7 +1436,7 @@ if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
 
 
     if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
-  linhas.push(`   - ${cloroLabel}: muito alto (${cloro}).`);
+  linhas.push(`   - ${cloroLabel}: muito alto (${cloro} ppm).`);
   linhas.push('   - Confirmar valor e não adicionar cloro.');
   const txt = pCloroRef?.resultado?.resultado;
   if (txt) {
@@ -1328,7 +1448,7 @@ if (temCloro && cloro > IDEAL_MAX_CLORO && cloro < EXCESSO_CLORO) {
 }
 
     if (temCloro && cloro > IDEAL_MAX_CLORO) {
-      linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro}). Não adicionar cloro.`);
+      linhas.push(`   - ${cloroLabel}: acima do ideal (${cloro} ppm). Não adicionar cloro.`);
       return linhas;
     }
 

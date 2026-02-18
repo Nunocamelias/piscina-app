@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance, ActivityIndicator, Pressable, Image } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, Appearance, Pressable, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
@@ -200,108 +200,122 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
 
   return (
-    <View style={styles.container}>
-
-       {/* ✅ Marca de água (fica atrás de tudo) */}
-    <Image
-      source={WATERMARK}
-      resizeMode="contain"
-      style={styles.watermark}
-    />
-    <View style={{ position: 'relative', marginBottom: 20 }}>
-  <Text style={styles.titleShadow}>GESPOOL</Text>
-  <Text style={styles.titleLight}>GESPOOL</Text>
-</View>
-      {/* 🔹 Input de Email com Validação */}
-      <TextInput
-        style={isDarkMode ? styles.inputDark : styles.inputLight}
-        placeholder="Email"
-        placeholderTextColor={isDarkMode ? '#BBBBBB' : '#666666'}
-        keyboardType="email-address"
-        autoCapitalize="none" // 🔹 Impede letras maiúsculas
-        value={email}
-        onChangeText={(text) => {
-          const formattedEmail = text.toLowerCase().replace(/[^a-z0-9@._-]/g, ''); // 🔹 Remove caracteres inválidos
-          setEmail(formattedEmail);
-        }}
-      />
-
-      {/* 🔹 Input de Senha com Botão "Olho" */}
-      <View style={styles.passwordContainer}>
-  {/* 🔹 Caixa interna onde fica a senha */}
-  <TextInput
-    style={styles.passwordInput}
-    placeholder="Senha"
-    placeholderTextColor="#BBBBBB"
-    secureTextEntry={!senhaVisivel}
-    value={senha}
-    onChangeText={setSenha}
-  />
-
-  {/* 🔹 Botão do olho/macaco dentro da caixa */}
-  <TouchableOpacity onPress={() => setSenhaVisivel(!senhaVisivel)} style={styles.eyeButton}>
-  <Icon name={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="#000" />
-</TouchableOpacity>
-</View>
-{/* ✅ Opções de Login (perto da senha) */}
-<View style={styles.optionsRow}>
-  <Pressable
-    onPress={() => setLembrarEmail((v) => !v)}
-    style={styles.optionItem}
-    hitSlop={10}
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
   >
-    <Text style={styles.checkbox}>{lembrarEmail ? '☑' : '☐'}</Text>
-    <Text style={styles.optionText}>Lembrar email</Text>
-  </Pressable>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ✅ Marca de água (fica atrás de tudo) */}
+        <Image
+          source={WATERMARK}
+          resizeMode="contain"
+          style={styles.watermark}
+        />
 
-  <View style={{ width: 18 }} />
+        <View style={{ position: 'relative', marginBottom: 20 }}>
+          <Text style={styles.titleShadow}>GESPOOL</Text>
+          <Text style={styles.titleLight}>GESPOOL</Text>
+        </View>
 
-  <Pressable
-    onPress={() => setGuardarSenha((v) => !v)}
-    style={styles.optionItem}
-    hitSlop={10}
-  >
-    <Text style={styles.checkbox}>{guardarSenha ? '☑' : '☐'}</Text>
-    <Text style={styles.optionText}>Guardar senha</Text>
-  </Pressable>
-</View>
+        {/* 🔹 Input de Email com Validação */}
+        <TextInput
+          style={isDarkMode ? styles.inputDark : styles.inputLight}
+          placeholder="Email"
+          placeholderTextColor={isDarkMode ? '#BBBBBB' : '#666666'}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={(text) => {
+            const formattedEmail = text.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+            setEmail(formattedEmail);
+          }}
+        />
 
-{/* ✅ Esqueci-me da palavra-passe */}
-<TouchableOpacity
-  style={styles.forgotLink}
-  onPress={() => Alert.alert('Recuperar acesso', 'Por agora, contacte a administração.')}
->
-  <Text style={styles.forgotText}>Esqueci-me da palavra-passe</Text>
-</TouchableOpacity>
+        {/* 🔹 Input de Senha com Botão "Olho" */}
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Senha"
+            placeholderTextColor="#BBBBBB"
+            secureTextEntry={!senhaVisivel}
+            value={senha}
+            onChangeText={setSenha}
+          />
 
-      <TouchableOpacity
-  style={[styles.button, isLoading && { opacity: 0.7 }]}
-  onPress={handleLogin}
-  disabled={isLoading}
->
-  <Text style={styles.buttonText}>
-    {isLoading ? 'A entrar...' : 'Entrar'}
-  </Text>
-</TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setSenhaVisivel(!senhaVisivel)}
+            style={styles.eyeButton}
+          >
+            <Icon name={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
 
+        {/* ✅ Opções de Login */}
+        <View style={styles.optionsRow}>
+          <Pressable
+            onPress={() => setLembrarEmail((v) => !v)}
+            style={styles.optionItem}
+            hitSlop={10}
+          >
+            <Text style={styles.checkbox}>{lembrarEmail ? '☑' : '☐'}</Text>
+            <Text style={styles.optionText}>Lembrar email</Text>
+          </Pressable>
 
+          <View style={{ width: 18 }} />
 
-      <TouchableOpacity onPress={() => navigation.navigate('RegisterCompany')}>
-        <Text style={isDarkMode ? styles.registerTextDark : styles.registerTextLight}>
-          Novo Registo de Empresa
-        </Text>
-      </TouchableOpacity>
-      <Text style={styles.versionText}>
-        V{appVersion}
-        </Text>
-    </View>
-  );
+          <Pressable
+            onPress={() => setGuardarSenha((v) => !v)}
+            style={styles.optionItem}
+            hitSlop={10}
+          >
+            <Text style={styles.checkbox}>{guardarSenha ? '☑' : '☐'}</Text>
+            <Text style={styles.optionText}>Guardar senha</Text>
+          </Pressable>
+        </View>
+
+        {/* ✅ Esqueci-me da palavra-passe */}
+        <TouchableOpacity
+          style={styles.forgotLink}
+          onPress={() => Alert.alert('Recuperar acesso', 'Por agora, contacte a administração.')}
+        >
+          <Text style={styles.forgotText}>Esqueci-me da palavra-passe</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, isLoading && { opacity: 0.7 }]}
+          onPress={handleLogin}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>
+            {isLoading ? 'A entrar...' : 'Entrar'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.navigate('RegisterCompany')}>
+          <Text style={isDarkMode ? styles.registerTextDark : styles.registerTextLight}>
+            Novo Registo de Empresa
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.versionText}>V{appVersion}</Text>
+      </ScrollView>
+    </TouchableWithoutFeedback>
+  </KeyboardAvoidingView>
+);
+
 };
 
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: isDarkMode ? '#D3D3D3' : '#D3D3D3',

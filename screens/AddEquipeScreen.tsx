@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, View } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, View, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
 import { Appearance } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; // ⬅️ NOVO
+import Icon from 'react-native-vector-icons/Ionicons';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 type TipoUsuario = 'admin' | 'equipa_manutencao' | 'equipa_tecnica' | 'orcamentacao' | 'contabilidade';
@@ -27,6 +28,7 @@ const AddEquipeScreen = ({ navigation }: any) => {
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState('');
   const [tipoUsuario, setTipoUsuario] = useState<TipoUsuario>('equipa_manutencao');
+  const [senhaVisivel, setSenhaVisivel] = useState(false);
 
   useEffect(() => {
   const fetchEmpresaid = async () => {
@@ -58,42 +60,96 @@ const AddEquipeScreen = ({ navigation }: any) => {
 
   type FormFields = keyof typeof form;
 
-const handleChange = (field: FormFields, value: string) => {
-  if (field === 'matricula') {
-    // Remove tudo que não seja letra ou número e converte para maiúsculas
-    let formattedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+const formatDateInput = (input: string) => {
+  const s = (input ?? '').trim();
 
-    // Aplica a formatação dinâmica: __-__-__
-    if (formattedValue.length > 2) {
-      formattedValue = `${formattedValue.slice(0, 2)}-${formattedValue.slice(2)}`;
-    }
-    if (formattedValue.length > 5) {
-      formattedValue = `${formattedValue.slice(0, 5)}-${formattedValue.slice(5)}`;
-    }
-    formattedValue = formattedValue.slice(0, 8); // Garante o limite de 8 caracteres
+  // Se o utilizador acabou de escrever um separador ( -, /, ., espaço ),
+  // vamos respeitar isso e mostrar o hífen quando fizer sentido.
+  const endsWithSep = /[-/.\s]$/.test(s);
 
-    // Evita re-renderizações desnecessárias
-    if (formattedValue !== form.matricula) {
-      setForm((prev) => ({
-        ...prev,
-        [field]: formattedValue,
-      }));
-    }
+  // Mantém só os dígitos para construir a data
+  const digits = s.replace(/\D/g, '').slice(0, 8); // YYYYMMDD
+
+  let out = '';
+  if (digits.length <= 4) {
+    out = digits;
+  } else if (digits.length <= 6) {
+    out = `${digits.slice(0, 4)}-${digits.slice(4)}`;
   } else {
-    if (value !== form[field]) {
-      setForm((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
+    out = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  }
+
+  // ✅ Se o utilizador escreveu um separador depois do ano (YYYY) ou do mês (YYYYMM),
+  // mostra já o hífen, mesmo sem ter escrito o próximo número.
+  if (endsWithSep && (digits.length === 4 || digits.length === 6) && !out.endsWith('-')) {
+    out += '-';
+  }
+
+  return out.slice(0, 10); // YYYY-MM-DD
+};
+
+const formatMatriculaInput = (input: string) => {
+  const s = (input ?? '').toUpperCase();
+
+  // Se acabou de escrever um separador, vamos respeitar e mostrar hífen quando fizer sentido
+  const endsWithSep = /[-/.\s]$/.test(s);
+
+  // Só letras/números
+  const raw = s.replace(/[^A-Z0-9]/g, '').slice(0, 6); // AABBCC (6 chars)
+
+  let out = '';
+  if (raw.length <= 2) out = raw;
+  else if (raw.length <= 4) out = `${raw.slice(0, 2)}-${raw.slice(2)}`;
+  else out = `${raw.slice(0, 2)}-${raw.slice(2, 4)}-${raw.slice(4, 6)}`;
+
+  // ✅ Se escreveu separador após 2 ou 4 chars, força o hífen já
+  if (endsWithSep && (raw.length === 2 || raw.length === 4) && !out.endsWith('-')) {
+    out += '-';
+  }
+
+  return out.slice(0, 8); // "AA-BB-CC" = 8
+};
+
+const handleChange = (field: FormFields, value: string) => {
+
+  // ✅ 1) Password – remover TODOS os espaços automaticamente
+  if (field === 'password') {
+    const semEspacos = (value ?? '').replace(/\s+/g, '');
+    if (semEspacos !== form.password) {
+      setForm((prev) => ({ ...prev, password: semEspacos }));
     }
+    return;
+  }
+
+  // ✅ 2) Matrícula
+  if (field === 'matricula') {
+    const formatted = formatMatriculaInput(value);
+    if (formatted !== form.matricula) {
+      setForm((prev) => ({ ...prev, matricula: formatted }));
+    }
+    return;
+  }
+
+  // ✅ 3) Datas
+  if (field === 'proxima_inspecao' || field === 'validade_seguro') {
+    const formatted = formatDateInput(value);
+    if (formatted !== form[field]) {
+      setForm((prev) => ({ ...prev, [field]: formatted }));
+    }
+    return;
+  }
+
+  // ✅ 4) Restantes campos
+  if (value !== form[field]) {
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 };
 
+
   // Função para validar a senha
-  const validatePassword = (password: string) => {
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    return passwordRegex.test(password);
-  };
+  const validatePassword = (password: string) => (password ?? '').length >= 6;
+
+
 
   const salvarEquipe = async () => {
 
@@ -101,7 +157,7 @@ const handleChange = (field: FormFields, value: string) => {
   if (!validatePassword(form.password)) {
     Alert.alert(
       'Erro',
-      'A senha deve ter pelo menos 8 caracteres, incluindo uma letra, um número e um caractere especial.'
+      'A senha deve ter pelo menos 6 caracteres.'
     );
     return;
   }
@@ -197,17 +253,16 @@ const handleChange = (field: FormFields, value: string) => {
   }
 };
 
-
   const isValidDate = (date: string): boolean => {
-    // Ignorar se a string estiver incompleta
-    if (!date || date.length !== 10) {
-      return false; // Considere como inválida sem emitir avisos
-    }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
 
-    // Verificar se a data é válida
-    const parsedDate = new Date(date);
-    return parsedDate instanceof Date && !isNaN(parsedDate.getTime());
-  };
+  const [y, m, d] = date.split('-').map(Number);
+  if (m < 1 || m > 12) return false;
+
+  const maxDay = new Date(y, m, 0).getDate(); // último dia do mês
+  return d >= 1 && d <= maxDay;
+};
+
 
    const getColorForDate = (date: string | null): string => {
     // Ignorar valores nulos ou incompletos
@@ -230,7 +285,18 @@ const handleChange = (field: FormFields, value: string) => {
 
 
   return (
-  <ScrollView contentContainerStyle={styles.container}>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+  >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+
     <Text style={styles.title}>Adicionar Utilizador / Equipa</Text>
 
     {/* Picker do tipo de utilizador */}
@@ -302,7 +368,7 @@ const handleChange = (field: FormFields, value: string) => {
         <TextInput
           style={[styles.input, { backgroundColor: getColorForDate(form.proxima_inspecao) }]}
           placeholder="Data da Próxima Inspeção (AAAA-MM-DD)"
-          placeholderTextColor="#888"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
           value={form.proxima_inspecao}
           onChangeText={(value) => handleChange('proxima_inspecao', value)}
           onEndEditing={() => {
@@ -319,7 +385,7 @@ const handleChange = (field: FormFields, value: string) => {
         <TextInput
           style={[styles.input, { backgroundColor: getColorForDate(form.validade_seguro) }]}
           placeholder="Seguro Válido até (AAAA-MM-DD)"
-          placeholderTextColor="#888"
+          placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
           value={form.validade_seguro}
           onChangeText={(value) => handleChange('validade_seguro', value)}
           onEndEditing={() => {
@@ -346,14 +412,24 @@ const handleChange = (field: FormFields, value: string) => {
     />
 
     {/* Password – comum a todos os tipos */}
-    <TextInput
-      style={[styles.input, styles.passwordInput]}
-      placeholder="Senha"
-      secureTextEntry
-      placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-      value={form.password}
-      onChangeText={(value) => handleChange('password', value)}
-    />
+    <View style={styles.passwordContainer}>
+  <TextInput
+    style={styles.passwordInput}
+    placeholder="Senha - Mínimo 6 caracteres"
+    placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+    secureTextEntry={!senhaVisivel}
+    value={form.password}
+    onChangeText={(value) => handleChange('password', value)}
+  />
+
+  <TouchableOpacity
+    onPress={() => setSenhaVisivel((v) => !v)}
+    style={styles.eyeButton}
+  >
+    <Icon name={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="#000" />
+  </TouchableOpacity>
+</View>
+
 
     <TouchableOpacity style={styles.button} onPress={salvarEquipe}>
       <Text style={styles.buttonText}>
@@ -369,6 +445,8 @@ const handleChange = (field: FormFields, value: string) => {
       <Text style={styles.subTitle}>powered by GESPOOL</Text>
     </View>
   </ScrollView>
+  </TouchableWithoutFeedback>
+  </KeyboardAvoidingView>
 );
 };
 
@@ -376,6 +454,7 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,
+    paddingBottom: 70,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
   },
   title: {
@@ -405,8 +484,9 @@ const styles = StyleSheet.create({
     elevation: 10, // ← dá profundidade real no Android
   },
   passwordInput: {
-    letterSpacing: 1.5, // 🔥 Dá um espaçamento maior para parecer mais uniforme
-    fontWeight: 'bold', // 🔥 Garante que os caracteres sejam mais visíveis antes de virarem bolinhas
+    flex: 1,
+    paddingVertical: 12,
+    color: '#000',
   },
   button: {
     backgroundColor: '#22b4b4ff',
@@ -446,6 +526,20 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#444',
     marginTop: 2,
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+    backgroundColor: '#fff',
+  },
+  eyeButton: {
+    padding: 8,
   },
 });
 

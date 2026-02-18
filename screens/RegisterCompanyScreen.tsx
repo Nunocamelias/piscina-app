@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Appearance } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Appearance,  ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -27,8 +27,8 @@ const RegisterCompanyScreen = () => {
   };
 
   const isValidPassword = (passwordInput: string): boolean => {
-    return /^[A-Za-z0-9!@#$%^&*()_+={}[\]:;"'<>,.?/-]+$/.test(passwordInput);
-  };
+  return /^[^\s]{6,}$/.test(passwordInput ?? '');
+};
 
   const handleRegister = async () => {
     if (isLoading) {
@@ -51,7 +51,7 @@ const RegisterCompanyScreen = () => {
     }
 
     if (!isValidPassword(password)) {
-      Alert.alert('Erro', 'A senha contém caracteres inválidos.');
+      Alert.alert('Erro', 'A senha deve ter pelo menos 6 caracteres e não pode conter espaços.');
       return;
     }
 
@@ -81,7 +81,18 @@ const RegisterCompanyScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+  >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+
       <Text style={isDarkMode ? styles.titleDark : styles.titleLight}>Registar Empresa</Text>
       <TextInput
         style={isDarkMode ? styles.inputDark : styles.inputLight}
@@ -144,7 +155,7 @@ const RegisterCompanyScreen = () => {
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="Confirmar Senha"
+          placeholder="         Confirmar"
           placeholderTextColor="#BBBBBB"
           secureTextEntry={!confirmSenhaVisivel}
           value={confirmPassword}
@@ -158,14 +169,18 @@ const RegisterCompanyScreen = () => {
       <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={isLoading}>
         <Text style={styles.buttonText}>{isLoading ? 'Aguarde...' : 'Registar'}</Text>
       </TouchableOpacity>
-    </View>
+        </ScrollView>
+    </TouchableWithoutFeedback>
+  </KeyboardAvoidingView>
   );
 };
 
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
+  padding: 20,
+  paddingBottom: 85,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
@@ -249,13 +264,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     width: '80%',
-    height: 45,
+    height: 50, // 🔹 Controla a altura do campo de senha
     borderWidth: 0,
     marginBottom: 15,
     borderColor: '#000',
     borderRadius: 25,
     backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
-    paddingVertical: 15,
     paddingHorizontal: 0,
     justifyContent: 'space-between',
     // 🔹 Sombra 3D leve e elegante
@@ -265,20 +279,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4.65,
     elevation: 10, // ← dá profundidade real no Android
   },
+
   passwordInput: {
     flex: 1,
-    height: 45,
+    height: 50,
     color: '#FFF',
     fontSize: 16,
     backgroundColor: '#333',
     borderRadius: 25,
     paddingHorizontal: 15, // 🔹 Mantém espaço interno nos dois lados
-    paddingLeft: 80, // 🔹 Move o texto um pouco para a direita (ajusta conforme necessário)
-    paddingRight: 40, // 🔹 Mantém um pequeno espaço à direita
-    textAlign: 'left', // 🔹 Mantém o alinhamento como "left" para respeitar os paddings
+    paddingLeft: 0, // 🔹 Move o texto um pouco para a direita (ajusta conforme necessário)
+    paddingRight: 0, // 🔹 Mantém um pequeno espaço à direita
+    textAlign: 'center', // 🔹 Mantém o alinhamento como "left" para respeitar os paddings
   },
-  eyeButton: {
-    padding: 5,
+
+    // 🔹 Caixa interna (80% da largura) com fundo escuro e bordas arredondadas
+    eyeButton: {
+    padding: 5, // 🔹 Aumenta a área de clique
+  },
+  eyeText: {
+    fontSize: 18, // 🔹 Ajusta o tamanho do ícone de olho
   },
 });
 

@@ -1118,19 +1118,6 @@ const calcularProduto = (
     return { resultado: 'Valores insuficientes ou inválidos para cálculo.', quantidade: 0 };
   }
 
-  // ✅ EXCEÇÃO: Cloro Livre (zona tampão 3–5 ppm)
-// Regra: acima do intervalo ideal mas até 5 => NÃO recomendar inibidor, só "não adicionar cloro"
-if (parametro.parametro === 'Cloro Livre em ppm') {
-  if (valorAtualNum > valorMaxNum && valorAtualNum <= 5) {
-    return {
-      resultado: `Cloro acima do intervalo ideal (${valorMaxNum} ppm). Não adicionar cloro.`,
-      quantidade: 0,
-      // produto: undefined, // opcional (podes omitir)
-      status: 'pendente',
-    };
-  }
-  // >5 segue a lógica normal e vai calcular o "diminuir" (inibidor) para o valor alvo
-}
 
   // Verifica se o parâmetro está dentro do intervalo ideal
   if (valorAtualNum >= valorMinNum && valorAtualNum <= valorMaxNum) {
@@ -4351,10 +4338,6 @@ badgeManual: {
   color: '#8A5A00',
   fontWeight: '600',
 },
-
-
-
-
 });
 
 export default FolhaManutencaoScreen;

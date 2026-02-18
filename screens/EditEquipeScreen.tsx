@@ -1,16 +1,14 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Appearance } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Appearance, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
-const validatePassword = (password: string) => {
-  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-  return passwordRegex.test(password);
-};
+const validatePassword = (password: string) => /^[^\s]{6,}$/.test(password ?? '');
 
 const EditEquipeScreen = ({ route, navigation }: any) => {
   const { equipeId } = route.params;
@@ -29,8 +27,9 @@ const EditEquipeScreen = ({ route, navigation }: any) => {
   });
 
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
-  const [usuarioId] = useState<number | null>(null);
-
+  const [usuarioId, setUsuarioId] = useState<number | null>(null);
+  const [senhaVisivel, setSenhaVisivel] = useState(false);
+  const [empresaNome, setEmpresaNome] = useState('');
 
 // 🔹 Busca o empresaid do AsyncStorage
 useEffect(() => {
@@ -76,7 +75,8 @@ const fetchEquipe = useCallback(async () => {
     });
 
     console.log('[DEBUG] Dados do usuário recebidos:', usuarioResponse.data);
-
+    setUsuarioId(usuarioResponse.data?.id ?? null);
+    
     // 🔹 O endpoint já retorna um objeto, então podemos usar diretamente
     const usuario = usuarioResponse.data || null;
 
@@ -100,10 +100,6 @@ const fetchEquipe = useCallback(async () => {
     navigation.goBack();
   }
 }, [equipeId, userEmpresaid, navigation]); // ✅ Adiciona `navigation` às dependências
-
-
-const [empresaNome, setEmpresaNome] = useState('');
-
 
 // 🔄 Apenas chama `fetchEquipe` quando `userEmpresaid` estiver disponível
 useEffect(() => {
@@ -230,34 +226,55 @@ useEffect(() => {
     };
 
     const handleChange = (field: string, value: string | boolean) => {
-      if (loading) {
-        console.warn('⚠️ Tentativa de editar enquanto os dados ainda estão a carregar.');
-        return; // Se ainda está carregando, impede alterações
-      }
-        if (field === 'matricula' && typeof value === 'string') {
-        // Remove caracteres inválidos e força letras maiúsculas
-        let formattedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        // Aplica o formato __-__-__
-        if (formattedValue.length > 2) {
-          formattedValue = formattedValue.slice(0, 2) + '-' + formattedValue.slice(2);
-        }
-        if (formattedValue.length > 5) {
-          formattedValue = formattedValue.slice(0, 5) + '-' + formattedValue.slice(5);
-        }
-        if (formattedValue.length > 8) {
-          formattedValue = formattedValue.slice(0, 8); // Limita o tamanho
-        }
-        setForm((prev) => ({
-          ...prev,
-          [field]: formattedValue,
-        }));
-      } else {
-        setForm((prev) => ({
-          ...prev,
-          [field]: value,
-        }));
-      }
-    };
+  if (loading) {
+    console.warn('⚠️ Tentativa de editar enquanto os dados ainda estão a carregar.');
+    return;
+  }
+
+  // ✅ Password: remover TODOS os espaços automaticamente
+  if (field === 'password' && typeof value === 'string') {
+    const semEspacos = value.replace(/\s+/g, '');
+    setForm((prev) => ({ ...prev, password: semEspacos }));
+    return;
+  }
+
+  // ✅ Matrícula: separador inteligente + formato AA-BB-CC
+  if (field === 'matricula' && typeof value === 'string') {
+    const s = value.toUpperCase();
+    const endsWithSep = /[-/.\s]$/.test(s);
+    const raw = s.replace(/[^A-Z0-9]/g, '').slice(0, 6);
+
+    let out = '';
+    if (raw.length <= 2) out = raw;
+    else if (raw.length <= 4) out = `${raw.slice(0, 2)}-${raw.slice(2)}`;
+    else out = `${raw.slice(0, 2)}-${raw.slice(2, 4)}-${raw.slice(4, 6)}`;
+
+    if (endsWithSep && (raw.length === 2 || raw.length === 4) && !out.endsWith('-')) out += '-';
+
+    setForm((prev) => ({ ...prev, matricula: out.slice(0, 8) }));
+    return;
+  }
+
+  // ✅ Datas (se tiveres no form): separador inteligente AAAA-MM-DD
+  if ((field === 'proxima_inspecao' || field === 'validade_seguro') && typeof value === 'string') {
+    const s = value.trim();
+    const endsWithSep = /[-/.\s]$/.test(s);
+    const digits = s.replace(/\D/g, '').slice(0, 8);
+
+    let out = '';
+    if (digits.length <= 4) out = digits;
+    else if (digits.length <= 6) out = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    else out = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+
+    if (endsWithSep && (digits.length === 4 || digits.length === 6) && !out.endsWith('-')) out += '-';
+
+    setForm((prev) => ({ ...prev, [field]: out.slice(0, 10) }));
+    return;
+  }
+
+  // ✅ Default
+  setForm((prev) => ({ ...prev, [field]: value }));
+};
 
   const salvarSenha = async () => {
     console.log('[DEBUG] Iniciando salvarSenha para usuarioId:', usuarioId);
@@ -295,7 +312,18 @@ useEffect(() => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+  >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+
       <Text style={styles.title}>Detalhes da Equipa</Text>
       <TextInput
         style={[styles.input, !isEditable && styles.readOnly]}
@@ -364,21 +392,32 @@ useEffect(() => {
         editable={isEditable}
         onChangeText={(value) => handleChange('email', value)}
       />
-     <TextInput
-        style={[styles.input, !isEditable && styles.readOnly]}
-        placeholder="Senha"
-        placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
-        secureTextEntry
-        value={form.password}
-        editable={isEditable}
-        onChangeText={(value) => {if (isEditable) {handleChange('password', value);}}}
-      />
+     <View style={[styles.passwordContainer, !isEditable && styles.readOnly]}>
+  <TextInput
+    style={styles.passwordInput}
+    placeholder="Senha"
+    placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+    secureTextEntry={!senhaVisivel}
+    value={form.password}
+    editable={isEditable}
+    onChangeText={(value) => { if (isEditable) handleChange('password', value); }}
+  />
+
+  <TouchableOpacity
+    onPress={() => setSenhaVisivel((v) => !v)}
+    style={styles.eyeButton}
+    disabled={!isEditable}
+  >
+    <Icon name={senhaVisivel ? 'eye' : 'eye-off'} size={24} color="#000" />
+  </TouchableOpacity>
+</View>
+
      <TouchableOpacity
         style={styles.generateButton}
         onPress={() => {if (!validatePassword(form.password)) {
       Alert.alert(
         'Senha Fraca',
-        'A senha deve conter pelo menos 8 caracteres, incluindo letras, números e um caractere especial.'
+        'A senha deve ter pelo menos 6 caracteres e não pode conter espaços.'
       );
     } else {
       salvarSenha(); // Chama a função para salvar a senha
@@ -413,6 +452,8 @@ useEffect(() => {
           <Text style={styles.subTitle}>powered by GESPOOL</Text>
        </View>
     </ScrollView>
+   </TouchableWithoutFeedback>
+  </KeyboardAvoidingView>
   );
 };
 
@@ -421,6 +462,7 @@ const styles = StyleSheet.create({
       padding: 20,
       backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
       flexGrow: 1,
+      paddingBottom: 70,
     },
     scrollContainer: {
       flexGrow: 1,
@@ -546,6 +588,25 @@ const styles = StyleSheet.create({
       fontStyle: 'italic',
       color: '#444',
       marginTop: 2,
+    },
+    passwordContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: '100%',
+      borderWidth: 1,
+      borderColor: '#ccc',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      marginBottom: 15,
+      backgroundColor: '#fff',
+    },
+    passwordInput: {
+      flex: 1,
+      paddingVertical: 12,
+      color: '#000',
+    },
+    eyeButton: {
+      padding: 8,
     },
   });
 
