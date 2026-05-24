@@ -95,6 +95,7 @@ export type ActionType =
   // 🔴 BLOQUEIO / SEGURANÇA
   | 'BLOQUEIO_INTERDICAO_BANHO'
   | 'BLOQUEIO_AGUARDAR_ESTABILIZACAO'
+  | 'ACAO_CRITICA_RENOVAR_AGUA'
 
   // 🟠 DIAGNÓSTICO / CORREÇÃO AVANÇADA
   | 'RENOVAR_AGUA_TOTAL_CYA'
@@ -477,18 +478,6 @@ function buildActions(input: {
     actions.push(A('BLOQUEIO_INTERDICAO_BANHO', 0, 'Piscina interdita (cloro muito alto)', { cl }));
   }
 
-  // 🟠 Cloro Combinado elevado → choque por cloraminas
-  if (Number.isFinite(cc) && cc > 0.5) {
-    actions.push(
-      A(
-        'TRATAMENTO_CHOQUE_CLORAMINAS',
-        1,
-        'Tratamento de choque necessário (cloraminas)',
-        { cc }
-      )
-    );
-  }
-
   // 🔵 TAC (Alcalinidade) — Equilíbrio da água
 if (pTac && !isIgnoravel(pTac.status)) {
   const st = (pTac.status ?? 'pendente');
@@ -556,39 +545,74 @@ if (pTac && !isIgnoravel(pTac.status)) {
   }
 }
 
-  // 🟠 CYA alto -> renovação água (nota: se não tens TAC medido, pedimos medir/confirmar)
-  // (aqui NÃO calculo m3 ainda; só levo dados para as mensagens atuais consumirem depois)
-  const cyaMin = toNum(pCya?.valor_minimo);
-  const cyaMax = toNum(pCya?.valor_maximo);
+ // 🟠/🔴 CYA -> renovação de água / ação crítica
+const isFotometro = String(metodoAnalise || '').toLowerCase() === 'fotometro';
+const tacTemValorCYA = Number.isFinite(tac);
 
-  const cyaAlto =
-    Number.isFinite(cya) &&
-    Number.isFinite(cyaMax) &&
-    cya > cyaMax;
+const cyaAviso = Number.isFinite(cya) && cya >= 70;
+const cyaMuitoAlto = Number.isFinite(cya) && cya >= 100;
+const cyaCritico = Number.isFinite(cya) && cya >= 150;
 
-  if (cyaAlto) {
-    const tacTemValor = Number.isFinite(tac);
-
-    if (!tacTemValor) {
-      actions.push(A('MEDIR_VALOR', 1, 'Medir TAC antes de decidir renovação de água', { parametro: 'TAC' }));
-      actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'Renovação de água (CYA alto)', { cya, precisaConfirmarTAC: true }));
-    }
-    const isFotometro = String(metodoAnalise || '').toLowerCase() === 'fotometro';
-if (!isFotometro) {
-  actions.push(A(
-    'CONFIRMAR_VALOR',
-    1,
-    'Confirmar CYA com fotómetro antes de renovar água',
-    { parametro: 'CYA', metodoAnalise }
-  ));
-}
-
-    else {
-      // recomendado: total, mínimo: parcial (a mensagem final decide o copy)
-      actions.push(A('RENOVAR_AGUA_TOTAL_CYA', 1, 'Recomenda-se renovação total (CYA alto)', { cya, tac }));
-      actions.push(A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'No mínimo renovação parcial (CYA alto)', { cya, tac }));
-    }
+if (cyaAviso) {
+  // se TAC não foi medida, continua a pedir medição antes de decidir m³
+  if (!tacTemValorCYA) {
+    actions.push(
+      A('MEDIR_VALOR', 1, 'Medir TAC antes de decidir renovação de água', {
+        parametro: 'TAC',
+        cya,
+      })
+    );
   }
+
+  // fitas/gotas: pedir confirmação com fotómetro
+  if (!isFotometro) {
+    actions.push(
+      A('CONFIRMAR_VALOR', 1, 'Confirmar CYA com fotómetro antes de renovar água', {
+        parametro: 'CYA',
+        metodoAnalise,
+        cya,
+      })
+    );
+  }
+
+  // ação crítica só para fotómetro e CYA extremo
+  if (cyaCritico && isFotometro) {
+    actions.push(
+      A('ACAO_CRITICA_RENOVAR_AGUA', 0, 'CYA crítico: suspender tratamentos e renovar água', {
+        cya,
+        metodoAnalise,
+        tac,
+      })
+    );
+  }
+
+  // ações de renovação existem sempre que CYA está alto
+  if (cyaMuitoAlto) {
+    actions.push(
+      A('RENOVAR_AGUA_TOTAL_CYA', isFotometro ? 0 : 1, 'Recomenda-se renovação total da água', {
+        cya,
+        tac,
+        metodoAnalise,
+      })
+    );
+
+    actions.push(
+      A('RENOVAR_AGUA_PARCIAL_CYA', isFotometro ? 0 : 1, 'No mínimo, renovar parcialmente a água', {
+        cya,
+        tac,
+        metodoAnalise,
+      })
+    );
+  } else {
+    actions.push(
+      A('RENOVAR_AGUA_PARCIAL_CYA', 1, 'Recomenda-se renovação parcial da água', {
+        cya,
+        tac,
+        metodoAnalise,
+      })
+    );
+  }
+}
 
   // 🟢 Eletrólise: separar ORP vs sem ORP (não “manda já”, só regista)
   if (isSal) {
@@ -837,18 +861,28 @@ const atualStr =
     ? '—'
     : String(p.valor_atual).trim();
 
-// ✅ ppm também para Dureza e TAC (Alcalinidade)
+const atualNum = toNum(p.valor_atual);
+
 const atualComUnidade =
   (k === 'cloro_livre' ||
     k === 'cloro_total' ||
     k === 'cloro_combinado' ||
     k === 'dureza' ||
-    k === 'alcalinidade' ||
-    k === 'acido_cianurico')
+    k === 'alcalinidade')
     ? (atualStr === '—' ? '—' : `${atualStr} ppm`)
     : atualStr;
 
-linhasResumo.push(`• ${icon} ${nome}: ${atualComUnidade} — ${linhaExtra}`);
+// ✅ exceção visual do CYA
+let iconFinal = icon;
+if (k === 'acido_cianurico' && Number.isFinite(atualNum)) {
+  if (atualNum >= 70) {
+    iconFinal = '🔴';
+  } else if (atualNum > 50) {
+    iconFinal = '🟠';
+  }
+}
+
+linhasResumo.push(`• ${iconFinal} ${nome}: ${atualComUnidade} — ${linhaExtra}`);
 }
   const resumo =
     linhasResumo.length > 0
@@ -869,23 +903,72 @@ const temRenovacaoCYA = actions.some(a =>
   a.type === 'RENOVAR_AGUA_TOTAL_CYA' || a.type === 'RENOVAR_AGUA_PARCIAL_CYA'
 );
 
+const temAcaoCriticaRenovarAgua = actions.some(a => a.type === 'ACAO_CRITICA_RENOVAR_AGUA');
+const bloquearQuantidadesPorCYA = temRenovacaoCYA;
+const msgBloqueioCYA = '   - Não apresentamos quantidades de produtos sem resolver primeiro o Ácido Cianúrico elevado.';
+
+// ✅ CYA vai para o topo SEMPRE que houver renovação
 if (temRenovacaoCYA) {
-  proc.push(...procedimentoCYA(ps, cliente, tacBaixa, metodoAnalise));
+  proc.push(...procedimentoCYA(ps, cliente, tacBaixa, metodoAnalise, modoTratamento, actions));
   proc.push('');
 }
 
 proc.push('=== Equilíbrio da água ===');
-proc.push(...procedimentoDureza(relevantesProc, actions));
-proc.push(...procedimentoTAC(relevantesProc, actions));
-proc.push(...procedimentoPH(relevantesProc, actions));
+
+if (bloquearQuantidadesPorCYA) {
+  const temDur = actions.some(a => a.type === 'AJUSTAR_DUREZA');
+  const temTac = actions.some(a => a.type === 'AJUSTAR_TAC');
+  const temPh  = actions.some(a => a.type === 'AJUSTAR_PH');
+
+  if (temDur) {
+    proc.push('1) Dureza');
+    proc.push(msgBloqueioCYA);
+  }
+
+  if (temTac) {
+    proc.push('2) Alcalinidade');
+    proc.push(msgBloqueioCYA);
+  }
+
+  if (temPh) {
+    proc.push('3) pH');
+    proc.push(msgBloqueioCYA);
+  }
+} else {
+  proc.push(...procedimentoDureza(relevantesProc, actions));
+  proc.push(...procedimentoTAC(relevantesProc, actions));
+  proc.push(...procedimentoPH(relevantesProc, actions));
+}
+
+// ✅ só volta a chamar CYA se NÃO houve renovação
 if (!temRenovacaoCYA) {
-proc.push(...procedimentoCYA(psMedidos, cliente, tacBaixa, metodoAnalise));
+  proc.push(...procedimentoCYA(psMedidos, cliente, tacBaixa, metodoAnalise, modoTratamento, actions));
 }
 
 proc.push('');
 proc.push('=== Desinfeção ===');
-proc.push(...procedimentoDesinfeccao(relevantesProc, cliente, modoTratamento, tacBaixa));
 
+const pClLivreResumo = relevantesProc.find(p => normParametroNome(p.parametro) === 'cloro_livre');
+const pClTotalResumo = relevantesProc.find(p => normParametroNome(p.parametro) === 'cloro_total');
+const pClResumo = pClLivreResumo ?? pClTotalResumo;
+
+const temDesinfecao =
+  !!pClResumo ||
+  actions.some(a =>
+    a.type === 'AJUSTAR_SETPOINT_ELETROLISE' ||
+    a.type === 'AJUSTAR_NIVEL_PRODUCAO_ELETROLISE' ||
+    a.type === 'APLICAR_CLORO_MANUAL' ||
+    a.type === 'NEUTRALIZAR_CLORO'
+  );
+
+if (bloquearQuantidadesPorCYA) {
+  if (temDesinfecao) {
+    proc.push('5) Desinfeção');
+    proc.push(msgBloqueioCYA);
+  }
+} else {
+  proc.push(...procedimentoDesinfeccao(relevantesProc, cliente, modoTratamento, tacBaixa));
+}
 const choqueLinhas = procedimentoChoque(relevantesProc, actions);
 if (choqueLinhas.length) {
   proc.push('');
@@ -1156,7 +1239,9 @@ function procedimentoCYA(
   parametros: Parametro[],
   cliente?: Cliente | null,
   tacBaixa?: boolean,
-  metodoAnalise?: string
+  metodoAnalise?: string,
+  modoTratamento?: ModoTratamento,
+  actions: Action[] = []
 ): string[] {
 
   const p = parametros.find(x => normParametroNome(x.parametro) === 'acido_cianurico');
@@ -1187,6 +1272,53 @@ function procedimentoCYA(
 
   const linhas: string[] = [];
   linhas.push('4) Ácido Cianúrico');
+  const atual = toNum(p.valor_atual);
+const isTratamentoCloro = modoTratamento === 'cloro';
+const cyaModerado = Number.isFinite(atual) && atual > 50 && atual < 70;
+
+  const actCritica = actions.find(a => a.type === 'ACAO_CRITICA_RENOVAR_AGUA');
+const actRenovTotal = actions.find(a => a.type === 'RENOVAR_AGUA_TOTAL_CYA');
+const actRenovParcial = actions.find(a => a.type === 'RENOVAR_AGUA_PARCIAL_CYA');
+const actConfirmarFotometro = actions.find(
+  a => a.type === 'CONFIRMAR_VALOR' && a.payload?.parametro === 'CYA'
+);
+
+if (actCritica) {
+  const cyaCrit = Number(actCritica.payload?.cya);
+
+  linhas.push(`   🚨 ALERTA CRÍTICO: Ácido Cianúrico extremamente elevado (${cyaCrit} ppm).`);
+  linhas.push('   - Suspender correções químicas até resolver a renovação de água.');
+  linhas.push('   - O cloro fica excessivamente bloqueado e perde eficácia de desinfeção.');
+  linhas.push('   - Ação necessária: renovar a água da piscina e repetir análise completa após a renovação.');
+
+  const vol = toNum(cliente?.volume);
+  const atual = toNum(p.valor_atual);
+  const alvo = toNum(p.valor_alvo);
+  const troca = calcularVolumeTrocaAguaParaCYA(vol, atual, alvo);
+
+  if (typeof troca === 'number' && troca > 0) {
+    linhas.push(`   - Renovação mínima estimada: ${troca} m³ de água.`);
+  }
+
+  return linhas;
+}
+// 🟠 CYA 51–69 ppm -> alerta moderado, sem bloquear quantidades
+if (cyaModerado) {
+  linhas.push(`   🚨 ALERTA: Ácido Cianúrico acima do intervalo ideal (${atual} ppm).`);
+
+  if (isTratamentoCloro) {
+    linhas.push('   - Em piscinas tratadas a cloro, o Ácido Cianúrico tende a subir gradualmente com o uso de cloro estabilizado.');
+    linhas.push('   - Quando sobe acima do ideal, começa a bloquear progressivamente a ação desinfetante do cloro.');
+    linhas.push('   - Como medida imediata, substituir temporariamente o cloro estabilizado por cloro líquido sem estabilizador (CYA).');
+    linhas.push('   - Se o valor continuar a subir, será necessária renovação parcial da água da piscina.');
+  } else {
+    linhas.push('   - O Ácido Cianúrico acima do ideal começa a reduzir a eficácia do cloro na desinfeção.');
+    linhas.push('   - Monitorizar a tendência nas próximas análises.');
+    linhas.push('   - Se o valor continuar a subir, considerar renovação parcial da água da piscina.');
+  }
+
+  return linhas;
+}
 
   if (tacBaixa && tacAtivo) {
     linhas.push('   - Nota: TAC < 65. O CYA pode ser pouco fiável nesta visita.');
@@ -1197,14 +1329,21 @@ function procedimentoCYA(
   // Se ação for descer, sugerir troca de água (sem produtos)
   const acao = inferirAcao(p);
   if (acao === 'descer') {
-  linhas.push('   - Para diminuir CYA, recomenda-se renovação parcial de água (não é correção química direta).');
-    if (String(metodoAnalise || '').toLowerCase() !== 'fotometro') {
-    linhas.push('   🚨 Decisão importante: confirmar CYA com fotómetro antes de renovar água.');
-    linhas.push('   - Em fitas, o CYA pode ter desvios; evite trocar água com base apenas em fitas.');
-  }
-  linhas.push('   ⚠ Se houver renovação de água, adiar correções que seriam desperdiçadas (ex.: dureza) até depois da renovação.');
+  const atual = toNum(p.valor_atual);
+  const isFotometro = String(metodoAnalise || '').toLowerCase() === 'fotometro';
 
-  // ✅ Só damos m³ se TAC foi medido e está dentro do ideal
+  linhas.push(`   🚨 ALERTA: Ácido Cianúrico elevado (${atual} ppm).`);
+
+  if (isFotometro) {
+    linhas.push('   - Não apresentamos quantidades de produtos enquanto o problema do Ácido Cianúrico não for resolvido.');
+    linhas.push('   - Suspender correções químicas até renovar a água da piscina.');
+  } else {
+    linhas.push('   - Confirmar CYA com fotómetro antes de renovar a água.');
+    linhas.push('   - Até à confirmação por fotómetro, não apresentamos quantidades de produtos.');
+  }
+
+  linhas.push('   - Para diminuir CYA, recomenda-se renovação parcial de água (não é correção química direta).');
+
   if (!tacMedido || !tacOk) {
     linhas.push('   ⚠ Antes de decidir a renovação de água, confirmar a Alcalinidade (TAC).');
     linhas.push('   - TAC baixa pode tornar o teste de CYA pouco fiável.');
@@ -1212,14 +1351,13 @@ function procedimentoCYA(
   }
 
   const vol = toNum(cliente?.volume);
-  const atual = toNum(p.valor_atual);
   const alvo = toNum(p.valor_alvo);
-
   const troca = calcularVolumeTrocaAguaParaCYA(vol, atual, alvo);
+
   if (typeof troca === 'number' && troca > 0) {
-    linhas.push(`   - Sugestão: renovar aproximadamente ${troca} m³ de água (com base no volume e alvo).`);
+    linhas.push(`   - Renovação mínima estimada: ${troca} m³ de água.`);
   } else {
-    linhas.push('   - Sugestão: calcular percentagem de renovação com base no volume e no alvo definido.');
+    linhas.push('   - Renovação parcial de água necessária (calcular com base no volume e alvo).');
   }
 
   return linhas;

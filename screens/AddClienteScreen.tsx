@@ -197,6 +197,14 @@ if (
   }
   return;
 }
+  if (field === 'telefone' && typeof value === 'string') {
+  const digitsOnly = value.replace(/\D/g, '').slice(0, 9);
+  setForm((prev) => ({ ...prev, telefone: digitsOnly }));
+  return;
+}
+
+// ✅ Fallback: para todos os outros campos
+setForm((prev) => ({ ...prev, [field]: value }));
 };
 
 

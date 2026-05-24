@@ -13,9 +13,18 @@ import moment from 'moment';
 import { calcularISL, sugerirAlvosPorISL } from '../utils/isl';
 import { gerarMensagensManutencao } from '../services/manutencaoMensagens';
 import TaylorChart from '../components/TaylorChart';
-import { sugerirAlvosPorTaylor, sugerirAlvosPorTaylorRefinandoISL, calcTaylorAngleDeg } from '../utils/taylor'; // ajusta o path se necessário
-
-
+import { sugerirAlvosPorTaylorRefinandoISL, calcTaylorAngleDeg } from '../utils/taylor'; // ajusta o path se necessário
+import { initOffline } from '../services/offline/db';
+import {
+  getClienteCache,
+  setClienteCache,
+  getISLEstadoAtualCache,
+  setISLEstadoAtualCache,
+  getManutencaoAtualCache,
+  setManutencaoAtualCache,
+  getParametrosAtivosCache,
+  setParametrosAtivosCache,
+} from '../services/offline/cache';
 
 export const getAccessibleUri = async (uri: string): Promise<string | null> => {
   if (uri.startsWith('content://')) {
@@ -213,6 +222,7 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   const [procedimentoMsg, setProcedimentoMsg] = useState<ReturnType<typeof gerarMensagensManutencao> | null>(null);
   const [abrirProcedimentoAposCalcular, setAbrirProcedimentoAposCalcular] = useState(false);
   const [taylorOpen, setTaylorOpen] = useState(false);
+  const skipNextFocusReloadRef = useRef(false);
 
   // ✅ ler estado do card (por parâmetro)
   const isExpanded = useCallback(
@@ -364,68 +374,6 @@ if (Number.isFinite(phNum) && Number.isFinite(tacNum) && Number.isFinite(thNum))
   // fallback seguro
   setIslSugestao(sugerirAlvosPorISL(res.isl));
 }
-};
-
-const podeGuardarEstadoISL = () => {
-  const ph = toNum(islPH);
-  const tac = toNum(islAlc);
-  const th = toNum(islDur);
-  const temp = toNum(islTemp);
-  const tds = toNum(islTds);
-
-  return (
-    Number.isFinite(ph) &&
-    Number.isFinite(tac) &&
-    Number.isFinite(th) &&
-    Number.isFinite(temp) &&
-    Number.isFinite(tds) &&
-    islResultado &&
-    Number.isFinite(Number(islResultado.isl))
-  );
-};
-
-const upsertEstadoISL = async () => {
-  if (!empresaid || !clienteId) return;
-  if (!podeGuardarEstadoISL()) return;
-
-  const phAlvoFinal = islSugestao?.phAlvo ?? null;
-  const alcAlvoFinal = islSugestao?.alcAlvo ?? null;
-
-  const payload = {
-    empresaid,
-    cliente_id: clienteId,
-
-    ph: Number(islPH),
-    alcalinidade: Number(islAlc),
-    dureza: Number(islDur),
-    temperatura: Number(islTemp),
-    tds: Number(islTds),
-
-    isl: Number(islResultado!.isl),
-    indicacao: islResultado!.indicacao,
-
-    // ✅ alvos finais (já “afinados” pelo Taylor)
-    ph_alvo: phAlvoFinal,
-    alc_alvo: alcAlvoFinal,
-  };
-
-  console.log('📤 /isl/estado payload:', payload);
-
-  const resp = await fetch(`${Config.API_URL}/isl/estado`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await resp.json().catch(() => null);
-  console.log('📥 /isl/estado:', resp.status, data);
-
-  if (!resp.ok) {
-    throw new Error(data?.error || 'Erro ao atualizar ISL estado.');
-  }
-
-  // opcional: manter estado atual em memória
-  setIslEstadoAtual(data || null);
 };
 
 const onGuardarISL = async () => {
@@ -589,58 +537,50 @@ const abrirTesteRapidoComConfirmacao = () => {
 
 // 🔹 Função para buscar os parâmetros químicos
 const fetchParametros = useCallback(async () => {
-  if (!userEmpresaid) {
-    return;
-  }
+  if (!userEmpresaid) return;
+
   try {
+    await initOffline();
+
+    // 1) cache primeiro
+    const cached = await getParametrosAtivosCache<any[]>(userEmpresaid);
+    if (cached?.data && Array.isArray(cached.data)) {
+      setParametrosQuimicos(cached.data);
+    }
+
+    // 2) online
     console.log('[DEBUG] Buscando parâmetros com empresaid:', userEmpresaid);
     const response = await axios.get(`${Config.API_URL}/parametros-quimicos`, {
-      params: { empresaid: userEmpresaid, ativo: true }, // Apenas parâmetros ativos
+      params: { empresaid: userEmpresaid, ativo: true },
+      timeout: 12000,
     });
 
     if (response.status === 200) {
-  const data = Array.isArray(response.data) ? response.data : [];
+      const data = Array.isArray(response.data) ? response.data : [];
 
-  const existeTotal = data.some((p: any) => norm(p.parametro) === 'cloro total em ppm');
-  const existeComb = data.some((p: any) => norm(p.parametro) === 'cloro combinado em ppm');
+      const existeTotal = data.some((p: any) => norm(p.parametro) === 'cloro total em ppm');
+      const existeComb = data.some((p: any) => norm(p.parametro) === 'cloro combinado em ppm');
 
-  const add: any[] = [];
+      const add: any[] = [];
+      if (!existeTotal) add.push({ parametro: 'Cloro Total em ppm', valor_atual: '', valor_ultimo: null, bloqueado: false, status: null, resultado: null });
+      if (!existeComb) add.push({ parametro: 'Cloro Combinado em ppm', valor_atual: '', valor_ultimo: null, bloqueado: true, status: null, resultado: null });
 
-  if (!existeTotal) {
-    add.push({
-      parametro: 'Cloro Total em ppm',
-      valor_atual: '',
-      valor_ultimo: null,
-      bloqueado: false,
-      status: null,
-      resultado: null,
-    });
-  }
+      const finalList = add.length ? [...data, ...add] : data;
 
-  if (!existeComb) {
-    add.push({
-      parametro: 'Cloro Combinado em ppm',
-      valor_atual: '',
-      valor_ultimo: null,
-      bloqueado: true,
-      status: null,
-      resultado: null,
-    });
-  }
-
-  const finalList = add.length ? [...data, ...add] : data;
-
-  setParametrosQuimicos(finalList);
-  console.log('[DEBUG] Parâmetros químicos carregados:', finalList);
+      setParametrosQuimicos(finalList);
+      await setParametrosAtivosCache(userEmpresaid, finalList); // ✅ guarda já pronto para UI
     } else {
       console.error('[DEBUG] Erro ao buscar parâmetros químicos. Status:', response.status);
-      Alert.alert('Erro', 'Não foi possível carregar os parâmetros químicos.');
+      // se houver cache, não alertar; só alertar se não houver nada
+      const cached2 = await getParametrosAtivosCache(userEmpresaid);
+      if (!cached2?.data) Alert.alert('Erro', 'Não foi possível carregar os parâmetros químicos.');
     }
   } catch (error) {
     console.error('[DEBUG] Erro ao buscar parâmetros químicos:', error);
-    Alert.alert('Erro', 'Não foi possível carregar os parâmetros.');
+    const cached2 = await getParametrosAtivosCache(userEmpresaid);
+    if (!cached2?.data) Alert.alert('Erro', 'Não foi possível carregar os parâmetros.');
   }
-}, [userEmpresaid]); // ✅ `useCallback` para evitar recriação desnecessária
+}, [userEmpresaid]);
 
 // 🔹 `useEffect` para carregar os parâmetros **após** o `empresaid` ser carregado
 useEffect(() => {
@@ -655,6 +595,8 @@ useEffect(() => {
 
   console.log('🟩 [Folha] a aplicar testeRapidoPendente AGORA:', testeRapidoPendente);
 
+  skipNextFocusReloadRef.current = true; // ✅
+  
   aplicarTesteRapidoNosParametros(testeRapidoPendente);
 
   // ✅ Após receber valores do Teste Rápido, abrir apenas os parâmetros que vieram com valor
@@ -687,6 +629,145 @@ const fetchDadosManutencao = useCallback(async () => {
     return;
   }
 
+  await initOffline();
+
+// 1) CACHE PRIMEIRO — permite abrir offline
+const cachedCliente = await getClienteCache(empresaid, clienteId);
+if (cachedCliente?.data) {
+  setCliente(cachedCliente.data);
+}
+
+const cachedISL = await getISLEstadoAtualCache(empresaid, clienteId);
+if (cachedISL?.data !== undefined) {
+  const st = cachedISL.data;
+  setIslEstadoAtual(st || null);
+
+  // ✅ preencher inputs a partir do cache (para offline)
+  if (st) {
+    if (st.ph != null) setIslPH(String(st.ph));
+    if (st.alcalinidade != null) setIslAlc(String(Math.round(Number(st.alcalinidade))));
+    if (st.dureza != null) setIslDur(String(Math.round(Number(st.dureza))));
+    if (st.temperatura != null) setIslTemp(String(st.temperatura));
+    if (st.tds != null) setIslTds(String(Math.round(Number(st.tds))));
+
+    // ✅ sugestão alvo baseada no ISL atual (cache)
+    const islNum = Number(st.isl);
+    if (st.isl != null && Number.isFinite(islNum)) {
+      const phNum  = toNum(String(st.ph ?? ''));
+      const tacNum = toNum(String(st.alcalinidade ?? ''));
+      const thNum  = toNum(String(st.dureza ?? ''));
+
+      if (Number.isFinite(phNum) && Number.isFinite(tacNum) && Number.isFinite(thNum)) {
+        const finalSug = gerarSugestaoFinal({
+          isl: islNum,
+          phAtual: phNum,
+          tacAtual: tacNum,
+          thAtual: thNum,
+        });
+        setIslSugestao(finalSug);
+      } else {
+        setIslSugestao(sugerirAlvosPorISL(islNum));
+      }
+    } else {
+      setIslSugestao(null);
+    }
+  } else {
+    // ✅ se o cache tiver null, limpa
+    setIslPH('');
+    setIslAlc('');
+    setIslDur('');
+    setIslTemp('');
+    setIslTds('');
+    setIslSugestao(null);
+  }
+}
+
+const cachedManut = await getManutencaoAtualCache<any>(empresaid, clienteId, diaSemana);
+if (cachedManut?.data) {
+  const manutencaoData = cachedManut.data;
+
+  const m = manutencaoData?.manutencao;
+setManutencaoAtual(m || null);
+
+// ✅ preencher também os states que controlam o UI (offline)
+const metodo = (m?.metodo_analise || m?.metodoAnalise) as MetodoAnalise | undefined;
+const modo = (m?.modo_tratamento || m?.modoTratamento) as ModoTratamento | undefined;
+
+if (metodo === 'fotometro' || metodo === 'gotas' || metodo === 'fitas') {
+  setMetodoAnalise(metodo);
+}
+
+if (modo === 'sal' || modo === 'cloro') {
+  setModoTratamento(modo);
+} else {
+  // fallback inteligente (se no cache faltar)
+  const eletrolise = !!(cachedCliente?.data?.eletrolise_sal || cachedCliente?.data?.eletroliseSal);
+  setModoTratamento(eletrolise ? 'sal' : 'cloro');
+}  
+
+  // aplicar parametros como já fazes
+  if (m?.id && Array.isArray(manutencaoData.parametros)) {
+    const parametrosAtivos = manutencaoData.parametros.map((parametro: any) => {
+      const nome = String(parametro.parametro || '').trim();
+      const requeridoHoje = nome === 'pH' || nome === 'Cloro Livre em ppm';
+
+      return {
+        ...parametro,
+        requeridoHoje,
+        bloqueado: ['aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel'].includes(parametro.status),
+        resultado:
+          parametro.status === 'nao ajustavel'
+            ? { resultado: 'Foi solicitada assistência à administração com sucesso', quantidade: 0, produto: null }
+            : parametro.resultado || null,
+      };
+    });
+
+    // ✅ Ao carregar a Folha: tudo fechado (exceto se vier do Teste Rápido)
+     if (!skipNextFocusReloadRef.current) {
+       collapseAllParams();
+     }
+
+    setParametrosQuimicos((prev) => {
+      const byKey = new Map<string, any>();
+      for (const p of prev) byKey.set(norm(p.parametro), p);
+      for (const p of parametrosAtivos) {
+        const k = norm(p.parametro);
+        const base = byKey.get(k) || p;
+        const baseValor = (base as any)?.valor_atual;
+const novoValor = (p as any)?.valor_atual;
+
+// "vazio" = null/undefined/'' (string vazia)
+const isVazio = (v: any) => v === null || v === undefined || String(v).trim() === '';
+
+const statusNovo = (p as any)?.status;
+const statusBase = (base as any)?.status;
+
+// ✅ Se o backend vier pendente (ou sem status) e trouxer valor vazio,
+// mantém o valor local (baseValor) para não apagar o que o técnico acabou de meter.
+const manterValorLocal =
+  isVazio(novoValor) &&
+  !isVazio(baseValor) &&
+  (statusNovo === 'pendente' || statusNovo === null || statusNovo === undefined);
+
+byKey.set(k, {
+  ...base,
+  ...p,
+  ...(manterValorLocal ? { valor_atual: baseValor } : null),
+});
+      }
+      if (!byKey.has('cloro total em ppm')) byKey.set('cloro total em ppm', { parametro: 'Cloro Total em ppm', valor_atual: '', valor_ultimo: null, bloqueado: false, status: null, resultado: null });
+      if (!byKey.has('cloro combinado em ppm')) byKey.set('cloro combinado em ppm', { parametro: 'Cloro Combinado em ppm', valor_atual: '', valor_ultimo: null, bloqueado: true, status: null, resultado: null });
+      return Array.from(byKey.values());
+    });
+  }
+}
+
+// ✅ Flag ANTES da rede (para o catch final)
+const tinhaAlgoEmCache =
+  !!cachedCliente?.data ||
+  !!cachedManut?.data ||
+  cachedISL?.data !== undefined;
+
   try {
     console.log('📡 Buscando dados do cliente...');
     const clienteResponse = await fetch(
@@ -701,6 +782,11 @@ const fetchDadosManutencao = useCallback(async () => {
     setCliente(clienteData);
     console.log('✅ Dados do cliente carregados:', clienteData);
 
+    // ✅ guardar cache (cliente)
+    await setClienteCache(empresaid, clienteId, clienteData);
+    console.log('💾 [CACHE] cliente gravado', { empresaid, clienteId });
+    
+
     // ✅ Buscar estado atual ISL (persistente)
 try {
   console.log('📡 Buscando ISL estado atual...');
@@ -711,6 +797,10 @@ try {
   if (islResp.ok) {
   const st = await islResp.json();
   setIslEstadoAtual(st || null);
+
+  // ✅ guardar cache (ISL estado atual)
+  await setISLEstadoAtualCache(empresaid, clienteId, st || null);
+  console.log('💾 [CACHE] isl gravado', { empresaid, clienteId, tem: !!st });
 
   if (st) {
     // ✅ preencher inputs (inclui temperatura e tds)
@@ -761,6 +851,8 @@ console.log('🎯 SUG ISL (estado atual):', sug);
   console.warn('⚠️ Falha ao buscar ISL estado atual. Status:', islResp.status);
   setIslEstadoAtual(null);
 
+  await setISLEstadoAtualCache(empresaid, clienteId, null);
+
   // ✅ limpa tudo
   setIslPH('');
   setIslAlc('');
@@ -788,8 +880,44 @@ console.log('🎯 SUG ISL (estado atual):', sug);
 
     const manutencaoData = await manutencaoResponse.json();
 
-// ✅ DEBUG (Render vs Local) — coloca aqui
+// ✅ guardar cache (manutenção atual + parâmetros)
+await setManutencaoAtualCache(empresaid, clienteId, diaSemana, manutencaoData);
+console.log('💾 [CACHE] manutencao gravada', { empresaid, clienteId, diaSemana, manutencaoId: manutencaoData?.manutencao?.id });
+
+// ✅ DEBUG (Render vs Local)
 const m = manutencaoData?.manutencao;
+
+console.log('🧪 [DEBUG MANUT] clienteId/diaSemana/empresaid:', { clienteId, diaSemana, empresaid });
+
+console.log('🧪 [DEBUG MANUT] manutencao recebida:', {
+  id: m?.id,
+  status: m?.status,
+  dia_semana: m?.dia_semana ?? (m as any)?.diaSemana,
+  data_manutencao: m?.data_manutencao ?? (m as any)?.data_manutencao_iso,
+  created_at: (m as any)?.created_at,
+  metodo_analise: (m as any)?.metodo_analise,
+  modo_tratamento: (m as any)?.modo_tratamento,
+  parametrosCount: Array.isArray(manutencaoData?.parametros) ? manutencaoData.parametros.length : null,
+});
+
+// ✅ AQUI: aplicar método + modo vindos da rede (simétrico do cache)
+setManutencaoAtual(m || null);
+
+const metodo = ((m as any)?.metodo_analise || (m as any)?.metodoAnalise) as MetodoAnalise | undefined;
+const modo   = ((m as any)?.modo_tratamento || (m as any)?.modoTratamento) as ModoTratamento | undefined;
+
+if (metodo === 'fotometro' || metodo === 'gotas' || metodo === 'fitas') {
+  setMetodoAnalise(metodo);
+}
+
+if (modo === 'sal' || modo === 'cloro') {
+  setModoTratamento(modo);
+} else {
+  const eletrolise = !!((cliente as any)?.eletrolise_sal || (cliente as any)?.eletroliseSal);
+  setModoTratamento(eletrolise ? 'sal' : 'cloro');
+}
+
+
 
 console.log('🧪 [DEBUG MANUT] clienteId/diaSemana/empresaid:', {
   clienteId,
@@ -819,10 +947,6 @@ if (Array.isArray(manutencaoData?.parametros)) {
     }))
   );
 }
-
-// agora sim, segue o teu código normal
-setManutencaoAtual(m || null);
-
 
     setManutencaoAtual(manutencaoData.manutencao || null);
     console.log('✅ Dados da manutenção carregados:', manutencaoData.manutencao);
@@ -858,7 +982,9 @@ setManutencaoAtual(m || null);
       });
 
       // ✅ Ao carregar a Folha: tudo fechado
-      collapseAllParams();
+      if (!skipNextFocusReloadRef.current) {
+  collapseAllParams();
+}
 
       setParametrosQuimicos((prev) => {
   const byKey = new Map<string, any>();
@@ -873,10 +999,27 @@ setManutencaoAtual(m || null);
     const k = norm(p.parametro);
     const base = byKey.get(k) || p;
 
-    byKey.set(k, {
-      ...base,
-      ...p, // valor_atual, valor_ultimo, status, motivo, etc.
-    });
+    const baseValor = (base as any)?.valor_atual;
+const novoValor = (p as any)?.valor_atual;
+
+// "vazio" = null/undefined/'' (string vazia)
+const isVazio = (v: any) => v === null || v === undefined || String(v).trim() === '';
+
+const statusNovo = (p as any)?.status;
+const statusBase = (base as any)?.status;
+
+// ✅ Se o backend vier pendente (ou sem status) e trouxer valor vazio,
+// mantém o valor local (baseValor) para não apagar o que o técnico acabou de meter.
+const manterValorLocal =
+  isVazio(novoValor) &&
+  !isVazio(baseValor) &&
+  (statusNovo === 'pendente' || statusNovo === null || statusNovo === undefined);
+
+byKey.set(k, {
+  ...base,
+  ...p,
+  ...(manterValorLocal ? { valor_atual: baseValor } : null),
+});
   }
 
   // 3) garante que os novos existem (se por algum motivo não vieram)
@@ -914,7 +1057,10 @@ setManutencaoAtual(m || null);
   console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
 
   // ✅ Ao carregar a Folha sem parâmetros: tudo fechado
+  // ✅ Ao carregar a Folha sem parâmetros (exceto se vier do Teste Rápido)
+  if (!skipNextFocusReloadRef.current) {
   collapseAllParams();
+}
 
   // NÃO apagues a lista base; garante pelo menos os 2 novos
   setParametrosQuimicos((prev) => {
@@ -981,30 +1127,35 @@ setManutencaoAtual(m || null);
 }
 
   } catch (error) {
-    console.error(
-      '❌ Erro ao processar os parâmetros químicos:',
-      error instanceof Error ? error.message : String(error)
-    );
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error);
 
-    Alert.alert(
-      'Erro',
-      error instanceof Error
-        ? error.message
-        : 'Não foi possível carregar os dados. Verifique a conexão e tente novamente.'
-    );
+  console.error('❌ Erro ao processar fetchDadosManutencao:', msg);
+
+  if (!tinhaAlgoEmCache) {
+    Alert.alert('Erro', msg || 'Não foi possível carregar os dados. Verifique a conexão e tente novamente.');
+  } else {
+    console.log('🟡 Sem rede, mas cache já carregado. Ignorar alert.');
   }
+}
 }, [clienteId, diaSemana, empresaid]);
 
 useFocusEffect(
   useCallback(() => {
-    console.log('🔄 Recarregando os parâmetros químicos ao voltar para a tela...');
+    if (!clienteId || !diaSemana || !empresaid) return;
 
-    if (!clienteId || !diaSemana || !empresaid) {
+    if (skipNextFocusReloadRef.current) {
+      console.log('🟨 [Folha] skip reload (regresso do Teste Rápido)');
+      skipNextFocusReloadRef.current = false;
       return;
     }
 
     fetchDadosManutencao();
-  }, [clienteId, diaSemana, empresaid, fetchDadosManutencao]) // ✅ Agora inclui `fetchDadosManutencao`
+  }, [clienteId, diaSemana, empresaid, fetchDadosManutencao])
 );
 
 const registrarStatusParametro = async (

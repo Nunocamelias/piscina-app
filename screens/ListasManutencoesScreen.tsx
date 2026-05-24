@@ -72,6 +72,41 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
     fetchEquipes();
   }, [userEmpresaid]);
 
+  const handleResetStatus = async () => {
+  if (!userEmpresaid) {
+    Alert.alert('Erro', 'Empresaid não carregado. Tente novamente.');
+    return;
+  }
+
+  Alert.alert(
+    'Confirmar reset',
+    'Tem a certeza que pretende fazer o reset manual das manutenções?',
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sim, fazer reset',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await axios.post(`${Config.API_URL}/reset-status`, {
+              empresaid: userEmpresaid,
+            });
+
+            if (response.status === 200) {
+              Alert.alert('Sucesso', response.data.message || 'Reset efetuado com sucesso.');
+            } else {
+              Alert.alert('Erro', 'Não foi possível resetar as manutenções.');
+            }
+          } catch (error) {
+            console.error('Erro ao resetar status:', error);
+            Alert.alert('Erro', 'Não foi possível resetar as manutenções.');
+          }
+        },
+      },
+    ]
+  );
+};
+
   const renderEquipeItem = ({
     item,
   }: {
@@ -132,6 +167,10 @@ const ListasManutencoesScreen = ({ navigation }: Props) => {
 
       {/* 🔹 Título */}
       <Text style={styles.title}>Listas de Manutenções</Text>
+
+      <TouchableOpacity style={styles.resetButton} onPress={handleResetStatus}>
+      <Text style={styles.resetButtonText}>Reset manual das manutenções</Text>
+      </TouchableOpacity>
 
       {/* 🔹 Lista dinâmica de equipes */}
       <FlatList
@@ -228,6 +267,27 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#444',
     marginTop: 2,
+  },
+  resetButton: {
+  backgroundColor: '#ff5c42',
+  paddingVertical: 14,
+  borderRadius: 12,
+  marginBottom: 20,
+
+  width: '90%',
+  alignSelf: 'center',
+
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  elevation: 5,
+},
+  resetButtonText: {    
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    alignSelf: 'center',
   },
 });
 

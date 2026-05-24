@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const cron = require('node-cron');
 
 // Middlewares
 app.use(cors());
@@ -2224,12 +2225,8 @@ app.put('/manutencoes/:id/parametros', async (req, res) => {
   }
 });
 
-app.post('/reset-status', async (req, res) => {
-  const { empresaid } = req.body;
-
-  if (!empresaid) {
-    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
-  }
+// Função reutilizável para reset semanal das manutenções
+async function resetStatusEmpresa(empresaid) {
 
   const client = await pool.connect();
 
@@ -2255,6 +2252,15 @@ app.post('/reset-status', async (req, res) => {
       WHERE m.status = 'concluida'
         AND c.empresaid = $1
         AND e.empresaid = $1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM manutencoes m2
+          WHERE m2.cliente_id = a.clienteid
+            AND m2.dia_semana = a.diasemana
+            AND m2.empresaid = $1
+            AND m2.status = 'pendente'
+            AND m2.data_manutencao > m.data_manutencao
+        )
       ORDER BY a.clienteid, a.diasemana, m.data_manutencao DESC;
     `;
 
@@ -2262,7 +2268,10 @@ app.post('/reset-status', async (req, res) => {
 
     if (clientesAtivosResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Nenhuma manutenção encontrada para resetar.' });
+      return {
+        detalhes: [],
+        message: 'Nenhuma manutenção encontrada para resetar.',
+      };
     }
 
     const mensagensDeSucesso = [];
@@ -2354,16 +2363,40 @@ app.post('/reset-status', async (req, res) => {
 
     await client.query('COMMIT');
 
+      return {
+        message: 'Manutenções resetadas com sucesso!',
+        detalhes: mensagensDeSucesso,
+      };
+      } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Erro ao resetar status:', error);
+      throw error;
+      } finally {
+      client.release();
+      }
+}
+
+app.post('/reset-status', async (req, res) => {
+  const { empresaid } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  try {
+    const resultado = await resetStatusEmpresa(empresaid);
+
     return res.status(200).json({
-      message: 'Manutenções resetadas com sucesso!',
-      detalhes: mensagensDeSucesso,
+      message: resultado.message || 'Manutenções resetadas com sucesso!',
+      detalhes: resultado.detalhes || [],
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Erro ao resetar status:', error);
-    return res.status(500).json({ error: 'Erro ao resetar status.', detalhes: error.message });
-  } finally {
-    client.release();
+
+    return res.status(500).json({
+      error: 'Erro ao resetar status.',
+      detalhes: error.message,
+    });
   }
 });
 
@@ -4931,6 +4964,31 @@ app.get('/notificacoes/:id/historico', async (req, res) => {
     console.error('❌ Erro ao buscar histórico da notificação:', error);
     return res.status(500).json({ error: 'Erro ao buscar histórico.' });
   }
+});
+
+cron.schedule('55 23 * * 0', async () => {
+  console.log('🕒 Iniciando reset automático semanal...');
+
+  try {
+    const empresasResult = await pool.query(`
+      SELECT id FROM empresas
+    `);
+
+    for (const empresa of empresasResult.rows) {
+      try {
+        console.log(`🔄 Reset empresa ${empresa.id}`);
+        await resetStatusEmpresa(empresa.id);
+      } catch (err) {
+        console.error(`❌ Erro reset empresa ${empresa.id}:`, err.message);
+      }
+    }
+
+    console.log('✅ Reset automático concluído.');
+  } catch (error) {
+    console.error('❌ Erro no cron semanal:', error);
+  }
+}, {
+  timezone: 'Europe/Lisbon'
 });
 
 // Inicia o servidor

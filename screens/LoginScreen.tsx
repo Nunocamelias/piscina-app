@@ -6,6 +6,7 @@ import Config from 'react-native-config';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DeviceInfo from 'react-native-device-info';
 import * as Keychain from 'react-native-keychain';
+import moment from 'moment';
 
 const WATERMARK = require('../assets/images/logo-watermark.png'); 
 // ajusta o caminho conforme a tua estrutura
@@ -102,6 +103,11 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
     await AsyncStorage.setItem('tipo_usuario', user.tipo_usuario || '');
     await AsyncStorage.setItem('userId', String(user.id));
     await AsyncStorage.setItem('userNome', user.nome || '');
+    // ✅ Guardar equipeId para permitir login offline
+    await AsyncStorage.setItem('equipeId', String(user.equipeId ?? ''));
+    // 🔐 Marcar login válido de hoje (para permitir login offline)
+    await AsyncStorage.setItem('ultimoLoginDia', moment().format('YYYY-MM-DD'));
+    await AsyncStorage.setItem('ultimoLoginEmail', emailLimpo);
 
     console.log('🧪 STORAGE (logo após setItem):', {
       empresaid: await AsyncStorage.getItem('empresaid'),
@@ -112,6 +118,8 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
     const userType = user.tipo_usuario;
     const equipeId = user.equipeId;
+
+    await AsyncStorage.setItem('equipeId', String(equipeId ?? ''));
 
     // 🔁 Roteamento por tipo de utilizador
     if (userType === 'admin') {
@@ -180,12 +188,72 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
       // ✅ SEM RESPOSTA (servidor off / sem net)
       if (!error.response) {
-        Alert.alert(
-          'Sem ligação',
-          'Não foi possível ligar ao servidor. Verifique a internet e tente novamente.'
-        );
+  console.log('🔌 Sem ligação. A tentar login offline...');
+
+  try {
+    const hoje = moment().format('YYYY-MM-DD');
+    const emailLimpo = email.trim().toLowerCase();
+
+    const ultimoLoginDia = await AsyncStorage.getItem('ultimoLoginDia');
+    const ultimoLoginEmail = await AsyncStorage.getItem('ultimoLoginEmail');
+
+    const tipoUsuario = await AsyncStorage.getItem('tipo_usuario');
+    const empresaid = await AsyncStorage.getItem('empresaid');
+    const token = await AsyncStorage.getItem('authToken');
+
+    // ✅ isto é o que faltava
+    const equipeIdStr = await AsyncStorage.getItem('equipeId');
+    const userNome = await AsyncStorage.getItem('userNome');
+
+    const loginHoje = ultimoLoginDia === hoje;
+    const emailIgual = ultimoLoginEmail === emailLimpo;
+
+    const tipoPermitido =
+      tipoUsuario === 'equipa_manutencao' ||
+      tipoUsuario === 'equipe' ||
+      tipoUsuario === 'equipa_tecnica';
+
+    const equipeIdNum = equipeIdStr ? Number(equipeIdStr) : null;
+
+    console.log('🧪 OFFLINE CHECK:', {
+      loginHoje,
+      emailIgual,
+      tipoUsuario,
+      tipoPermitido,
+      empresaid: !!empresaid,
+      token: !!token,
+      equipeIdNum,
+    });
+
+    if (loginHoje && emailIgual && tipoPermitido && empresaid && token && equipeIdNum) {
+      Alert.alert('Modo Offline', 'Sessão anterior válida hoje. A entrar em modo offline.');
+
+      if (tipoUsuario === 'equipa_tecnica') {
+        navigation.navigate('EquipeTecHome', {
+          equipeId: equipeIdNum,
+          equipeNome: userNome || '',
+        });
         return;
       }
+
+      // equipa_manutencao / equipe
+      navigation.navigate('EquipeHome', {
+        equipeId: equipeIdNum,
+        equipeNome: userNome || '',
+      });
+      return;
+    }
+
+    Alert.alert('Sem ligação', 'Sem internet e sem sessão válida para hoje.');
+    return;
+  } catch (e) {
+    console.log('❌ Falha no login offline:', e);
+    Alert.alert('Sem ligação', 'Não foi possível ligar ao servidor. Verifique a internet e tente novamente.');
+    return;
+  }
+}
+
+
 
       // ✅ ERRO do servidor (401 etc)
       Alert.alert('Erro', msgServer || 'Credenciais inválidas.');

@@ -9,7 +9,7 @@ import {
   SafeAreaView,
   Alert,
   PanResponder,
-  LayoutChangeEvent,
+  Pressable,
 } from 'react-native';
 import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import {
@@ -104,7 +104,7 @@ const PARAMS_ALL: ParametroTR[] = [
   { key: 'dureza', label: 'Dureza', short: 'DUR', anchors: DUREZA_ANCHORS, min: 0, max: 1000, step: 10 },
   { key: 'cloro_total', label: 'Cloro Total', short: 'Cl-T', anchors: CLORO_TOTAL_ANCHORS, min: 0, max: 10, step: 0.1 },
   { key: 'cloro_livre', label: 'Cloro Livre', short: 'Cl-L', anchors: CLORO_ANCHORS, min: 0, max: 10, step: 0.1 },
-  { key: 'ph', label: 'pH', short: 'pH', anchors: PH_ANCHORS, min: 6.2, max: 8.2, step: 0.1 },
+  { key: 'ph', label: 'pH', short: 'pH', anchors: PH_ANCHORS, min: 6.2, max: 8.2, step: 0.05 },
   { key: 'alcalinidade', label: 'Alcalinidade', short: 'TAC', anchors: ALC_ANCHORS, min: 0, max: 240, step: 5 },
   { key: 'cya', label: 'Ácido Cianúrico', short: 'CYA', anchors: CYA_ANCHORS, min: 0, max: 300, step: 5 },
   { key: 'sal', label: 'Sal', short: 'SAL', anchors: [], min: 0, max: 10, step: 0.1 },
@@ -176,6 +176,11 @@ const yToValueFromPageY = (pageY: number) => {
     if (!armed && Math.abs(value - min) < 1e-9) return 34;
     return 40;
   }, [dragging, armed, value, min]);
+
+   // ✅ NOVO — dimensões do capsule
+  const THUMB_W = 60;
+  const THUMB_H = 110;
+  const BTN_H = 28;
 
   function yToValue(yy: number) {
   const _min = minRef.current;
@@ -288,25 +293,9 @@ onPanResponderRelease: (evt, gesture) => {
   activeTouchIdRef.current = null;
   globalTouchLock.unlock('VerticalThumbSlider');
 
-  const moved = Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4;
-
   if (draggingRef.current) {
     draggingRef.current = false;
     setDragging(false);
-  } else {
-    // ✅ TAP / double-tap (se quiseres manter)
-    const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
-    const canDoubleTap = armed && !isAtMin;
-
-    const now = Date.now();
-    const dt = now - lastTapRef.current;
-
-    if (dt < 260 && canDoubleTap) {
-      lastTapRef.current = 0;
-      onDoubleTap?.();
-    } else {
-      lastTapRef.current = now;
-    }
   }
 
   const isAtMin = Math.abs(valueRef.current - minRef.current) < 1e-9;
@@ -347,23 +336,44 @@ onPanResponderTerminate: () => {
     });
   });
 }}
-
-  {...panResponder.panHandlers}
 >
   <View style={vstyles.track} />
 
       <View
-            pointerEvents="none"
-            style={[
-             vstyles.thumb,
-          {
-            width: thumbSize,
-            height: thumbSize,
-            borderRadius: thumbSize / 2,
-            top: y - thumbSize / 2,
-          },
-         ]}
-       />
+  style={[
+    vstyles.thumbCapsule,
+    {
+      width: THUMB_W,
+      height: THUMB_H,
+      borderRadius: THUMB_W / 2,
+      top: y - THUMB_H / 2,
+    },
+  ]}
+>
+  {/* DRAG ZONE */}
+<View
+  {...panResponder.panHandlers}
+  style={vstyles.thumbDragZone}
+>
+  <View style={vstyles.innerCircleDrag}>
+    <Text style={vstyles.thumbIcon}>↕</Text>
+  </View>
+</View>
+
+{/* TAP 1x ZONE */}
+<Pressable
+  onPress={() => onDoubleTap?.()}
+  hitSlop={14}
+  style={({ pressed }) => [
+    vstyles.thumbBtnZone,
+    pressed ? { opacity: 0.75 } : null,
+  ]}
+>
+  <View style={vstyles.innerCircleTap}>
+    <Text style={vstyles.thumbBtnText}>1x</Text>
+  </View>
+</Pressable>
+</View>
       </View>      
     </View>
   );
@@ -391,6 +401,78 @@ const vstyles = StyleSheet.create({
     backgroundColor: '#111',
   },
   hint: { marginTop: 8, fontSize: 12, color: '#555' },
+  thumbCapsule: {
+  position: 'absolute',
+  backgroundColor: '#111',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 6,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+},
+
+thumbDragZone: {
+  position: 'absolute',
+  top: 4,
+  width: '100%',
+  alignItems: 'center',
+},
+
+thumbIcon: {
+  color: '#000',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+
+thumbBtnZone: {
+  position: 'absolute',
+  bottom: 4,
+  width: '100%',
+  alignItems: 'center',
+  borderTopWidth: 1,
+  borderTopColor: 'rgba(255,255,255,0.12)',
+},
+
+thumbBtnText: {
+  color: '#000',
+  fontSize: 14,
+  fontWeight: 'bold',
+},
+modeDot: {
+  width: 12,
+  height: 12,
+  borderRadius: 6,
+  marginBottom: 6,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.35)',
+},
+
+// cor do círculo do DRAG
+modeDotDrag: {
+  backgroundColor: '#22b4b4ff', // turquesa do teu header (ou muda)
+},
+
+// cor do círculo do TAP (1x)
+modeDotTap: {
+  backgroundColor: '#FFB3B3', // vermelho esbatido (ou muda)
+},
+innerCircleDrag: {
+  width: 46,
+  height: 46,
+  borderRadius: 23,
+  backgroundColor: '#22b4b4ff', // azul drag
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+innerCircleTap: {
+  width: 46,
+  height: 46,
+  borderRadius: 23,
+  backgroundColor: '#FFF5CC', // amarelo tap
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 });
 
 /* =========================================================

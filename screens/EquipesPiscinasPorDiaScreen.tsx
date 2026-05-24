@@ -2,6 +2,8 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { View, Text, FlatList, Alert, StyleSheet, TouchableOpacity, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
+import { initOffline } from '../services/offline/db';
+import { getClientesPorDiaCache, setClientesPorDiaCache } from '../services/offline/cache';
 
 type Props = {
   navigation: any;
@@ -48,23 +50,47 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
 
 
 
-  // Função para buscar clientes associados
-  const fetchClientes = useCallback(async () => {
-    setLoading(true);
-    console.log('[fetchClientes] params:', { equipeId, diaSemana, empresaid });
-    try {
-      const response = await axios.get(`${Config.API_URL}/clientes-por-dia`, {
-        params: { equipeId, diaSemana, empresaid },
-      });
-      console.log('📊 Dados recebidos de clientes-por-dia:', response.data);
-      setClientes(response.data);
-    } catch (error) {
-      console.error('❌ Erro ao buscar clientes:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
-    } finally {
-      setLoading(false);
+ // Função para buscar clientes associados (offline cache-first)
+const fetchClientes = useCallback(async () => {
+  setLoading(true);
+  console.log('[fetchClientes] params:', { equipeId, diaSemana, empresaid });
+
+  try {
+    await initOffline();
+
+    // 1) Cache primeiro
+    const cached = await getClientesPorDiaCache<any[]>(empresaid, equipeId, diaSemana);
+    if (cached?.data && Array.isArray(cached.data)) {
+      console.log('[fetchClientes] carregou do cache. ts=', cached.ts);
+      setClientes(cached.data);
     }
-  }, [equipeId, diaSemana, empresaid]);// ✅ Agora `fetchClientes` só muda quando necessário
+
+    // 2) Tenta online
+    const response = await axios.get(`${Config.API_URL}/clientes-por-dia`, {
+      params: { equipeId, diaSemana, empresaid },
+    });
+
+    console.log('📊 Dados recebidos de clientes-por-dia:', response.data);
+    setClientes(response.data);
+
+    // 3) Guardar cache
+    await setClientesPorDiaCache(empresaid, equipeId, diaSemana, response.data);
+  } catch (error) {
+    console.error('❌ Erro ao buscar clientes:', error);
+
+    // 4) fallback final
+    const cached = await getClientesPorDiaCache<any[]>(empresaid, equipeId, diaSemana);
+    if (cached?.data && Array.isArray(cached.data)) {
+      setClientes(cached.data);
+      return;
+    }
+
+    Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
+  } finally {
+    setLoading(false);
+  }
+}, [equipeId, diaSemana, empresaid]); // ✅ mantém dependências
+
   // ✅ Atualiza `useEffect()` para incluir `fetchClientes`
   useEffect(() => {
     fetchClientes();
@@ -72,49 +98,13 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
     return unsubscribe;
   }, [navigation, fetchClientes]); // ✅ Agora o ESLint não reclama
 
-  // Função para resetar o status
-  const handleResetStatus = async () => {
-    try {
-      if (!empresaid) {
-        Alert.alert('Erro', 'Empresaid não carregado. Tente novamente.');
-        return;
-      }
-
-      const response = await axios.post(`${Config.API_URL}/reset-status`, {
-        empresaid,
-      });
-
-      if (response.status === 200) {
-        Alert.alert('Sucesso', response.data.message);
-
-        // 🔹 Atualiza os clientes
-        fetchClientes();
-
-        // 🔹 Envia um sinal para resetar a barra de progresso
-        navigation.navigate('EquipesDiasDaSemana', {
-          equipeId,
-          equipeNome,
-          resetProgresso: true,
-        });
-      } else {
-        Alert.alert('Erro', 'Não foi possível resetar as manutenções.');
-      }
-    } catch (error) {
-      console.error('Erro ao resetar status:', error);
-      Alert.alert('Erro', 'Não foi possível resetar as manutenções.');
-    }
-  };
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
         Clientes - {diaSemana} : {equipeNome}
       </Text>
 
-      {/* Botão Reset Status */}
-      <TouchableOpacity style={styles.resetButton} onPress={handleResetStatus}>
-        <Text style={styles.resetButtonText}>Reset Status</Text>
-      </TouchableOpacity>
+  
 
       {clientes.length > 0 ? (
         <FlatList
@@ -229,24 +219,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#555',
     marginTop: 20,
-  },
-  resetButton: {
-    backgroundColor: '#FF6347',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 20,
-    // 🔹 Sombra 3D leve e elegante
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4.65,
-    elevation: 10, // ← dá profundidade real no Android
-  },
-  resetButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   cardHeader: {
   flexDirection: 'row',

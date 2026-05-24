@@ -4,6 +4,8 @@ import axios from 'axios';
 import Config from 'react-native-config';
 import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initOffline } from '../services/offline/db';
+import { getContadoresCache, setContadoresCache } from '../services/offline/cache';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
@@ -55,7 +57,7 @@ useEffect(() => {
 }, []);
 
 
-// 🔹 Busca os contadores de clientes
+// 🔹 Busca os contadores de clientes (offline cache-first)
 const fetchContadores = useCallback(async () => {
   if (!userEmpresaid) {
     console.log('[DEBUG] Tentativa de buscar contadores sem empresaid.');
@@ -66,6 +68,20 @@ const fetchContadores = useCallback(async () => {
   console.log('[DEBUG] Vai fazer pedido GET:', `${Config.API_URL}/contador-clientes`);
 
   try {
+    await initOffline();
+
+    // 1) Cache primeiro (se existir)
+    const cached = await getContadoresCache<Record<
+      string,
+      { total: number; concluidas: number; naoConcluidas: number }
+    >>(userEmpresaid, equipeId);
+
+    if (cached?.data && Object.keys(cached.data).length > 0) {
+      console.log('[DEBUG] Contadores carregados do cache:', cached.data, 'ts=', cached.ts);
+      setContadores(cached.data);
+    }
+
+    // 2) Depois tenta online
     const response = await axios.get(`${Config.API_URL}/contador-clientes`, {
       params: { equipeId, empresaid: userEmpresaid },
     });
@@ -75,17 +91,16 @@ const fetchContadores = useCallback(async () => {
     // 🧩 Verifica se a resposta é um array
     if (!Array.isArray(response.data)) {
       console.warn('[DEBUG] Resposta inesperada de /contador-clientes:', response.data);
-      setContadores({});
+
+      // fallback: se já tínhamos cache, mantemos; se não, limpa
+      if (!cached?.data) setContadores({});
       return;
     }
 
-    // 🧩 Converte o array num objeto de contadores
+    // 🧩 Converte o array num objeto de contadores (mantém a tua lógica)
     const novosContadores = response.data.reduce(
       (
-        acc: Record<
-          string,
-          { total: number; concluidas: number; naoConcluidas: number }
-        >,
+        acc: Record<string, { total: number; concluidas: number; naoConcluidas: number }>,
         item: any
       ) => {
         acc[item.diasemana] = {
@@ -101,8 +116,24 @@ const fetchContadores = useCallback(async () => {
     console.log('[DEBUG] Contadores formatados:', novosContadores);
     setContadores(novosContadores);
 
+    // 3) Guardar no cache já no formato que a UI usa
+    await setContadoresCache(userEmpresaid, equipeId, novosContadores);
   } catch (error: any) {
     console.error('❌ Erro ao buscar contadores de clientes:', error?.message || error);
+
+    // 4) Fallback final: se online falhar e ainda não tínhamos carregado cache, tenta agora
+    const cached = await getContadoresCache<Record<
+      string,
+      { total: number; concluidas: number; naoConcluidas: number }
+    >>(userEmpresaid, equipeId);
+
+    if (cached?.data && Object.keys(cached.data).length > 0) {
+      console.log('[DEBUG] Fallback cache (offline):', cached.data);
+      setContadores(cached.data);
+      // opcional: não alertar para não chatear no terreno
+      return;
+    }
+
     Alert.alert('Erro', 'Não foi possível carregar os contadores de clientes.');
   }
 }, [userEmpresaid, equipeId]);

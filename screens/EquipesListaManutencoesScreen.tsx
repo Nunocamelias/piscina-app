@@ -5,6 +5,8 @@ import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import moment from 'moment';
 import type { StackScreenProps } from '@react-navigation/stack';
+import { initOffline } from '../services/offline/db';
+import { getDetalhesEquipeCache, setDetalhesEquipeCache } from '../services/offline/cache';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
@@ -30,31 +32,60 @@ const EquipesListaManutencoesScreen = ({ navigation, route }: Props) => {
 
   // 🔹 Carrega logo, nome da empresa e detalhes da equipe
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const empresaid = await AsyncStorage.getItem('empresaid');
-        if (!empresaid) {
-          Alert.alert('Erro', 'Empresaid não encontrado. Reinicie a aplicação.');
-          return;
-        }
+  const fetchData = async () => {
+    try {
+      await initOffline();
 
-        // Carrega o logo e nome (cache)
-        const cachedNome = await AsyncStorage.getItem('empresa_nome');
-        if (cachedNome) {setEmpresaNome(cachedNome);}
-
-        // Busca detalhes da equipe
-        const response = await axios.get(`${Config.API_URL}/detalhes-equipe`, {
-          params: { equipeId, empresaid: parseInt(empresaid, 10) },
-        });
-        setEquipeDetalhes(response.data);
-      } catch (error) {
-        console.error('Erro ao buscar detalhes da equipe:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os detalhes da equipe.');
+      const empresaidStr = await AsyncStorage.getItem('empresaid');
+      if (!empresaidStr) {
+        Alert.alert('Erro', 'Empresaid não encontrado. Reinicie a aplicação.');
+        return;
       }
-    };
+      const empresaidNum = parseInt(empresaidStr, 10);
 
-    fetchData();
-  }, [equipeId]);
+      // ✅ Nome da empresa (já tinhas)
+      const cachedNome = await AsyncStorage.getItem('empresa_nome');
+      if (cachedNome) setEmpresaNome(cachedNome);
+
+      // ✅ 1) Cache primeiro (detalhes da equipa)
+      const cachedDetalhes = await getDetalhesEquipeCache(empresaidNum, equipeId);
+      if (cachedDetalhes?.data) {
+        setEquipeDetalhes(cachedDetalhes.data);
+      }
+
+      // ✅ 2) Tenta online
+      const response = await axios.get(`${Config.API_URL}/detalhes-equipe`, {
+        params: { equipeId, empresaid: empresaidNum },
+      });
+
+      setEquipeDetalhes(response.data);
+
+      // ✅ 3) Guarda cache (para offline)
+      await setDetalhesEquipeCache(empresaidNum, equipeId, response.data);
+    } catch (error) {
+      console.error('Erro ao buscar detalhes da equipe:', error);
+
+      // ✅ fallback final: tenta cache se ainda não houver detalhes
+      try {
+        const empresaidStr = await AsyncStorage.getItem('empresaid');
+        const empresaidNum = empresaidStr ? parseInt(empresaidStr, 10) : null;
+
+        if (empresaidNum) {
+          const cachedDetalhes = await getDetalhesEquipeCache(empresaidNum, equipeId);
+          if (cachedDetalhes?.data) {
+            setEquipeDetalhes(cachedDetalhes.data);
+            return; // não chatear com alert
+          }
+        }
+      } catch {}
+
+      Alert.alert('Erro', 'Não foi possível carregar os detalhes da equipe.');
+    }
+  };
+
+  fetchData();
+}, [equipeId]);
+
 
   const getColorForDate = (date: string | null) => {
     if (!date) {return '#000';}
