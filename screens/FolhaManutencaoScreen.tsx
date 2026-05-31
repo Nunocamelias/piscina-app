@@ -3811,7 +3811,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 25,
-    marginBottom: 15,
+    marginBottom: 70,
     width: '80%',
     alignItems: 'center',
     alignSelf: 'center',
@@ -4378,7 +4378,6 @@ botaoProcedimentoTxt: {
   fontWeight: '600',
   textAlign: 'center',
 },
-
 // ✅ aqui só COR (mantém as tuas cores atuais)
 testeRapidoBtn: {
   backgroundColor: '#20B8B3', // exemplo: mete a tua
@@ -4388,7 +4387,6 @@ testeRapidoBtn: {
     shadowRadius: 3.5,
     elevation: 10,
 },
-
 calcularTodosBtn: {
   backgroundColor: '#BFD9BF', // exemplo: mete a tua
   shadowColor: '#000',
@@ -4406,7 +4404,6 @@ cornerClip: {
   overflow: 'hidden',
   borderTopLeftRadius: 12, // igual ao borderRadius do card
 },
-
 parametroDiamond: {
   position: 'absolute',
   top: -10,
@@ -4432,7 +4429,6 @@ taylorWrapper: {
   marginTop: 12,
   marginBottom: 16,
 },
-
 taylorTitle: {
   fontSize: 15,
   fontWeight: '600',

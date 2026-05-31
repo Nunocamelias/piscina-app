@@ -37,6 +37,11 @@ const ClientesScreen = ({ navigation }: any) => {
           onPress={() => navigation.navigate('ListaClientes')}>
           <Text style={styles.buttonText}>Lista de Clientes</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+           style={styles.button}
+           onPress={() => navigation.navigate('ContaCorrenteClientes')}>
+          <Text style={styles.buttonText}>Conta Corrente de Clientes</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 🔹 Nome da empresa e powered by fixos no fundo */}

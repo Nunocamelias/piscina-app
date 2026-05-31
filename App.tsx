@@ -29,6 +29,7 @@ import OrcamentacaoHomeScreen from './screens/OrcamentacaoHomeScreen';
 import ContabilidadeHomeScreen from './screens/ContabilidadeHomeScreen';
 import HeaderLogo from './components/HeaderLogo';
 import TesteRapidoScreen from './screens/TesteRapidoScreen';
+import ContaCorrenteClientesScreen from './screens/ContaCorrenteClientesScreen';
 
 
 
@@ -96,6 +97,7 @@ export type RootStackParamList = {
     EquipeTecHome: { equipeId: number; equipeNome: string };   // novas equipas técnicas
     OrcamentacaoHome: undefined;
     ContabilidadeHome: undefined;
+    ContaCorrenteClientes: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -126,7 +128,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
       <Stack.Screen
           name="Clientes"
           component={ClientesScreen}
@@ -141,7 +143,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
       <Stack.Screen
           name="AddCliente"
           component={AddClienteScreen}
@@ -156,7 +158,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
       <Stack.Screen
           name="ListaClientes"
           component={ListaClientesScreen}
@@ -171,7 +173,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="EditCliente"
           component={EditClienteScreen}
@@ -186,7 +188,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="Equipes"
           component={EquipesScreen}
@@ -201,7 +203,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="AddEquipe"
           component={AddEquipeScreen}
@@ -216,7 +218,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="ListaEquipes"
           component={ListaEquipesScreen}
@@ -246,7 +248,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="ListasManutencoes"
           component={ListasManutencoesScreen}
@@ -261,7 +263,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="DiasDaSemana"
           component={DiasDaSemanaScreen}
@@ -276,7 +278,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="PiscinasPorDia"
           component={PiscinasPorDiaScreen}
@@ -291,7 +293,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="InfoCompany"
           component={InfoCompanyScreen}
@@ -306,7 +308,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="EquipeHome"
           component={EquipeHomeScreen}
@@ -321,7 +323,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="EquipesListaManutencoes"
           component={EquipesListaManutencoesScreen}
@@ -336,7 +338,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="EquipesDiasDaSemana"
           component={EquipesDiasDaSemanaScreen}
@@ -351,7 +353,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="EquipesPiscinasPorDia"
           component={EquipesPiscinasPorDiaScreen}
@@ -366,7 +368,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="Administracao"
           component={AdministracaoScreen}
@@ -381,7 +383,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="ParametrosQuimicos"
           component={ParametrosQuimicosScreen}
@@ -396,7 +398,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="FolhaManutencao"
           component={FolhaManutencaoScreen}
@@ -411,7 +413,7 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
+          headerTintColor: '#000', }}/>
         <Stack.Screen
           name="TesteRapido"
           component={TesteRapidoScreen}
@@ -445,60 +447,67 @@ const App = (): React.JSX.Element => {
           elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000' }}/>
-                <Stack.Screen
-        name="OrcamentacaoHome"
-        component={OrcamentacaoHomeScreen}
-        options={{
+          headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="OrcamentacaoHome"
+          component={OrcamentacaoHomeScreen}
+          options={{
           headerTitle: CustomHeaderTitle,
           headerStyle: {
-            backgroundColor: '#22b4b4ff',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4.65,
-            elevation: 10,
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000',
-        }}
-      />
-
-      <Stack.Screen
-        name="ContabilidadeHome"
-        component={ContabilidadeHomeScreen}
-        options={{
+          headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="ContabilidadeHome"
+          component={ContabilidadeHomeScreen}
+          options={{
           headerTitle: CustomHeaderTitle,
           headerStyle: {
-            backgroundColor: '#22b4b4ff',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4.65,
-            elevation: 10,
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000',
-        }}
-      />
-
-      <Stack.Screen
-        name="EquipeTecHome"
-        component={EquipeTecHomeScreen}
-        options={{
+          headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="EquipeTecHome"
+          component={EquipeTecHomeScreen}
+          options={{
           headerTitle: CustomHeaderTitle,
           headerStyle: {
-            backgroundColor: '#22b4b4ff',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4.65,
-            elevation: 10,
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
           },
           headerTitleAlign: 'center',
-          headerTintColor: '#000',
-        }}
-      />
+          headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="ContaCorrenteClientes"
+          component={ContaCorrenteClientesScreen}
+          options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000', }}/>
 
       </Stack.Navigator>
     </NavigationContainer>

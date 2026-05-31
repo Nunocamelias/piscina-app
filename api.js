@@ -365,6 +365,166 @@ app.delete('/clientes/:id', async (req, res) => {
     }
 });
 
+app.get('/conta-corrente-clientes', async (req, res) => {
+  const { empresaid, mes } = req.query;
+
+  if (!empresaid) {
+    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  const mesReferencia = mes || moment().format('YYYY-MM');
+
+  try {
+    const query = `
+      SELECT
+        c.id AS cliente_id,
+        c.nome,
+        c.morada,
+        c.valor_manutencao,
+
+        pc.id AS pagamento_id,
+        pc.mes_referencia,
+        pc.valor_extra,
+        pc.valor_pago,
+        pc.estado,
+        pc.observacoes,
+        pc.data_pagamento,
+
+        COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+
+        (
+          COALESCE(c.valor_manutencao, 0)
+          + COALESCE(pc.valor_extra, 0)
+          - COALESCE(pc.valor_pago, 0)
+        ) AS saldo_mes,
+
+        (
+          COALESCE(anteriores.saldo_anterior, 0)
+          + COALESCE(c.valor_manutencao, 0)
+          + COALESCE(pc.valor_extra, 0)
+          - COALESCE(pc.valor_pago, 0)
+        ) AS saldo_total
+
+      FROM clientes c
+
+      LEFT JOIN pagamentos_clientes pc
+        ON pc.cliente_id = c.id
+        AND pc.empresaid = c.empresaid
+        AND pc.mes_referencia = $2
+
+      LEFT JOIN (
+        SELECT
+          cliente_id,
+          empresaid,
+          SUM(
+            COALESCE(valor_manutencao, 0)
+            + COALESCE(valor_extra, 0)
+            - COALESCE(valor_pago, 0)
+          ) AS saldo_anterior
+        FROM pagamentos_clientes
+        WHERE empresaid = $1
+          AND mes_referencia < $2
+        GROUP BY cliente_id, empresaid
+      ) anteriores
+        ON anteriores.cliente_id = c.id
+        AND anteriores.empresaid = c.empresaid
+
+      WHERE c.empresaid = $1
+      ORDER BY c.nome ASC;
+    `;
+
+    const result = await pool.query(query, [empresaid, mesReferencia]);
+
+    return res.status(200).json({
+      mes_referencia: mesReferencia,
+      clientes: result.rows,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar conta corrente:', error);
+    return res.status(500).json({ error: 'Erro ao buscar conta corrente.' });
+  }
+});
+
+app.post('/conta-corrente-clientes/pagamento', async (req, res) => {
+  const {
+    cliente_id,
+    empresaid,
+    mes_referencia,
+    valor_manutencao,
+    valor_extra,
+    valor_pago,
+    observacoes,
+  } = req.body;
+
+  if (!cliente_id || !empresaid || !mes_referencia) {
+    return res.status(400).json({
+      error: 'cliente_id, empresaid e mes_referencia são obrigatórios.',
+    });
+  }
+
+  try {
+    const valorManutencaoNum = Number(valor_manutencao || 0);
+    const valorExtraNum = Number(valor_extra || 0);
+    const valorPagoNum = Number(valor_pago || 0);
+
+    const total = valorManutencaoNum + valorExtraNum;
+
+    let estado = 'pendente';
+    if (valorPagoNum >= total && total > 0) {
+      estado = 'pago';
+    } else if (valorPagoNum > 0) {
+      estado = 'parcial';
+    }
+
+    const query = `
+      INSERT INTO pagamentos_clientes (
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        valor_manutencao,
+        valor_extra,
+        valor_pago,
+        estado,
+        observacoes,
+        data_pagamento,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      ON CONFLICT (cliente_id, empresaid, mes_referencia)
+      DO UPDATE SET
+        valor_manutencao = EXCLUDED.valor_manutencao,
+        valor_extra = EXCLUDED.valor_extra,
+        valor_pago = EXCLUDED.valor_pago,
+        estado = EXCLUDED.estado,
+        observacoes = EXCLUDED.observacoes,
+        data_pagamento = NOW(),
+        updated_at = NOW()
+      RETURNING *;
+    `;
+
+    const values = [
+      cliente_id,
+      empresaid,
+      mes_referencia,
+      valorManutencaoNum,
+      valorExtraNum,
+      valorPagoNum,
+      estado,
+      observacoes || null,
+    ];
+
+    const result = await pool.query(query, values);
+
+    return res.status(200).json({
+      message: 'Pagamento registado com sucesso.',
+      pagamento: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao registar pagamento:', error);
+    return res.status(500).json({ error: 'Erro ao registar pagamento.' });
+  }
+});
+
 app.post('/equipes', async (req, res) => {
     try {
       const {
