@@ -25,7 +25,16 @@ type ContaCliente = {
 
 const ContaCorrenteClientesScreen = () => {
   const [clientes, setClientes] = useState<ContaCliente[]>([]);
-  const [mesReferencia, setMesReferencia] = useState('');
+  const getMesAnterior = () => {
+  const hoje = new Date();
+  hoje.setMonth(hoje.getMonth() - 1);
+
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+
+  return `${ano}-${mes}`;
+};
+  const [mesReferencia, setMesReferencia] = useState(getMesAnterior());
   const [loading, setLoading] = useState(false);
   const [empresaid, setEmpresaid] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -40,7 +49,7 @@ const ContaCorrenteClientesScreen = () => {
 
     try {
       const response = await axios.get(`${Config.API_URL}/conta-corrente-clientes`, {
-        params: { empresaid: empresaIdAtual },
+        params: { empresaid: empresaIdAtual, mes: mesReferencia },
       });
 
       setMesReferencia(response.data.mes_referencia);
@@ -51,7 +60,7 @@ const ContaCorrenteClientesScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mesReferencia]);
 
   useEffect(() => {
     const iniciar = async () => {
@@ -197,6 +206,29 @@ const ContaCorrenteClientesScreen = () => {
     );
   };
 
+  const totalClientesPagos = clientes.filter(
+  (c) => Number(c.saldo_total || 0) <= 0
+).length;
+
+const totalRecebido = clientes.reduce(
+  (acc, c) => acc + Number(c.valor_pago || 0),
+  0
+);
+
+const totalPorReceber = clientes.reduce((acc, c) => {
+  const saldo = Number(c.saldo_total || 0);
+  return saldo > 0 ? acc + saldo : acc;
+}, 0);
+
+const totalCreditos = clientes.reduce((acc, c) => {
+  const saldo = Number(c.saldo_total || 0);
+  return saldo < 0 ? acc + Math.abs(saldo) : acc;
+}, 0);
+
+const totalClientesPorPagar = clientes.filter(
+  (c) => Number(c.saldo_total || 0) > 0
+).length;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Conta Corrente de Clientes</Text>
@@ -215,15 +247,47 @@ const ContaCorrenteClientesScreen = () => {
         <ActivityIndicator size="large" />
       ) : (
         <FlatList
-          data={clientesFiltrados}
-          keyExtractor={(item) => item.cliente_id.toString()}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Nenhum cliente encontrado.</Text>
-          }
-        />
+  data={clientesFiltrados}
+  keyExtractor={(item) => item.cliente_id.toString()}
+  renderItem={renderItem}
+  contentContainerStyle={styles.listContent}
+  ListHeaderComponent={
+    <View style={styles.resumoCard}>
+      <Text style={styles.resumoTitle}>Resumo do mês</Text>
+
+      <View style={styles.resumoLinha}>
+        <Text style={styles.resumoLabel}>Clientes pagos:</Text>
+        <Text style={styles.resumoValor}>{totalClientesPagos}</Text>
+      </View>
+
+      <View style={styles.resumoLinha}>
+        <Text style={styles.resumoLabel}>Recebido:</Text>
+        <Text style={styles.resumoValor}>{formatEuro(totalRecebido)}</Text>
+      </View>
+
+      <View style={styles.resumoLinha}>
+        <Text style={styles.resumoLabel}>Clientes por pagar:</Text>
+        <Text style={styles.resumoValor}>{totalClientesPorPagar}</Text>
+      </View>
+
+      <View style={styles.resumoLinha}>
+        <Text style={styles.resumoLabel}>Por receber:</Text>
+        <Text style={styles.resumoValor}>{formatEuro(totalPorReceber)}</Text>
+      </View>
+
+      <View style={styles.resumoLinha}>
+        <Text style={styles.resumoLabel}>Créditos:</Text>
+        <Text style={styles.resumoValor}>{formatEuro(totalCreditos)}</Text>
+      </View>
+    </View>
+  }
+  ListEmptyComponent={
+    <Text style={styles.emptyText}>Nenhum cliente encontrado.</Text>
+  }
+/>
       )}
+
+
       <Modal
   visible={modalVisible}
   transparent
@@ -295,14 +359,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
-    marginTop: 25,
-    marginBottom: 6,
+    marginTop: 3,
+    marginBottom: 3,
   },
   subTitle: {
     fontSize: 15,
     color: '#333',
     textAlign: 'center',
-    marginBottom: 18,
+    marginBottom: 10,
   },
   listContent: {
     paddingBottom: 40,
@@ -456,7 +520,7 @@ searchInput: {
   borderRadius: 18,
   paddingHorizontal: 16,
   paddingVertical: 10,
-  marginBottom: 16,
+  marginBottom: 10,
   color: '#000',
   fontSize: 15,
 },
@@ -471,6 +535,46 @@ mesReferencia: {
   color: '#000',
   fontWeight: '600',
   marginBottom: 10,
+},
+resumoCard: {
+  backgroundColor: '#fff',
+  width: '92%',
+  alignSelf: 'center',
+  borderRadius: 18,
+  padding: 14,
+  marginBottom: 16,
+
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.18,
+  shadowRadius: 4,
+  elevation: 5,
+},
+
+resumoTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+  marginBottom: 8,
+  textAlign: 'center',
+},
+
+resumoLinha: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 4,
+},
+
+resumoLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#000',
+},
+
+resumoValor: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
 },
 
 });
