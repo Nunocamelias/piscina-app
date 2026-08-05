@@ -376,62 +376,97 @@ app.get('/conta-corrente-clientes', async (req, res) => {
 
   try {
     const query = `
+  SELECT
+    c.id AS cliente_id,
+    c.nome,
+    c.morada,
+    c.valor_manutencao,
+
+    pc.id AS pagamento_id,
+    pc.mes_referencia,
+    pc.valor_extra,
+
+    COALESCE(movimentos.total_pago, 0) AS valor_pago,
+
+    pc.estado,
+    pc.observacoes,
+    pc.data_pagamento,
+
+    COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+
+    (
+      COALESCE(c.valor_manutencao, 0)
+      + COALESCE(pc.valor_extra, 0)
+      - COALESCE(movimentos.total_pago, 0)
+    ) AS saldo_mes,
+
+    (
+      COALESCE(anteriores.saldo_anterior, 0)
+      + COALESCE(c.valor_manutencao, 0)
+      + COALESCE(pc.valor_extra, 0)
+      - COALESCE(movimentos.total_pago, 0)
+    ) AS saldo_total
+
+  FROM clientes c
+
+  LEFT JOIN pagamentos_clientes pc
+    ON pc.cliente_id = c.id
+    AND pc.empresaid = c.empresaid
+    AND pc.mes_referencia = $2
+
+  LEFT JOIN (
+    SELECT
+      cliente_id,
+      empresaid,
+      mes_referencia,
+      SUM(valor) AS total_pago
+    FROM pagamentos_movimentos
+    GROUP BY cliente_id, empresaid, mes_referencia
+  ) movimentos
+    ON movimentos.cliente_id = c.id
+    AND movimentos.empresaid = c.empresaid
+    AND movimentos.mes_referencia = $2
+
+  LEFT JOIN (
+    SELECT
+      pc_ant.cliente_id,
+      pc_ant.empresaid,
+
+      SUM(
+        COALESCE(pc_ant.valor_manutencao, 0)
+        + COALESCE(pc_ant.valor_extra, 0)
+        - COALESCE(mov_ant.total_pago, 0)
+      ) AS saldo_anterior
+
+    FROM pagamentos_clientes pc_ant
+
+    LEFT JOIN (
       SELECT
-        c.id AS cliente_id,
-        c.nome,
-        c.morada,
-        c.valor_manutencao,
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        SUM(valor) AS total_pago
+      FROM pagamentos_movimentos
+      GROUP BY cliente_id, empresaid, mes_referencia
+    ) mov_ant
+      ON mov_ant.cliente_id = pc_ant.cliente_id
+      AND mov_ant.empresaid = pc_ant.empresaid
+      AND mov_ant.mes_referencia = pc_ant.mes_referencia
 
-        pc.id AS pagamento_id,
-        pc.mes_referencia,
-        pc.valor_extra,
-        pc.valor_pago,
-        pc.estado,
-        pc.observacoes,
-        pc.data_pagamento,
+    WHERE pc_ant.empresaid = $1
+      AND pc_ant.mes_referencia < $2
 
-        COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+    GROUP BY
+      pc_ant.cliente_id,
+      pc_ant.empresaid
+  ) anteriores
+    ON anteriores.cliente_id = c.id
+    AND anteriores.empresaid = c.empresaid
 
-        (
-          COALESCE(c.valor_manutencao, 0)
-          + COALESCE(pc.valor_extra, 0)
-          - COALESCE(pc.valor_pago, 0)
-        ) AS saldo_mes,
+  WHERE c.empresaid = $1
 
-        (
-          COALESCE(anteriores.saldo_anterior, 0)
-          + COALESCE(c.valor_manutencao, 0)
-          + COALESCE(pc.valor_extra, 0)
-          - COALESCE(pc.valor_pago, 0)
-        ) AS saldo_total
-
-      FROM clientes c
-
-      LEFT JOIN pagamentos_clientes pc
-        ON pc.cliente_id = c.id
-        AND pc.empresaid = c.empresaid
-        AND pc.mes_referencia = $2
-
-      LEFT JOIN (
-        SELECT
-          cliente_id,
-          empresaid,
-          SUM(
-            COALESCE(valor_manutencao, 0)
-            + COALESCE(valor_extra, 0)
-            - COALESCE(valor_pago, 0)
-          ) AS saldo_anterior
-        FROM pagamentos_clientes
-        WHERE empresaid = $1
-          AND mes_referencia < $2
-        GROUP BY cliente_id, empresaid
-      ) anteriores
-        ON anteriores.cliente_id = c.id
-        AND anteriores.empresaid = c.empresaid
-
-      WHERE c.empresaid = $1
-      ORDER BY c.nome ASC;
-    `;
+  ORDER BY c.nome ASC;
+`;
 
     const result = await pool.query(query, [empresaid, mesReferencia]);
 
@@ -467,14 +502,103 @@ app.post('/conta-corrente-clientes/pagamento', async (req, res) => {
     const valorExtraNum = Number(valor_extra || 0);
     const valorPagoNum = Number(valor_pago || 0);
 
-    const total = valorManutencaoNum + valorExtraNum;
+    if (valorPagoNum > 0) {
+  await pool.query(
+    `
+      INSERT INTO pagamentos_movimentos (
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        valor,
+        observacoes,
+        data_pagamento,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW());
+    `,
+    [
+      cliente_id,
+      empresaid,
+      mes_referencia,
+      valorPagoNum,
+      observacoes || null,
+    ]
+  );
+}
+
+    const totalMovimentosResult = await pool.query(
+  `
+    SELECT COALESCE(SUM(valor), 0) AS total_pago
+    FROM pagamentos_movimentos
+    WHERE cliente_id = $1
+      AND empresaid = $2
+      AND mes_referencia = $3;
+  `,
+  [
+    cliente_id,
+    empresaid,
+    mes_referencia,
+  ]
+);
+
+const totalPagoMes = Number(
+  totalMovimentosResult.rows[0]?.total_pago || 0
+);
+
+const saldoAnteriorResult = await pool.query(
+  `
+    SELECT COALESCE(
+      SUM(
+        COALESCE(pc.valor_manutencao, 0)
+        + COALESCE(pc.valor_extra, 0)
+        - COALESCE(movimentos.total_pago, 0)
+      ),
+      0
+    ) AS saldo_anterior
+
+    FROM pagamentos_clientes pc
+
+    LEFT JOIN (
+      SELECT
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        SUM(valor) AS total_pago
+      FROM pagamentos_movimentos
+      GROUP BY cliente_id, empresaid, mes_referencia
+    ) movimentos
+      ON movimentos.cliente_id = pc.cliente_id
+      AND movimentos.empresaid = pc.empresaid
+      AND movimentos.mes_referencia = pc.mes_referencia
+
+    WHERE pc.cliente_id = $1
+      AND pc.empresaid = $2
+      AND pc.mes_referencia < $3;
+  `,
+  [
+    cliente_id,
+    empresaid,
+    mes_referencia,
+  ]
+);
+
+const saldoAnterior = Number(
+  saldoAnteriorResult.rows[0]?.saldo_anterior || 0
+);
+
+const saldoTotalAtual =
+  saldoAnterior
+  + valorManutencaoNum
+  + valorExtraNum
+  - totalPagoMes;
 
     let estado = 'pendente';
-    if (valorPagoNum >= total && total > 0) {
-      estado = 'pago';
-    } else if (valorPagoNum > 0) {
-      estado = 'parcial';
-    }
+
+if (saldoTotalAtual <= 0) {
+  estado = 'pago';
+} else if (totalPagoMes > 0) {
+  estado = 'parcial';
+}
 
     const query = `
       INSERT INTO pagamentos_clientes (
@@ -508,7 +632,7 @@ app.post('/conta-corrente-clientes/pagamento', async (req, res) => {
       mes_referencia,
       valorManutencaoNum,
       valorExtraNum,
-      valorPagoNum,
+      totalPagoMes,
       estado,
       observacoes || null,
     ];
@@ -522,6 +646,70 @@ app.post('/conta-corrente-clientes/pagamento', async (req, res) => {
   } catch (error) {
     console.error('Erro ao registar pagamento:', error);
     return res.status(500).json({ error: 'Erro ao registar pagamento.' });
+  }
+});
+
+app.get('/pagamentos-movimentos', async (req, res) => {
+  const {
+    cliente_id,
+    empresaid,
+    mes_referencia,
+  } = req.query;
+
+  if (!cliente_id || !empresaid || !mes_referencia) {
+    return res.status(400).json({
+      error:
+        'cliente_id, empresaid e mes_referencia são obrigatórios.',
+    });
+  }
+
+  try {
+    const query = `
+      SELECT
+        id,
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        valor,
+        observacoes,
+        data_pagamento,
+        created_at,
+        updated_at
+      FROM pagamentos_movimentos
+      WHERE cliente_id = $1
+        AND empresaid = $2
+        AND mes_referencia = $3
+      ORDER BY data_pagamento ASC, id ASC;
+    `;
+
+    const values = [
+      Number(cliente_id),
+      Number(empresaid),
+      String(mes_referencia),
+    ];
+
+    const result = await pool.query(query, values);
+
+    const totalRecebido = result.rows.reduce(
+      (total, movimento) =>
+        total + Number(movimento.valor || 0),
+      0
+    );
+
+    return res.status(200).json({
+      mes_referencia: mes_referencia,
+      total_recebido: totalRecebido,
+      movimentos: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Erro ao buscar movimentos de pagamento:',
+      error
+    );
+
+    return res.status(500).json({
+      error: 'Erro ao buscar movimentos de pagamento.',
+    });
   }
 });
 
@@ -5126,6 +5314,121 @@ app.get('/notificacoes/:id/historico', async (req, res) => {
   }
 });
 
+async function lancarMensalidadesMes(mesReferencia) {
+  if (!/^\d{4}-\d{2}$/.test(mesReferencia)) {
+    throw new Error('Mês de referência inválido. Use YYYY-MM.');
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const clientesAtivosResult = await client.query(`
+      SELECT DISTINCT
+        c.id AS cliente_id,
+        c.empresaid,
+        COALESCE(c.valor_manutencao, 0) AS valor_manutencao
+      FROM clientes c
+      INNER JOIN associados a
+        ON a.clienteid = c.id
+        AND a.empresaid = c.empresaid
+      WHERE COALESCE(c.valor_manutencao, 0) > 0;
+    `);
+
+    let criados = 0;
+    let atualizados = 0;
+
+    for (const clienteAtual of clientesAtivosResult.rows) {
+      const resultado = await client.query(
+        `
+          INSERT INTO pagamentos_clientes (
+            cliente_id,
+            empresaid,
+            mes_referencia,
+            valor_manutencao,
+            valor_extra,
+            valor_pago,
+            estado,
+            observacoes,
+            data_pagamento,
+            updated_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            0,
+            0,
+            'pendente',
+            NULL,
+            NULL,
+            NOW()
+          )
+          ON CONFLICT (cliente_id, empresaid, mes_referencia)
+          DO UPDATE SET
+            valor_manutencao = EXCLUDED.valor_manutencao,
+            updated_at = NOW()
+          RETURNING (xmax = 0) AS criado;
+        `,
+        [
+          clienteAtual.cliente_id,
+          clienteAtual.empresaid,
+          mesReferencia,
+          Number(clienteAtual.valor_manutencao || 0),
+        ]
+      );
+
+      if (resultado.rows[0]?.criado) {
+        criados += 1;
+      } else {
+        atualizados += 1;
+      }
+    }
+
+    await client.query('COMMIT');
+
+    return {
+      mes_referencia: mesReferencia,
+      clientes_processados: clientesAtivosResult.rows.length,
+      registos_criados: criados,
+      registos_atualizados: atualizados,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+app.post('/conta-corrente-clientes/lancar-mensalidades', async (req, res) => {
+  const { mes_referencia } = req.body;
+
+  if (!mes_referencia) {
+    return res.status(400).json({
+      error: 'mes_referencia é obrigatório.',
+    });
+  }
+
+  try {
+    const resultado = await lancarMensalidadesMes(mes_referencia);
+
+    return res.status(200).json({
+      message: 'Mensalidades lançadas com sucesso.',
+      resultado,
+    });
+  } catch (error) {
+    console.error('Erro ao lançar mensalidades:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao lançar mensalidades.',
+      detalhes: error.message,
+    });
+  }
+});
+
 cron.schedule('55 23 * * 0', async () => {
   console.log('🕒 Iniciando reset automático semanal...');
 
@@ -5150,6 +5453,31 @@ cron.schedule('55 23 * * 0', async () => {
 }, {
   timezone: 'Europe/Lisbon'
 });
+
+cron.schedule(
+  '5 0 1 * *',
+  async () => {
+    const mesReferencia = moment().format('YYYY-MM');
+
+    console.log(
+      `📅 Iniciando lançamento automático das mensalidades de ${mesReferencia}...`
+    );
+
+    try {
+      const resultado = await lancarMensalidadesMes(mesReferencia);
+
+      console.log('✅ Mensalidades lançadas com sucesso:', resultado);
+    } catch (error) {
+      console.error(
+        '❌ Erro no lançamento automático das mensalidades:',
+        error
+      );
+    }
+  },
+  {
+    timezone: 'Europe/Lisbon',
+  }
+);
 
 // Inicia o servidor
   app.listen(PORT, () => {

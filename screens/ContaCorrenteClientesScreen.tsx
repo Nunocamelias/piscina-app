@@ -23,6 +23,13 @@ type ContaCliente = {
   saldo_total: string | number | null;
 };
 
+type MovimentoPagamento = {
+  id: number;
+  valor: string | number;
+  observacoes: string | null;
+  data_pagamento: string;
+};
+
 const ContaCorrenteClientesScreen = () => {
   const [clientes, setClientes] = useState<ContaCliente[]>([]);
   const getMesAnterior = () => {
@@ -43,6 +50,8 @@ const ContaCorrenteClientesScreen = () => {
   const [valorExtraInput, setValorExtraInput] = useState('');
   const [observacoesInput, setObservacoesInput] = useState('');
   const [pesquisa, setPesquisa] = useState('');
+  const [movimentos, setMovimentos] = useState<MovimentoPagamento[]>([]);
+  const [totalRecebidoMes, setTotalRecebidoMes] = useState(0);
 
   const carregarContaCorrente = useCallback(async (empresaIdAtual: number) => {
     setLoading(true);
@@ -84,13 +93,78 @@ const ContaCorrenteClientesScreen = () => {
     return `${n.toFixed(2)} €`;
   };
 
-  const abrirModalPagamento = (cliente: ContaCliente) => {
+  const carregarMovimentosPagamento = async (clienteId: number) => {
+  if (!empresaid || !mesReferencia) {
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/pagamentos-movimentos`,
+      {
+        params: {
+          cliente_id: clienteId,
+          empresaid,
+          mes_referencia: mesReferencia,
+        },
+      }
+    );
+
+    setMovimentos(response.data.movimentos || []);
+    setTotalRecebidoMes(Number(response.data.total_recebido || 0));
+  } catch (error) {
+    console.error('Erro ao carregar movimentos de pagamento:', error);
+    setMovimentos([]);
+    setTotalRecebidoMes(0);
+  }
+};
+
+  const abrirModalPagamento = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
-  setValorPagoInput(String(cliente.saldo_mes || cliente.valor_manutencao || ''));
-  setValorExtraInput(String(cliente.valor_extra || '0'));
-  setObservacoesInput(cliente.observacoes || '');
+
+  setValorPagoInput('');
+  setValorExtraInput(
+  Number(cliente.valor_extra || 0) > 0
+    ? String(cliente.valor_extra)
+    : ''
+);
+  setObservacoesInput('');
+
+  setMovimentos([]);
+  setTotalRecebidoMes(0);
+
   setModalVisible(true);
-  };
+
+  await carregarMovimentosPagamento(cliente.cliente_id);
+};
+
+const confirmarPagamento = () => {
+  if (!clienteSelecionado) {
+    return;
+  }
+
+  const valorPago = Number(valorPagoInput.replace(',', '.')) || 0;
+
+  if (valorPago <= 0) {
+    Alert.alert('Atenção', 'Introduza um valor recebido superior a zero.');
+    return;
+  }
+
+  Alert.alert(
+    'Confirmar pagamento',
+    `Registar ${formatEuro(valorPago)} para ${clienteSelecionado.nome}?`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Confirmar',
+        onPress: guardarPagamento,
+      },
+    ]
+  );
+};
 
   const guardarPagamento = async () => {
   if (!clienteSelecionado || !empresaid || !mesReferencia) {
@@ -200,7 +274,7 @@ const ContaCorrenteClientesScreen = () => {
            style={styles.pagamentoButton}
            onPress={() => abrirModalPagamento(item)}>
 
-        <Text style={styles.pagamentoButtonText}>Registar / Editar Pagamento</Text>
+        <Text style={styles.pagamentoButtonText}>Registar novo pagamento</Text>
         </TouchableOpacity>
       </View>
     );
@@ -331,7 +405,48 @@ const totalClientesPorPagar = clientes.filter(
         multiline
       />
 
-      <TouchableOpacity style={styles.modalSaveButton} onPress={guardarPagamento}>
+      <View style={styles.historicoContainer}>
+  <Text style={styles.historicoTitle}>Pagamentos deste mês</Text>
+
+  {movimentos.length === 0 ? (
+    <Text style={styles.historicoVazio}>
+      Ainda não existem pagamentos registados.
+    </Text>
+  ) : (
+    movimentos.map((movimento) => {
+      const data = new Date(movimento.data_pagamento);
+
+      const dataFormatada = data.toLocaleDateString('pt-PT');
+
+      return (
+        <View key={movimento.id} style={styles.historicoLinha}>
+          <View style={styles.historicoInfo}>
+            <Text style={styles.historicoData}>{dataFormatada}</Text>
+
+            {movimento.observacoes ? (
+              <Text style={styles.historicoObservacao}>
+                {movimento.observacoes}
+              </Text>
+            ) : null}
+          </View>
+
+          <Text style={styles.historicoValor}>
+            {formatEuro(movimento.valor)}
+          </Text>
+        </View>
+      );
+    })
+  )}
+
+  <View style={styles.historicoTotalLinha}>
+    <Text style={styles.historicoTotalLabel}>Total recebido:</Text>
+    <Text style={styles.historicoTotalValor}>
+      {formatEuro(totalRecebidoMes)}
+    </Text>
+  </View>
+</View>
+
+      <TouchableOpacity style={styles.modalSaveButton} onPress={confirmarPagamento}>
         <Text style={styles.modalButtonText}>Guardar Pagamento</Text>
       </TouchableOpacity>
 
@@ -573,6 +688,79 @@ resumoLabel: {
 
 resumoValor: {
   fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+historicoContainer: {
+  width: '100%',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 16,
+  padding: 14,
+  marginBottom: 14,
+},
+
+historicoTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+  textAlign: 'center',
+  marginBottom: 10,
+},
+
+historicoVazio: {
+  fontSize: 13,
+  color: '#555',
+  textAlign: 'center',
+  marginBottom: 10,
+},
+
+historicoLinha: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingVertical: 7,
+  borderBottomWidth: 1,
+  borderBottomColor: '#D3D3D3',
+},
+
+historicoInfo: {
+  flex: 1,
+  marginRight: 10,
+},
+
+historicoData: {
+  fontSize: 13,
+  fontWeight: '600',
+  color: '#000',
+},
+
+historicoObservacao: {
+  fontSize: 12,
+  color: '#555',
+  marginTop: 2,
+},
+
+historicoValor: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+historicoTotalLinha: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 12,
+},
+
+historicoTotalLabel: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+historicoTotalValor: {
+  fontSize: 15,
   fontWeight: 'bold',
   color: '#000',
 },
