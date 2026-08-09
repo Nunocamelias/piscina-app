@@ -52,6 +52,9 @@ const ContaCorrenteClientesScreen = () => {
   const [pesquisa, setPesquisa] = useState('');
   const [movimentos, setMovimentos] = useState<MovimentoPagamento[]>([]);
   const [totalRecebidoMes, setTotalRecebidoMes] = useState(0);
+  const [modalMensalidadeVisible, setModalMensalidadeVisible] = useState(false);
+  const [valorMensalidadeInput, setValorMensalidadeInput] = useState('');
+  const [observacoesMensalidadeInput, setObservacoesMensalidadeInput] = useState('');
 
   const carregarContaCorrente = useCallback(async (empresaIdAtual: number) => {
     setLoading(true);
@@ -116,6 +119,93 @@ const ContaCorrenteClientesScreen = () => {
     console.error('Erro ao carregar movimentos de pagamento:', error);
     setMovimentos([]);
     setTotalRecebidoMes(0);
+  }
+};
+
+const abrirModalMensalidade = (cliente: ContaCliente) => {
+  setClienteSelecionado(cliente);
+
+  setValorMensalidadeInput(
+    Number(cliente.valor_manutencao || 0) > 0
+      ? String(cliente.valor_manutencao)
+      : ''
+  );
+
+  setObservacoesMensalidadeInput(cliente.observacoes || '');
+
+  setModalMensalidadeVisible(true);
+};
+
+const confirmarMensalidade = () => {
+  if (!clienteSelecionado) {
+    return;
+  }
+
+  const valor = Number(valorMensalidadeInput.replace(',', '.')) || 0;
+
+  if (valor <= 0) {
+    Alert.alert(
+      'Atenção',
+      'Introduza um valor de mensalidade superior a zero.'
+    );
+    return;
+  }
+
+  Alert.alert(
+    'Confirmar mensalidade',
+    `Lançar ${formatEuro(valor)} para ${clienteSelecionado.nome}?`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Confirmar',
+        onPress: guardarMensalidadeManual,
+      },
+    ]
+  );
+};
+
+const guardarMensalidadeManual = async () => {
+  if (!clienteSelecionado || !empresaid || !mesReferencia) {
+    Alert.alert('Erro', 'Dados incompletos para lançar a mensalidade.');
+    return;
+  }
+
+  try {
+    const valorMensalidade =
+      Number(valorMensalidadeInput.replace(',', '.')) || 0;
+
+    const response = await axios.post(
+      `${Config.API_URL}/conta-corrente-clientes/lancar-mensalidade-manual`,
+      {
+        cliente_id: clienteSelecionado.cliente_id,
+        empresaid,
+        mes_referencia: mesReferencia,
+        valor_manutencao: valorMensalidade,
+        observacoes: observacoesMensalidadeInput,
+      }
+    );
+
+    if (response.status === 200) {
+      Alert.alert(
+        'Sucesso',
+        response.data.message || 'Mensalidade lançada.'
+      );
+
+      setModalMensalidadeVisible(false);
+      setClienteSelecionado(null);
+
+      carregarContaCorrente(empresaid);
+    }
+  } catch (error) {
+    console.error('Erro ao lançar mensalidade manual:', error);
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível lançar a mensalidade.'
+    );
   }
 };
 
@@ -271,11 +361,22 @@ const confirmarPagamento = () => {
         <Text style={styles.observacoes}>Obs: {item.observacoes}</Text>
         ) : null}
         <TouchableOpacity
-           style={styles.pagamentoButton}
-           onPress={() => abrirModalPagamento(item)}>
+  style={styles.mensalidadeButton}
+  onPress={() => abrirModalMensalidade(item)}
+>
+  <Text style={styles.pagamentoButtonText}>
+    Lançar / Editar Mensalidade
+  </Text>
+</TouchableOpacity>
 
-        <Text style={styles.pagamentoButtonText}>Registar novo pagamento</Text>
-        </TouchableOpacity>
+<TouchableOpacity
+  style={styles.pagamentoButton}
+  onPress={() => abrirModalPagamento(item)}
+>
+  <Text style={styles.pagamentoButtonText}>
+    Registar novo pagamento
+  </Text>
+</TouchableOpacity>
       </View>
     );
   };
@@ -362,7 +463,7 @@ const totalClientesPorPagar = clientes.filter(
       )}
 
 
-      <Modal
+     <Modal
   visible={modalVisible}
   transparent
   animationType="slide"
@@ -370,9 +471,7 @@ const totalClientesPorPagar = clientes.filter(
 >
   <View style={styles.modalOverlay}>
     <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>
-        Registar Pagamento
-      </Text>
+      <Text style={styles.modalTitle}>Registar Pagamento</Text>
 
       <Text style={styles.modalCliente}>
         {clienteSelecionado?.nome}
@@ -406,55 +505,124 @@ const totalClientesPorPagar = clientes.filter(
       />
 
       <View style={styles.historicoContainer}>
-  <Text style={styles.historicoTitle}>Pagamentos deste mês</Text>
+        <Text style={styles.historicoTitle}>
+          Pagamentos deste mês
+        </Text>
 
-  {movimentos.length === 0 ? (
-    <Text style={styles.historicoVazio}>
-      Ainda não existem pagamentos registados.
-    </Text>
-  ) : (
-    movimentos.map((movimento) => {
-      const data = new Date(movimento.data_pagamento);
+        {movimentos.length === 0 ? (
+          <Text style={styles.historicoVazio}>
+            Ainda não existem pagamentos registados.
+          </Text>
+        ) : (
+          movimentos.map((movimento) => {
+            const data = new Date(movimento.data_pagamento);
+            const dataFormatada = data.toLocaleDateString('pt-PT');
 
-      const dataFormatada = data.toLocaleDateString('pt-PT');
+            return (
+              <View key={movimento.id} style={styles.historicoLinha}>
+                <View style={styles.historicoInfo}>
+                  <Text style={styles.historicoData}>
+                    {dataFormatada}
+                  </Text>
 
-      return (
-        <View key={movimento.id} style={styles.historicoLinha}>
-          <View style={styles.historicoInfo}>
-            <Text style={styles.historicoData}>{dataFormatada}</Text>
+                  {movimento.observacoes ? (
+                    <Text style={styles.historicoObservacao}>
+                      {movimento.observacoes}
+                    </Text>
+                  ) : null}
+                </View>
 
-            {movimento.observacoes ? (
-              <Text style={styles.historicoObservacao}>
-                {movimento.observacoes}
-              </Text>
-            ) : null}
-          </View>
+                <Text style={styles.historicoValor}>
+                  {formatEuro(movimento.valor)}
+                </Text>
+              </View>
+            );
+          })
+        )}
 
-          <Text style={styles.historicoValor}>
-            {formatEuro(movimento.valor)}
+        <View style={styles.historicoTotalLinha}>
+          <Text style={styles.historicoTotalLabel}>
+            Total recebido:
+          </Text>
+
+          <Text style={styles.historicoTotalValor}>
+            {formatEuro(totalRecebidoMes)}
           </Text>
         </View>
-      );
-    })
-  )}
+      </View>
 
-  <View style={styles.historicoTotalLinha}>
-    <Text style={styles.historicoTotalLabel}>Total recebido:</Text>
-    <Text style={styles.historicoTotalValor}>
-      {formatEuro(totalRecebidoMes)}
-    </Text>
-  </View>
-</View>
-
-      <TouchableOpacity style={styles.modalSaveButton} onPress={confirmarPagamento}>
-        <Text style={styles.modalButtonText}>Guardar Pagamento</Text>
+      <TouchableOpacity
+        style={styles.modalSaveButton}
+        onPress={confirmarPagamento}
+      >
+        <Text style={styles.modalButtonText}>
+          Guardar Pagamento
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.modalCancelButton}
         onPress={() => setModalVisible(false)}
       >
-        <Text style={styles.modalButtonText}>Cancelar</Text>
+        <Text style={styles.modalButtonText}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+
+<Modal
+  visible={modalMensalidadeVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setModalMensalidadeVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>
+        Lançar / Editar Mensalidade
+      </Text>
+
+      <Text style={styles.modalCliente}>
+        {clienteSelecionado?.nome}
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Valor da mensalidade"
+        placeholderTextColor="#666"
+        keyboardType="numeric"
+        value={valorMensalidadeInput}
+        onChangeText={setValorMensalidadeInput}
+      />
+
+      <TextInput
+        style={[styles.input, styles.inputObservacoes]}
+        placeholder="Observações"
+        placeholderTextColor="#666"
+        value={observacoesMensalidadeInput}
+        onChangeText={setObservacoesMensalidadeInput}
+        multiline
+      />
+
+      <TouchableOpacity
+        style={styles.modalSaveButton}
+        onPress={confirmarMensalidade}
+      >
+        <Text style={styles.modalButtonText}>
+          Guardar Mensalidade
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.modalCancelButton}
+        onPress={() => setModalMensalidadeVisible(false)}
+      >
+        <Text style={styles.modalButtonText}>
+          Cancelar
+        </Text>
       </TouchableOpacity>
     </View>
   </View>
@@ -542,7 +710,7 @@ const styles = StyleSheet.create({
   },
   pagamentoButton: {
   backgroundColor: '#CCFFCC',
-  marginTop: 12,
+  marginTop: 10,
   paddingVertical: 10,
   borderRadius: 20,
   alignItems: 'center',
@@ -552,7 +720,7 @@ const styles = StyleSheet.create({
   shadowOpacity: 0.20,
   shadowRadius: 3,
   elevation: 4,
-  },
+},
   pagamentoButtonText: {
   color: '#000',
   fontSize: 15,
@@ -765,6 +933,19 @@ historicoTotalValor: {
   color: '#000',
 },
 
+mensalidadeButton: {
+  backgroundColor: '#FFF5CC',
+  marginTop: 12,
+  paddingVertical: 10,
+  borderRadius: 20,
+  alignItems: 'center',
+
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.20,
+  shadowRadius: 3,
+  elevation: 4,
+},
 });
 
 export default ContaCorrenteClientesScreen;

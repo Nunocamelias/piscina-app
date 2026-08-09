@@ -380,11 +380,12 @@ app.get('/conta-corrente-clientes', async (req, res) => {
     c.id AS cliente_id,
     c.nome,
     c.morada,
-    c.valor_manutencao,
+
+    COALESCE(pc.valor_manutencao, 0) AS valor_manutencao,
 
     pc.id AS pagamento_id,
     pc.mes_referencia,
-    pc.valor_extra,
+    COALESCE(pc.valor_extra, 0) AS valor_extra,
 
     COALESCE(movimentos.total_pago, 0) AS valor_pago,
 
@@ -395,14 +396,14 @@ app.get('/conta-corrente-clientes', async (req, res) => {
     COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
 
     (
-      COALESCE(c.valor_manutencao, 0)
+      COALESCE(pc.valor_manutencao, 0)
       + COALESCE(pc.valor_extra, 0)
       - COALESCE(movimentos.total_pago, 0)
     ) AS saldo_mes,
 
     (
       COALESCE(anteriores.saldo_anterior, 0)
-      + COALESCE(c.valor_manutencao, 0)
+      + COALESCE(pc.valor_manutencao, 0)
       + COALESCE(pc.valor_extra, 0)
       - COALESCE(movimentos.total_pago, 0)
     ) AS saldo_total
@@ -709,6 +710,116 @@ app.get('/pagamentos-movimentos', async (req, res) => {
 
     return res.status(500).json({
       error: 'Erro ao buscar movimentos de pagamento.',
+    });
+  }
+});
+
+app.post('/conta-corrente-clientes/lancar-mensalidade-manual', async (req, res) => {
+  const {
+    cliente_id,
+    empresaid,
+    mes_referencia,
+    valor_manutencao,
+    observacoes,
+  } = req.body;
+
+  if (!cliente_id || !empresaid || !mes_referencia) {
+    return res.status(400).json({
+      error: 'cliente_id, empresaid e mes_referencia são obrigatórios.',
+    });
+  }
+
+  if (!/^\d{4}-\d{2}$/.test(mes_referencia)) {
+    return res.status(400).json({
+      error: 'Mês de referência inválido. Use YYYY-MM.',
+    });
+  }
+
+  const valorManutencaoNum = Number(valor_manutencao || 0);
+
+  if (valorManutencaoNum < 0) {
+    return res.status(400).json({
+      error: 'O valor da mensalidade não pode ser negativo.',
+    });
+  }
+
+  try {
+    const clienteResult = await pool.query(
+      `
+        SELECT id, empresaid
+        FROM clientes
+        WHERE id = $1
+          AND empresaid = $2;
+      `,
+      [cliente_id, empresaid]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado ou não pertence à empresa.',
+      });
+    }
+
+    const query = `
+      INSERT INTO pagamentos_clientes (
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        valor_manutencao,
+        valor_extra,
+        valor_pago,
+        estado,
+        observacoes,
+        data_pagamento,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        0,
+        0,
+        'pendente',
+        $5,
+        NULL,
+        NOW()
+      )
+      ON CONFLICT (cliente_id, empresaid, mes_referencia)
+      DO UPDATE SET
+        valor_manutencao = EXCLUDED.valor_manutencao,
+        observacoes = EXCLUDED.observacoes,
+        estado = CASE
+          WHEN COALESCE(pagamentos_clientes.valor_pago, 0) >= EXCLUDED.valor_manutencao
+            THEN 'pago'
+          WHEN COALESCE(pagamentos_clientes.valor_pago, 0) > 0
+            THEN 'parcial'
+          ELSE 'pendente'
+        END,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+
+    const values = [
+      cliente_id,
+      empresaid,
+      mes_referencia,
+      valorManutencaoNum,
+      observacoes || null,
+    ];
+
+    const result = await pool.query(query, values);
+
+    return res.status(200).json({
+      message: 'Mensalidade lançada manualmente com sucesso.',
+      mensalidade: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao lançar mensalidade manual:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao lançar mensalidade manual.',
+      detalhes: error.message,
     });
   }
 });
