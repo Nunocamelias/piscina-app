@@ -14,6 +14,7 @@ type ContaCliente = {
   pagamento_id: number | null;
   mes_referencia: string | null;
   valor_extra: string | number | null;
+  extras_pendentes: string | number | null;
   valor_pago: string | number | null;
   estado: string | null;
   observacoes: string | null;
@@ -30,6 +31,22 @@ type MovimentoPagamento = {
   data_pagamento: string;
 };
 
+type ExtraCliente = {
+  id: number;
+  empresaid: number;
+  cliente_id: number;
+  manutencao_id: number | null;
+  equipe_id: number | null;
+  descricao: string;
+  quantidade: string | number;
+  valor_unitario: string | number | null;
+  valor_total: string | number | null;
+  estado: 'pendente' | 'valorizado' | 'nao_cobrar';
+  observacoes: string | null;
+  criado_por: number | null;
+  data_servico: string;
+};
+
 const ContaCorrenteClientesScreen = () => {
   const [clientes, setClientes] = useState<ContaCliente[]>([]);
   const getMesAnterior = () => {
@@ -41,17 +58,23 @@ const ContaCorrenteClientesScreen = () => {
 
   return `${ano}-${mes}`;
 };
-  const [mesReferencia, setMesReferencia] = useState(getMesAnterior());
+  const [mesReferencia, setMesReferencia] = useState('2026-08');
   const [loading, setLoading] = useState(false);
   const [empresaid, setEmpresaid] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [clienteSelecionado, setClienteSelecionado] = useState<ContaCliente | null>(null);
   const [valorPagoInput, setValorPagoInput] = useState('');
-  const [valorExtraInput, setValorExtraInput] = useState('');
   const [observacoesInput, setObservacoesInput] = useState('');
   const [pesquisa, setPesquisa] = useState('');
   const [movimentos, setMovimentos] = useState<MovimentoPagamento[]>([]);
   const [totalRecebidoMes, setTotalRecebidoMes] = useState(0);
+  const [extrasCliente, setExtrasCliente] = useState<ExtraCliente[]>([]);
+  const [totalExtrasValorizados, setTotalExtrasValorizados] = useState(0);
+  const [totalExtrasPendentes, setTotalExtrasPendentes] = useState(0);
+  const [extrasExpandidos, setExtrasExpandidos] = useState(false);
+  const [modalValorizarExtraVisible, setModalValorizarExtraVisible] = useState(false);
+  const [extraSelecionado, setExtraSelecionado] = useState<ExtraCliente | null>(null);
+  const [valorExtraPendenteInput, setValorExtraPendenteInput] = useState('');
   const [modalMensalidadeVisible, setModalMensalidadeVisible] = useState(false);
   const [valorMensalidadeInput, setValorMensalidadeInput] = useState('');
   const [observacoesMensalidadeInput, setObservacoesMensalidadeInput] = useState('');
@@ -96,12 +119,12 @@ const ContaCorrenteClientesScreen = () => {
     return `${n.toFixed(2)} €`;
   };
 
-  const carregarMovimentosPagamento = async (clienteId: number) => {
+const carregarMovimentosPagamento = async (clienteId: number) => {
   if (!empresaid || !mesReferencia) {
     return;
   }
 
-  try {
+    try {
     const response = await axios.get(
       `${Config.API_URL}/pagamentos-movimentos`,
       {
@@ -122,7 +145,142 @@ const ContaCorrenteClientesScreen = () => {
   }
 };
 
-const abrirModalMensalidade = (cliente: ContaCliente) => {
+const carregarExtrasClienteMes = async (clienteId: number) => {
+  if (!empresaid || !mesReferencia) {
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/extras-clientes`,
+      {
+        params: {
+          cliente_id: clienteId,
+          empresaid,
+          mes: mesReferencia,
+        },
+      }
+    );
+
+    setExtrasCliente(response.data.extras || []);
+
+    setTotalExtrasValorizados(
+      Number(response.data.total_valorizado || 0)
+    );
+
+    setTotalExtrasPendentes(
+      Number(response.data.extras_pendentes || 0)
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao carregar extras do cliente:',
+      error
+    );
+
+    setExtrasCliente([]);
+    setTotalExtrasValorizados(0);
+    setTotalExtrasPendentes(0);
+  }
+};
+
+const abrirValorizarExtra = (extra: ExtraCliente) => {
+  if (extra.estado !== 'pendente') {
+    return;
+  }
+
+  setExtraSelecionado(extra);
+  setValorExtraPendenteInput('');
+  setModalValorizarExtraVisible(true);
+};
+
+const confirmarValorizarExtra = () => {
+  if (!extraSelecionado) {
+    return;
+  }
+
+  const valor = Number(
+    valorExtraPendenteInput.replace(',', '.')
+  );
+
+  if (!Number.isFinite(valor) || valor < 0) {
+    Alert.alert(
+      'Atenção',
+      'Introduza um valor unitário válido.'
+    );
+    return;
+  }
+
+  Alert.alert(
+    'Confirmar valorização',
+    `${extraSelecionado.descricao}\n\n` +
+      `Quantidade: ${Number(extraSelecionado.quantidade)}\n` +
+      `Valor unitário: ${formatEuro(valor)}\n` +
+      `Total: ${formatEuro(
+        Number(extraSelecionado.quantidade) * valor
+      )}`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Confirmar',
+        onPress: guardarValorExtra,
+      },
+    ]
+  );
+};
+
+const guardarValorExtra = async () => {
+  if (!extraSelecionado || !empresaid || !clienteSelecionado) {
+    Alert.alert(
+      'Erro',
+      'Não foi possível identificar o extra.'
+    );
+    return;
+  }
+
+  const valor = Number(
+    valorExtraPendenteInput.replace(',', '.')
+  );
+
+  try {
+    await axios.put(
+      `${Config.API_URL}/extras-clientes/${extraSelecionado.id}`,
+      {
+        empresaid,
+        valor_unitario: valor,
+      }
+    );
+
+    setModalValorizarExtraVisible(false);
+    setExtraSelecionado(null);
+    setValorExtraPendenteInput('');
+
+    await carregarExtrasClienteMes(
+      clienteSelecionado.cliente_id
+    );
+
+    await carregarContaCorrente(empresaid);
+
+    Alert.alert(
+      'Sucesso',
+      'Extra valorizado com sucesso.'
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao valorizar extra:',
+      error
+    );
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível valorizar o extra.'
+    );
+  }
+};
+
+const abrirModalMensalidade = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
 
   setValorMensalidadeInput(
@@ -133,7 +291,14 @@ const abrirModalMensalidade = (cliente: ContaCliente) => {
 
   setObservacoesMensalidadeInput(cliente.observacoes || '');
 
+  setExtrasCliente([]);
+  setTotalExtrasValorizados(0);
+  setTotalExtrasPendentes(0);
+  setExtrasExpandidos(false);
+
   setModalMensalidadeVisible(true);
+
+  await carregarExtrasClienteMes(cliente.cliente_id);
 };
 
 const confirmarMensalidade = () => {
@@ -209,15 +374,10 @@ const guardarMensalidadeManual = async () => {
   }
 };
 
-  const abrirModalPagamento = async (cliente: ContaCliente) => {
+const abrirModalPagamento = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
 
   setValorPagoInput('');
-  setValorExtraInput(
-  Number(cliente.valor_extra || 0) > 0
-    ? String(cliente.valor_extra)
-    : ''
-);
   setObservacoesInput('');
 
   setMovimentos([]);
@@ -264,14 +424,13 @@ const confirmarPagamento = () => {
 
   try {
     const valorPago = Number(valorPagoInput.replace(',', '.')) || 0;
-    const valorExtra = Number(valorExtraInput.replace(',', '.')) || 0;
 
     const response = await axios.post(`${Config.API_URL}/conta-corrente-clientes/pagamento`, {
       cliente_id: clienteSelecionado.cliente_id,
       empresaid,
       mes_referencia: mesReferencia,
       valor_manutencao: Number(clienteSelecionado.valor_manutencao || 0),
-      valor_extra: valorExtra,
+      valor_extra: Number(clienteSelecionado.valor_extra || 0),
       valor_pago: valorPago,
       observacoes: observacoesInput,
     });
@@ -288,9 +447,26 @@ const confirmarPagamento = () => {
   }
 };
 
-  const clientesFiltrados = clientes.filter((cliente) =>
-  cliente.nome.toLowerCase().includes(pesquisa.toLowerCase().trim())
-);
+  const clientesFiltrados = clientes.filter((cliente) => {
+  const termo = pesquisa.toLowerCase().trim();
+
+  if (!termo) {
+    return true;
+  }
+
+  const nome = cliente.nome.toLowerCase();
+
+  const saldoTotal = Number(cliente.saldo_total || 0);
+
+  const saldoComPonto = saldoTotal.toFixed(2);
+  const saldoComVirgula = saldoComPonto.replace('.', ',');
+
+  return (
+    nome.includes(termo) ||
+    saldoComPonto.includes(termo) ||
+    saldoComVirgula.includes(termo)
+  );
+});
 
   const formatSaldoTotal = (valor: string | number | null) => {
   const n = Number(valor || 0);
@@ -412,7 +588,7 @@ const totalClientesPorPagar = clientes.filter(
 </Text>
       <TextInput
   style={styles.searchInput}
-  placeholder="Pesquisar cliente..."
+  placeholder="Pesquisar cliente ou saldo..."
   placeholderTextColor="#666"
   value={pesquisa}
   onChangeText={setPesquisa}
@@ -484,15 +660,6 @@ const totalClientesPorPagar = clientes.filter(
         keyboardType="numeric"
         value={valorPagoInput}
         onChangeText={setValorPagoInput}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Valor extra"
-        placeholderTextColor="#666"
-        keyboardType="numeric"
-        value={valorExtraInput}
-        onChangeText={setValorExtraInput}
       />
 
       <TextInput
@@ -598,6 +765,82 @@ const totalClientesPorPagar = clientes.filter(
         onChangeText={setValorMensalidadeInput}
       />
 
+      <View style={styles.extrasMensalidadeContainer}>
+  <TouchableOpacity
+    style={styles.extrasMensalidadeCabecalho}
+    onPress={() => setExtrasExpandidos(!extrasExpandidos)}
+  >
+    <Text style={styles.extrasMensalidadeLabel}>
+      Extras
+    </Text>
+
+    <View style={styles.extrasMensalidadeDireita}>
+      <Text style={styles.extrasMensalidadeValor}>
+        {formatEuro(totalExtrasValorizados)}
+      </Text>
+
+      <Text style={styles.extrasMensalidadeSeta}>
+        {extrasExpandidos ? '▲' : '▼'}
+      </Text>
+    </View>
+  </TouchableOpacity>
+
+  {totalExtrasPendentes > 0 && (
+    <Text style={styles.extrasResumoPendentesTotal}>
+      Pendentes de valorização: {totalExtrasPendentes}
+    </Text>
+  )}
+
+  {extrasExpandidos && (
+    <View style={styles.extrasMensalidadeDetalhes}>
+      {extrasCliente.length === 0 ? (
+        <Text style={styles.historicoVazio}>
+          Não existem extras neste mês.
+        </Text>
+      ) : (
+        extrasCliente.map((extra) => (
+          <View
+            key={extra.id}
+            style={styles.extraResumoLinha}
+          >
+            <Text style={styles.extraResumoDescricao}>
+              {extra.descricao}
+            </Text>
+
+            <Text style={styles.extraResumoQuantidade}>
+              Quantidade: {Number(extra.quantidade)}
+            </Text>
+
+            {extra.estado === 'pendente' ? (
+            <TouchableOpacity
+            onPress={() => abrirValorizarExtra(extra)}
+          >
+            <Text style={styles.extraResumoPendente}>
+             Pendente de valorização — tocar para definir valor
+            </Text>
+            </TouchableOpacity>
+           ) : extra.estado === 'nao_cobrar' ? (
+              <Text style={styles.extraResumoNaoCobrar}>
+                Não cobrar
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.extraResumoQuantidade}>
+                  Valor unitário: {formatEuro(extra.valor_unitario)}
+                </Text>
+
+                <Text style={styles.extraResumoValor}>
+                  Total: {formatEuro(extra.valor_total)}
+                </Text>
+              </>
+            )}
+          </View>
+        ))
+      )}
+    </View>
+  )}
+</View>
+
       <TextInput
         style={[styles.input, styles.inputObservacoes]}
         placeholder="Observações"
@@ -619,6 +862,64 @@ const totalClientesPorPagar = clientes.filter(
       <TouchableOpacity
         style={styles.modalCancelButton}
         onPress={() => setModalMensalidadeVisible(false)}
+      >
+        <Text style={styles.modalButtonText}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+<Modal
+  visible={modalValorizarExtraVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() =>
+    setModalValorizarExtraVisible(false)
+  }
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>
+        Valorizar Extra
+      </Text>
+
+      <Text style={styles.modalCliente}>
+        {extraSelecionado?.descricao}
+      </Text>
+
+      {extraSelecionado ? (
+        <Text style={styles.extraResumoQuantidade}>
+          Quantidade: {Number(extraSelecionado.quantidade)}
+        </Text>
+      ) : null}
+
+      <TextInput
+        style={styles.input}
+        placeholder="Valor unitário"
+        placeholderTextColor="#666"
+        keyboardType="decimal-pad"
+        value={valorExtraPendenteInput}
+        onChangeText={setValorExtraPendenteInput}
+      />
+
+      <TouchableOpacity
+        style={styles.modalSaveButton}
+        onPress={confirmarValorizarExtra}
+      >
+        <Text style={styles.modalButtonText}>
+          Guardar Valor
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.modalCancelButton}
+        onPress={() => {
+          setModalValorizarExtraVisible(false);
+          setExtraSelecionado(null);
+          setValorExtraPendenteInput('');
+        }}
       >
         <Text style={styles.modalButtonText}>
           Cancelar
@@ -945,6 +1246,133 @@ mensalidadeButton: {
   shadowOpacity: 0.20,
   shadowRadius: 3,
   elevation: 4,
+},
+
+extrasResumoContainer: {
+  width: '100%',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 16,
+  padding: 14,
+  marginBottom: 14,
+},
+
+extrasResumoTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+  textAlign: 'center',
+  marginBottom: 10,
+},
+
+extraResumoLinha: {
+  borderBottomWidth: 1,
+  borderBottomColor: '#D3D3D3',
+  paddingVertical: 7,
+},
+
+extraResumoInfo: {
+  width: '100%',
+},
+
+extraResumoDescricao: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+extraResumoQuantidade: {
+  fontSize: 12,
+  color: '#555',
+  marginTop: 2,
+},
+
+extraResumoPendente: {
+  fontSize: 12,
+  fontWeight: 'bold',
+  color: '#8A5A00',
+  marginTop: 3,
+},
+
+extraResumoNaoCobrar: {
+  fontSize: 12,
+  fontWeight: 'bold',
+  color: '#555',
+  marginTop: 3,
+},
+
+extraResumoValor: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#000',
+  marginTop: 3,
+},
+
+extrasResumoTotalLinha: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 10,
+},
+
+extrasResumoTotalLabel: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+extrasResumoTotalValor: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+extrasResumoPendentesTotal: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#8A5A00',
+  marginTop: 6,
+  textAlign: 'center',
+},
+
+extrasMensalidadeContainer: {
+  width: '100%',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 14,
+  paddingHorizontal: 14,
+  paddingVertical: 11,
+  marginBottom: 12,
+},
+
+extrasMensalidadeCabecalho: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+
+extrasMensalidadeLabel: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#000',
+},
+
+extrasMensalidadeDireita: {
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+extrasMensalidadeValor: {
+  fontSize: 15,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+extrasMensalidadeSeta: {
+  fontSize: 13,
+  color: '#000',
+  marginLeft: 10,
+},
+
+extrasMensalidadeDetalhes: {
+  marginTop: 10,
 },
 });
 

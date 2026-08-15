@@ -89,6 +89,22 @@ type ItemManutencao = {
   cor?: string;
 };
 
+type ExtraCliente = {
+  id: number;
+  empresaid: number;
+  cliente_id: number;
+  manutencao_id: number | null;
+  equipe_id: number | null;
+  descricao: string;
+  quantidade: string | number;
+  valor_unitario: string | number | null;
+  valor_total: string | number | null;
+  estado: 'pendente' | 'valorizado' | 'nao_cobrar';
+  observacoes: string | null;
+  criado_por: number | null;
+  data_servico: string;
+};
+
 type MetodoAnalise = 'fotometro' | 'gotas' | 'fitas';
 type ModoTratamento = 'sal' | 'cloro';
 
@@ -193,6 +209,16 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   const [manutencaoAtual, setManutencaoAtual] = useState<{ id: number | null; status?: string } | null>(null);
   const [userEmpresaid] = useState<number | null>(null);
   const [isReportExpanded, setIsReportExpanded] = useState(false);
+  const [isExtrasExpanded, setIsExtrasExpanded] = useState(false);
+
+  const [extras, setExtras] = useState<ExtraCliente[]>([]);
+
+  const [extraDescricao, setExtraDescricao] = useState('');
+  const [extraQuantidade, setExtraQuantidade] = useState('1');
+  const [extraValorUnitario, setExtraValorUnitario] = useState('');
+  const [extraObservacoes, setExtraObservacoes] = useState('');
+
+  const [aGuardarExtra, setAGuardarExtra] = useState(false);
   const [anomaliaDescricao, setAnomaliaDescricao] = useState('');
   const [valorServicoExtra, setValorServicoExtra] = useState('');
   const [imagensAnexadas, setImagensAnexadas] = useState<string[]>([]);
@@ -2529,6 +2555,155 @@ const fmtDataCurta = (iso?: string | null) => {
   return `${dd}/${mm}/${yy}`;
 };
 
+const carregarExtrasManutencao = async () => {
+  if (!empresaid || !clienteId || !manutencaoAtual?.id) {
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/extras-clientes`,
+      {
+        params: {
+          empresaid,
+          cliente_id: clienteId,
+          manutencao_id: manutencaoAtual.id,
+        },
+      }
+    );
+
+    setExtras(response.data.extras || []);
+  } catch (error) {
+    console.error('Erro ao carregar extras:', error);
+  }
+};
+
+const guardarExtra = async () => {
+  if (!empresaid || !clienteId || !manutencaoAtual?.id) {
+    Alert.alert(
+      'Erro',
+      'Não foi possível identificar a manutenção atual.'
+    );
+    return;
+  }
+
+  if (!extraDescricao.trim()) {
+    Alert.alert(
+      'Atenção',
+      'Introduza a descrição do serviço ou material extra.'
+    );
+    return;
+  }
+
+  const quantidade = Number(
+    String(extraQuantidade).replace(',', '.')
+  );
+
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    Alert.alert(
+      'Atenção',
+      'Introduza uma quantidade válida.'
+    );
+    return;
+  }
+
+  const executar = async () => {
+    try {
+      setAGuardarExtra(true);
+
+      const userIdStorage = await AsyncStorage.getItem('userId');
+
+      const criadoPor =
+        userIdStorage &&
+        userIdStorage !== 'undefined' &&
+        Number.isFinite(Number(userIdStorage))
+          ? Number(userIdStorage)
+          : null;
+
+      const valorUnitario =
+        extraValorUnitario.trim() === ''
+          ? null
+          : Number(
+              extraValorUnitario.replace(',', '.')
+            );
+
+      if (
+        valorUnitario !== null &&
+        (!Number.isFinite(valorUnitario) || valorUnitario < 0)
+      ) {
+        Alert.alert(
+          'Atenção',
+          'O valor unitário introduzido não é válido.'
+        );
+        return;
+      }
+
+      await axios.post(
+        `${Config.API_URL}/extras-clientes`,
+        {
+          empresaid,
+          cliente_id: clienteId,
+          manutencao_id: manutencaoAtual.id,
+          equipe_id: equipeId || null,
+          descricao: extraDescricao.trim(),
+          quantidade,
+          valor_unitario: valorUnitario,
+          observacoes:
+            extraObservacoes.trim() || null,
+          criado_por: criadoPor,
+        }
+      );
+
+      setExtraDescricao('');
+      setExtraQuantidade('1');
+      setExtraValorUnitario('');
+      setExtraObservacoes('');
+
+      await carregarExtrasManutencao();
+
+      Alert.alert(
+        'Sucesso',
+        'Extra registado com sucesso.'
+      );
+    } catch (error) {
+      console.error('Erro ao registar extra:', error);
+
+      Alert.alert(
+        'Erro',
+        'Não foi possível registar o extra.'
+      );
+    } finally {
+      setAGuardarExtra(false);
+    }
+  };
+
+  const valorTexto =
+    extraValorUnitario.trim() === ''
+      ? 'sem valor definido'
+      : `${extraValorUnitario.replace('.', ',')} € por unidade`;
+
+  Alert.alert(
+    'Confirmar Extra',
+    `${extraDescricao.trim()}\n\nQuantidade: ${quantidade}\nValor: ${valorTexto}`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Registar',
+        onPress: executar,
+      },
+    ]
+  );
+};
+
+useEffect(() => {
+  if (manutencaoAtual?.id) {
+    carregarExtrasManutencao();
+  }
+}, [manutencaoAtual?.id]);
+
 return (
   <FlatList
     data={isItensExpanded ? itensManutencaoPeriodica : []} // Apenas carrega os itens quando expandido
@@ -3634,6 +3809,164 @@ const corParametro = (() => {
 ) : null}
 </View>
 
+{/* Serviços / Materiais Extra */}
+<View style={styles.section}>
+  <TouchableOpacity
+    onPress={() => setIsExtrasExpanded(!isExtrasExpanded)}
+  >
+    <Text style={styles.sectionTitle}>
+      Serviços / Materiais Extra
+    </Text>
+  </TouchableOpacity>
+
+  {isExtrasExpanded && (
+    <View style={styles.expandedContent}>
+      <Text style={styles.label}>
+        Descrição
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Ex: Substituição do cesto do skimmer"
+        placeholderTextColor="#888"
+        value={extraDescricao}
+        onChangeText={setExtraDescricao}
+      />
+
+      <Text style={[styles.label, { marginTop: 10 }]}>
+        Quantidade
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="1"
+        placeholderTextColor="#888"
+        keyboardType="decimal-pad"
+        value={extraQuantidade}
+        onChangeText={(texto) => {
+          const limpo = texto
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+
+          setExtraQuantidade(limpo);
+        }}
+      />
+
+      <Text style={[styles.label, { marginTop: 10 }]}>
+        Valor unitário (opcional)
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Ex: 25,00"
+        placeholderTextColor="#888"
+        keyboardType="decimal-pad"
+        value={extraValorUnitario}
+        onChangeText={(texto) => {
+          const limpo = texto
+            .replace(',', '.')
+            .replace(/[^0-9.]/g, '')
+            .replace(/(\..*?)\..*/g, '$1');
+
+          setExtraValorUnitario(limpo);
+        }}
+      />
+
+      <Text style={[styles.label, { marginTop: 10 }]}>
+        Observações
+      </Text>
+
+      <TextInput
+        style={[styles.input, styles.textArea]}
+        placeholder="Observações opcionais..."
+        placeholderTextColor="#888"
+        value={extraObservacoes}
+        onChangeText={setExtraObservacoes}
+        multiline
+      />
+
+      <TouchableOpacity
+        style={[
+          styles.submitButton,
+          aGuardarExtra && styles.opacityHalf,
+        ]}
+        disabled={aGuardarExtra}
+        onPress={guardarExtra}
+      >
+        <Text style={styles.submitButtonText}>
+          {aGuardarExtra
+            ? 'A registar...'
+            : 'Registar Extra'}
+        </Text>
+      </TouchableOpacity>
+
+      {extras.length > 0 && (
+        <View style={{ marginTop: 18 }}>
+          <Text
+            style={[
+              styles.label,
+              {
+                textAlign: 'center',
+                marginBottom: 10,
+              },
+            ]}
+          >
+            Extras registados nesta manutenção
+          </Text>
+
+          {extras.map((extra) => {
+            const quantidade = Number(extra.quantidade || 1);
+
+            const temValor =
+              extra.valor_unitario !== null &&
+              extra.valor_unitario !== undefined;
+
+            return (
+              <View
+                key={extra.id}
+                style={styles.extraRegistadoCard}
+              >
+                <Text style={styles.extraRegistadoDescricao}>
+                  {extra.descricao}
+                </Text>
+
+                <Text style={styles.extraRegistadoInfo}>
+                  Quantidade: {quantidade}
+                </Text>
+
+                {temValor ? (
+                  <>
+                    <Text style={styles.extraRegistadoInfo}>
+                      Valor unitário:{' '}
+                      {Number(extra.valor_unitario).toFixed(2)} €
+                    </Text>
+
+                    <Text style={styles.extraRegistadoTotal}>
+                      Total:{' '}
+                      {Number(extra.valor_total || 0).toFixed(2)} €
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.extraPendente}>
+                    Pendente de valorização
+                  </Text>
+                )}
+
+                {extra.observacoes ? (
+                  <Text style={styles.extraObservacoes}>
+                    Obs: {extra.observacoes}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  )}
+</View>
+
 {/* Reportar Anomalias */}
 <View style={styles.section}>
   <TouchableOpacity onPress={() => setIsReportExpanded(!isReportExpanded)}>
@@ -4484,6 +4817,52 @@ badgeManual: {
   fontSize: 11,
   color: '#8A5A00',
   fontWeight: '600',
+},
+
+extraRegistadoCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 10,
+  padding: 12,
+  marginBottom: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.12,
+  shadowRadius: 3,
+  elevation: 3,
+},
+
+extraRegistadoDescricao: {
+  fontSize: 15,
+  fontWeight: 'bold',
+  color: '#000',
+  marginBottom: 5,
+},
+
+extraRegistadoInfo: {
+  fontSize: 13,
+  color: '#000',
+  marginTop: 2,
+},
+
+extraRegistadoTotal: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+  marginTop: 4,
+},
+
+extraPendente: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#8A5A00',
+  marginTop: 5,
+},
+
+extraObservacoes: {
+  fontSize: 12,
+  color: '#555',
+  fontStyle: 'italic',
+  marginTop: 5,
 },
 });
 

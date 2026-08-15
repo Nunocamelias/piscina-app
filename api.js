@@ -369,107 +369,173 @@ app.get('/conta-corrente-clientes', async (req, res) => {
   const { empresaid, mes } = req.query;
 
   if (!empresaid) {
-    return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+    return res.status(400).json({
+      error: 'Empresaid é obrigatório.',
+    });
   }
 
   const mesReferencia = mes || moment().format('YYYY-MM');
 
   try {
     const query = `
-  SELECT
-    c.id AS cliente_id,
-    c.nome,
-    c.morada,
-
-    COALESCE(pc.valor_manutencao, 0) AS valor_manutencao,
-
-    pc.id AS pagamento_id,
-    pc.mes_referencia,
-    COALESCE(pc.valor_extra, 0) AS valor_extra,
-
-    COALESCE(movimentos.total_pago, 0) AS valor_pago,
-
-    pc.estado,
-    pc.observacoes,
-    pc.data_pagamento,
-
-    COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
-
-    (
-      COALESCE(pc.valor_manutencao, 0)
-      + COALESCE(pc.valor_extra, 0)
-      - COALESCE(movimentos.total_pago, 0)
-    ) AS saldo_mes,
-
-    (
-      COALESCE(anteriores.saldo_anterior, 0)
-      + COALESCE(pc.valor_manutencao, 0)
-      + COALESCE(pc.valor_extra, 0)
-      - COALESCE(movimentos.total_pago, 0)
-    ) AS saldo_total
-
-  FROM clientes c
-
-  LEFT JOIN pagamentos_clientes pc
-    ON pc.cliente_id = c.id
-    AND pc.empresaid = c.empresaid
-    AND pc.mes_referencia = $2
-
-  LEFT JOIN (
-    SELECT
-      cliente_id,
-      empresaid,
-      mes_referencia,
-      SUM(valor) AS total_pago
-    FROM pagamentos_movimentos
-    GROUP BY cliente_id, empresaid, mes_referencia
-  ) movimentos
-    ON movimentos.cliente_id = c.id
-    AND movimentos.empresaid = c.empresaid
-    AND movimentos.mes_referencia = $2
-
-  LEFT JOIN (
-    SELECT
-      pc_ant.cliente_id,
-      pc_ant.empresaid,
-
-      SUM(
-        COALESCE(pc_ant.valor_manutencao, 0)
-        + COALESCE(pc_ant.valor_extra, 0)
-        - COALESCE(mov_ant.total_pago, 0)
-      ) AS saldo_anterior
-
-    FROM pagamentos_clientes pc_ant
-
-    LEFT JOIN (
       SELECT
-        cliente_id,
-        empresaid,
-        mes_referencia,
-        SUM(valor) AS total_pago
-      FROM pagamentos_movimentos
-      GROUP BY cliente_id, empresaid, mes_referencia
-    ) mov_ant
-      ON mov_ant.cliente_id = pc_ant.cliente_id
-      AND mov_ant.empresaid = pc_ant.empresaid
-      AND mov_ant.mes_referencia = pc_ant.mes_referencia
+        c.id AS cliente_id,
+        c.nome,
+        c.morada,
 
-    WHERE pc_ant.empresaid = $1
-      AND pc_ant.mes_referencia < $2
+        COALESCE(pc.valor_manutencao, 0) AS valor_manutencao,
 
-    GROUP BY
-      pc_ant.cliente_id,
-      pc_ant.empresaid
-  ) anteriores
-    ON anteriores.cliente_id = c.id
-    AND anteriores.empresaid = c.empresaid
+        pc.id AS pagamento_id,
+        pc.mes_referencia,
 
-  WHERE c.empresaid = $1
+        COALESCE(extras.total_extras, 0) AS valor_extra,
+        COALESCE(extras.extras_pendentes, 0) AS extras_pendentes,
 
-  ORDER BY c.nome ASC;
-`;
+        COALESCE(movimentos.total_pago, 0) AS valor_pago,
 
-    const result = await pool.query(query, [empresaid, mesReferencia]);
+        pc.estado,
+        pc.observacoes,
+        pc.data_pagamento,
+
+        COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+
+        (
+          COALESCE(pc.valor_manutencao, 0)
+          + COALESCE(extras.total_extras, 0)
+          - COALESCE(movimentos.total_pago, 0)
+        ) AS saldo_mes,
+
+        (
+          COALESCE(anteriores.saldo_anterior, 0)
+          + COALESCE(pc.valor_manutencao, 0)
+          + COALESCE(extras.total_extras, 0)
+          - COALESCE(movimentos.total_pago, 0)
+        ) AS saldo_total
+
+      FROM clientes c
+
+      LEFT JOIN pagamentos_clientes pc
+        ON pc.cliente_id = c.id
+        AND pc.empresaid = c.empresaid
+        AND pc.mes_referencia = $2
+
+      LEFT JOIN (
+        SELECT
+          cliente_id,
+          empresaid,
+
+          SUM(
+            CASE
+              WHEN estado = 'valorizado'
+              THEN COALESCE(valor_total, 0)
+              ELSE 0
+            END
+          ) AS total_extras,
+
+          COUNT(*) FILTER (
+            WHERE estado = 'pendente'
+          ) AS extras_pendentes
+
+        FROM extras_clientes
+
+        WHERE TO_CHAR(data_servico, 'YYYY-MM') = $2
+
+        GROUP BY
+          cliente_id,
+          empresaid
+      ) extras
+        ON extras.cliente_id = c.id
+        AND extras.empresaid = c.empresaid
+
+      LEFT JOIN (
+        SELECT
+          cliente_id,
+          empresaid,
+          mes_referencia,
+          SUM(valor) AS total_pago
+        FROM pagamentos_movimentos
+        GROUP BY
+          cliente_id,
+          empresaid,
+          mes_referencia
+      ) movimentos
+        ON movimentos.cliente_id = c.id
+        AND movimentos.empresaid = c.empresaid
+        AND movimentos.mes_referencia = $2
+
+      LEFT JOIN (
+        SELECT
+          pc_ant.cliente_id,
+          pc_ant.empresaid,
+
+          SUM(
+            COALESCE(pc_ant.valor_manutencao, 0)
+            + COALESCE(extras_ant.total_extras, 0)
+            - COALESCE(mov_ant.total_pago, 0)
+          ) AS saldo_anterior
+
+        FROM pagamentos_clientes pc_ant
+
+        LEFT JOIN (
+          SELECT
+            cliente_id,
+            empresaid,
+            TO_CHAR(data_servico, 'YYYY-MM') AS mes_referencia,
+
+            SUM(
+              CASE
+                WHEN estado = 'valorizado'
+                THEN COALESCE(valor_total, 0)
+                ELSE 0
+              END
+            ) AS total_extras
+
+          FROM extras_clientes
+
+          GROUP BY
+            cliente_id,
+            empresaid,
+            TO_CHAR(data_servico, 'YYYY-MM')
+        ) extras_ant
+          ON extras_ant.cliente_id = pc_ant.cliente_id
+          AND extras_ant.empresaid = pc_ant.empresaid
+          AND extras_ant.mes_referencia = pc_ant.mes_referencia
+
+        LEFT JOIN (
+          SELECT
+            cliente_id,
+            empresaid,
+            mes_referencia,
+            SUM(valor) AS total_pago
+          FROM pagamentos_movimentos
+          GROUP BY
+            cliente_id,
+            empresaid,
+            mes_referencia
+        ) mov_ant
+          ON mov_ant.cliente_id = pc_ant.cliente_id
+          AND mov_ant.empresaid = pc_ant.empresaid
+          AND mov_ant.mes_referencia = pc_ant.mes_referencia
+
+        WHERE pc_ant.empresaid = $1
+          AND pc_ant.mes_referencia < $2
+
+        GROUP BY
+          pc_ant.cliente_id,
+          pc_ant.empresaid
+      ) anteriores
+        ON anteriores.cliente_id = c.id
+        AND anteriores.empresaid = c.empresaid
+
+      WHERE c.empresaid = $1
+
+      ORDER BY c.nome ASC;
+    `;
+
+    const result = await pool.query(query, [
+      empresaid,
+      mesReferencia,
+    ]);
 
     return res.status(200).json({
       mes_referencia: mesReferencia,
@@ -477,7 +543,11 @@ app.get('/conta-corrente-clientes', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao buscar conta corrente:', error);
-    return res.status(500).json({ error: 'Erro ao buscar conta corrente.' });
+
+    return res.status(500).json({
+      error: 'Erro ao buscar conta corrente.',
+      detalhes: error.message,
+    });
   }
 });
 
@@ -819,6 +889,399 @@ app.post('/conta-corrente-clientes/lancar-mensalidade-manual', async (req, res) 
 
     return res.status(500).json({
       error: 'Erro ao lançar mensalidade manual.',
+      detalhes: error.message,
+    });
+  }
+});
+
+app.post('/extras-clientes', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+    manutencao_id,
+    equipe_id,
+    descricao,
+    quantidade,
+    valor_unitario,
+    observacoes,
+    criado_por,
+  } = req.body;
+
+  if (!empresaid || !cliente_id || !descricao?.trim()) {
+    return res.status(400).json({
+      error: 'empresaid, cliente_id e descricao são obrigatórios.',
+    });
+  }
+
+  const quantidadeNum = Number(quantidade || 1);
+
+  if (!Number.isFinite(quantidadeNum) || quantidadeNum <= 0) {
+    return res.status(400).json({
+      error: 'Quantidade inválida.',
+    });
+  }
+
+  let valorUnitarioNum = null;
+  let valorTotal = null;
+  let estado = 'pendente';
+
+  if (
+    valor_unitario !== null &&
+    valor_unitario !== undefined &&
+    String(valor_unitario).trim() !== ''
+  ) {
+    valorUnitarioNum = Number(valor_unitario);
+
+    if (!Number.isFinite(valorUnitarioNum) || valorUnitarioNum < 0) {
+      return res.status(400).json({
+        error: 'Valor unitário inválido.',
+      });
+    }
+
+    valorTotal = Number(
+      (quantidadeNum * valorUnitarioNum).toFixed(2)
+    );
+
+    estado = 'valorizado';
+  }
+
+  try {
+    // Confirmar que o cliente pertence à empresa
+    const clienteResult = await pool.query(
+      `
+      SELECT id
+      FROM clientes
+      WHERE id = $1
+        AND empresaid = $2;
+      `,
+      [cliente_id, empresaid]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado ou não pertence à empresa.',
+      });
+    }
+
+    // Se vier manutencao_id, confirmar que pertence ao mesmo cliente/empresa
+    if (manutencao_id) {
+      const manutencaoResult = await pool.query(
+        `
+        SELECT id
+        FROM manutencoes
+        WHERE id = $1
+          AND cliente_id = $2
+          AND empresaid = $3;
+        `,
+        [manutencao_id, cliente_id, empresaid]
+      );
+
+      if (manutencaoResult.rows.length === 0) {
+        return res.status(400).json({
+          error:
+            'A manutenção indicada não pertence ao cliente/empresa.',
+        });
+      }
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO extras_clientes (
+        empresaid,
+        cliente_id,
+        manutencao_id,
+        equipe_id,
+        descricao,
+        quantidade,
+        valor_unitario,
+        valor_total,
+        estado,
+        observacoes,
+        criado_por,
+        data_servico,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      RETURNING *;
+      `,
+      [
+        empresaid,
+        cliente_id,
+        manutencao_id || null,
+        equipe_id || null,
+        descricao.trim(),
+        quantidadeNum,
+        valorUnitarioNum,
+        valorTotal,
+        estado,
+        observacoes?.trim() || null,
+        criado_por || null,
+      ]
+    );
+
+    return res.status(201).json({
+      message: 'Extra registado com sucesso.',
+      extra: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao registar extra:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao registar extra.',
+      detalhes: error.message,
+    });
+  }
+});
+
+app.get('/extras-clientes', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+    manutencao_id,
+    estado,
+    mes,
+  } = req.query;
+
+  if (!empresaid || !cliente_id) {
+    return res.status(400).json({
+      error: 'empresaid e cliente_id são obrigatórios.',
+    });
+  }
+
+  if (mes && !/^\d{4}-\d{2}$/.test(String(mes))) {
+    return res.status(400).json({
+      error: 'O mês deve estar no formato YYYY-MM.',
+    });
+  }
+
+  try {
+    const values = [
+      Number(empresaid),
+      Number(cliente_id),
+    ];
+
+    let where = `
+      WHERE empresaid = $1
+        AND cliente_id = $2
+    `;
+
+    if (manutencao_id) {
+      values.push(Number(manutencao_id));
+      where += ` AND manutencao_id = $${values.length}`;
+    }
+
+    if (estado) {
+      values.push(String(estado));
+      where += ` AND estado = $${values.length}`;
+    }
+
+    if (mes) {
+      values.push(String(mes));
+
+      where += `
+        AND data_servico >= TO_DATE(
+          $${values.length} || '-01',
+          'YYYY-MM-DD'
+        )
+        AND data_servico < (
+          TO_DATE(
+            $${values.length} || '-01',
+            'YYYY-MM-DD'
+          ) + INTERVAL '1 month'
+        )
+      `;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        empresaid,
+        cliente_id,
+        manutencao_id,
+        equipe_id,
+        descricao,
+        quantidade,
+        valor_unitario,
+        valor_total,
+        estado,
+        observacoes,
+        criado_por,
+        data_servico,
+        created_at,
+        updated_at
+      FROM extras_clientes
+      ${where}
+      ORDER BY data_servico ASC, id ASC;
+      `,
+      values
+    );
+
+    const totalValorizado = result.rows.reduce(
+      (total, extra) =>
+        extra.estado === 'valorizado'
+          ? total + Number(extra.valor_total || 0)
+          : total,
+      0
+    );
+
+    const extrasPendentes = result.rows.filter(
+      (extra) => extra.estado === 'pendente'
+    ).length;
+
+    return res.status(200).json({
+      extras: result.rows,
+      total_valorizado: totalValorizado,
+      extras_pendentes: extrasPendentes,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar extras:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao buscar extras.',
+      detalhes: error.message,
+    });
+  }
+});
+
+app.put('/extras-clientes/:id', async (req, res) => {
+  const { id } = req.params;
+
+  const {
+    empresaid,
+    valor_unitario,
+    quantidade,
+    descricao,
+    observacoes,
+    estado,
+  } = req.body;
+
+  if (!empresaid) {
+    return res.status(400).json({
+      error: 'empresaid é obrigatório.',
+    });
+  }
+
+  try {
+    const extraResult = await pool.query(
+      `
+      SELECT *
+      FROM extras_clientes
+      WHERE id = $1
+        AND empresaid = $2;
+      `,
+      [id, empresaid]
+    );
+
+    if (extraResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Extra não encontrado.',
+      });
+    }
+
+    const extraAtual = extraResult.rows[0];
+
+    const quantidadeFinal =
+      quantidade !== undefined && quantidade !== null
+        ? Number(quantidade)
+        : Number(extraAtual.quantidade || 1);
+
+    if (
+      !Number.isFinite(quantidadeFinal) ||
+      quantidadeFinal <= 0
+    ) {
+      return res.status(400).json({
+        error: 'Quantidade inválida.',
+      });
+    }
+
+    let valorUnitarioFinal = extraAtual.valor_unitario;
+    let valorTotalFinal = extraAtual.valor_total;
+    let estadoFinal = extraAtual.estado;
+
+    if (
+      valor_unitario !== undefined &&
+      valor_unitario !== null &&
+      String(valor_unitario).trim() !== ''
+    ) {
+      valorUnitarioFinal = Number(valor_unitario);
+
+      if (
+        !Number.isFinite(valorUnitarioFinal) ||
+        valorUnitarioFinal < 0
+      ) {
+        return res.status(400).json({
+          error: 'Valor unitário inválido.',
+        });
+      }
+
+      valorTotalFinal = Number(
+        (quantidadeFinal * valorUnitarioFinal).toFixed(2)
+      );
+
+      estadoFinal = 'valorizado';
+    }
+
+    if (
+      estado === 'nao_cobrar'
+    ) {
+      estadoFinal = 'nao_cobrar';
+      valorUnitarioFinal = 0;
+      valorTotalFinal = 0;
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE extras_clientes
+      SET
+        descricao = COALESCE($1, descricao),
+        quantidade = $2,
+        valor_unitario = $3,
+        valor_total = $4,
+        estado = $5,
+        observacoes = COALESCE($6, observacoes),
+        updated_at = NOW()
+      WHERE id = $7
+        AND empresaid = $8
+      RETURNING *;
+      `,
+      [
+        descricao?.trim() || null,
+        quantidadeFinal,
+        valorUnitarioFinal,
+        valorTotalFinal,
+        estadoFinal,
+        observacoes?.trim() || null,
+        id,
+        empresaid,
+      ]
+    );
+
+    return res.status(200).json({
+      message: 'Extra atualizado com sucesso.',
+      extra: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar extra:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao atualizar extra.',
       detalhes: error.message,
     });
   }
