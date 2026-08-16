@@ -58,7 +58,7 @@ const ContaCorrenteClientesScreen = () => {
 
   return `${ano}-${mes}`;
 };
-  const [mesReferencia, setMesReferencia] = useState('2026-08');
+  const [mesReferencia, setMesReferencia] = useState(getMesAnterior());
   const [loading, setLoading] = useState(false);
   const [empresaid, setEmpresaid] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
