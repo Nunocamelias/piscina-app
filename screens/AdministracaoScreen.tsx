@@ -44,6 +44,14 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.button}
+            onPress={() => navigation.navigate('ModelosComunicacao')}>
+           <Text style={styles.buttonText}>
+           Modelos de Comunicação
+          </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.button}
             onPress={() => navigation.navigate('ParametrosQuimicos')}>
             <Text style={styles.buttonText}>Parâmetros Químicos</Text>
           </TouchableOpacity>

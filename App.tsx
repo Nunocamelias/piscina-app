@@ -30,6 +30,7 @@ import ContabilidadeHomeScreen from './screens/ContabilidadeHomeScreen';
 import HeaderLogo from './components/HeaderLogo';
 import TesteRapidoScreen from './screens/TesteRapidoScreen';
 import ContaCorrenteClientesScreen from './screens/ContaCorrenteClientesScreen';
+import ModelosComunicacaoScreen from './screens/ModelosComunicacaoScreen';
 
 
 
@@ -52,6 +53,7 @@ export type RootStackParamList = {
   EquipesDiasDaSemana: { equipeId: number; equipeNome: string; atualizarProgressoDia?: string; atualizarProgressoStatus?: string }; // Adiciona os parâmetros
   EquipesPiscinasPorDia: { empresaid: number; equipeId: number; diaSemana: string; equipeNome: string; atualizarStatusClienteId?: number; atualizarStatusCliente?: string };
   Administracao: undefined; // Define a tela de administração
+  ModelosComunicacao: undefined;
   ParametrosQuimicos: undefined;
   FolhaManutencao: {
     empresaid: number;
@@ -384,6 +386,21 @@ const App = (): React.JSX.Element => {
           },
           headerTitleAlign: 'center',
           headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="ModelosComunicacao"
+          component={ModelosComunicacaoScreen}
+          options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+          },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000', }}/>  
         <Stack.Screen
           name="ParametrosQuimicos"
           component={ParametrosQuimicosScreen}

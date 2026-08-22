@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {  View, Text, TextInput, TouchableOpacity, Image, Alert, StyleSheet, Appearance, Platform, } from 'react-native';
+import {  View, Text, TextInput, TouchableOpacity, Image, Alert, StyleSheet, Appearance, Platform, ScrollView, } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
@@ -28,6 +28,15 @@ const InfoCompanyScreen = ({ navigation }: Props) => {
   telefone: '',
   endereco: '',
   nif: '',
+
+  iban1: '',
+  titular_iban1: '',
+
+  iban2: '',
+  titular_iban2: '',
+
+  mbway: '',
+
   logo: null as string | null,
 });
 
@@ -81,14 +90,23 @@ useEffect(() => {
         });
 
         const empresaRecebida = {
-          id: response.data.id,
-          nome: response.data.nome ?? '',
-          email: response.data.email ?? '',
-          telefone: response.data.telefone ?? '',
-          endereco: response.data.endereco ?? '',
-          nif: response.data.nif ?? '',
-          logo: response.data.logo ?? null,
-        };
+  id: response.data.id,
+  nome: response.data.nome ?? '',
+  email: response.data.email ?? '',
+  telefone: response.data.telefone ?? '',
+  endereco: response.data.endereco ?? '',
+  nif: response.data.nif ?? '',
+
+  iban1: response.data.iban1 ?? '',
+  titular_iban1: response.data.titular_iban1 ?? '',
+
+  iban2: response.data.iban2 ?? '',
+  titular_iban2: response.data.titular_iban2 ?? '',
+
+  mbway: response.data.mbway ?? '',
+
+  logo: response.data.logo ?? null,
+};
 
         setEmpresa(empresaRecebida);            // ✅ preenche o formulário
         setLogo(empresaRecebida.logo);          // ✅ preview do logo
@@ -244,7 +262,13 @@ useEffect(() => {
 
 
   return (
-    <View style={styles.container}>
+  <View style={styles.container}>
+    <ScrollView
+      style={{ width: '100%' }}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={true}
+    >
       <Text style={styles.title}>Informação da Empresa</Text>
 
       {logo ? (
@@ -253,15 +277,22 @@ useEffect(() => {
         <Text style={styles.noLogo}>Sem logo definido</Text>
       )}
 
-      <TouchableOpacity style={styles.attachButton} onPress={handleSelecionarLogo}>
-        <Text style={styles.attachButtonText}>📸 {logo ? 'Alterar Logo' : 'Adicionar Logo'}</Text>
+      <TouchableOpacity
+        style={styles.attachButton}
+        onPress={handleSelecionarLogo}
+      >
+        <Text style={styles.attachButtonText}>
+          📸 {logo ? 'Alterar Logo' : 'Adicionar Logo'}
+        </Text>
       </TouchableOpacity>
 
       <TextInput
         style={styles.input}
         value={empresa.nome}
         editable={isEditing}
-        onChangeText={(text) => setEmpresa({ ...empresa, nome: text })}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, nome: text })
+        }
         placeholder="Nome da Empresa"
       />
 
@@ -269,7 +300,9 @@ useEffect(() => {
         style={styles.input}
         value={empresa.email}
         editable={isEditing}
-        onChangeText={(text) => setEmpresa({ ...empresa, email: text })}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, email: text })
+        }
         placeholder="Email"
       />
 
@@ -277,7 +310,9 @@ useEffect(() => {
         style={styles.input}
         value={empresa.telefone}
         editable={isEditing}
-        onChangeText={(text) => setEmpresa({ ...empresa, telefone: text })}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, telefone: text })
+        }
         placeholder="Telefone"
       />
 
@@ -285,7 +320,9 @@ useEffect(() => {
         style={styles.input}
         value={empresa.endereco}
         editable={isEditing}
-        onChangeText={(text) => setEmpresa({ ...empresa, endereco: text })}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, endereco: text })
+        }
         placeholder="Endereço"
       />
 
@@ -293,28 +330,89 @@ useEffect(() => {
         style={styles.input}
         value={empresa.nif || ''}
         editable={isEditing}
-        onChangeText={(text) => setEmpresa({ ...empresa, nif: text })}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, nif: text })
+        }
         placeholder="NIF"
       />
 
+      <TextInput
+        style={styles.input}
+        value={empresa.iban1}
+        editable={isEditing}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, iban1: text })
+        }
+        placeholder="IBAN Principal"
+      />
+
+      <TextInput
+        style={styles.input}
+        value={empresa.titular_iban1}
+        editable={isEditing}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, titular_iban1: text })
+        }
+        placeholder="Titular do IBAN Principal"
+      />
+
+      <TextInput
+        style={styles.input}
+        value={empresa.iban2}
+        editable={isEditing}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, iban2: text })
+        }
+        placeholder="IBAN Secundário"
+      />
+
+      <TextInput
+        style={styles.input}
+        value={empresa.titular_iban2}
+        editable={isEditing}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, titular_iban2: text })
+        }
+        placeholder="Titular do IBAN Secundário"
+      />
+
+      <TextInput
+        style={styles.input}
+        value={empresa.mbway}
+        editable={isEditing}
+        onChangeText={(text) =>
+          setEmpresa({ ...empresa, mbway: text })
+        }
+        placeholder="MB WAY"
+        keyboardType="phone-pad"
+      />
+
       <TouchableOpacity
-  style={[styles.button, isEditing && { backgroundColor: '#CCFFCC' }]}
-  onPress={() => (isEditing ? handleSave() : handleStartEditing())}
->
-  <Text style={styles.buttonText}>
-    {isEditing ? 'Guardar Alterações' : 'Editar'}
-  </Text>
-</TouchableOpacity>
-      {/* 🔹 Footer fixo */}
+        style={[
+          styles.button,
+          isEditing && { backgroundColor: '#CCFFCC' },
+        ]}
+        onPress={() =>
+          isEditing ? handleSave() : handleStartEditing()
+        }
+      >
+        <Text style={styles.buttonText}>
+          {isEditing ? 'Guardar Alterações' : 'Editar'}
+        </Text>
+      </TouchableOpacity>
+
       <View style={styles.footer}>
         <Text style={styles.empresaNome}>
-        {empresa?.nome || 'Empresa'}
+          {empresa?.nome || 'Empresa'}
         </Text>
-      <Text style={styles.subTitle}>powered by GESPOOL</Text>
-    </View>
 
-    </View>
-  );
+        <Text style={styles.subTitle}>
+          powered by GESPOOL
+        </Text>
+      </View>
+    </ScrollView>
+  </View>
+);
 };
 
 const styles = StyleSheet.create({
@@ -406,11 +504,11 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   footer: {
-    position: 'absolute',
-    bottom: 50,
-    width: '100%',
-    alignItems: 'center',
-  },
+  width: '100%',
+  alignItems: 'center',
+  marginTop: 10,
+  marginBottom: 10,
+},
   empresaNome: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -422,6 +520,12 @@ const styles = StyleSheet.create({
     color: '#444',
     marginTop: 2,
   },
+  scrollContent: {
+  flexGrow: 1,
+  width: '100%',
+  alignItems: 'center',
+  paddingBottom: 60,
+},
 });
 
 export default InfoCompanyScreen;

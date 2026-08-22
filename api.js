@@ -147,14 +147,19 @@ app.get('/empresas/:id', async (req, res) => {
 
   try {
     const query = `
-      SELECT 
+      SELECT
         id,
         nome,
         email,
         telefone,
         endereco,
         logo,
-        nif
+        nif,
+        iban1,
+        titular_iban1,
+        iban2,
+        titular_iban2,
+        mbway
       FROM empresas
       WHERE id = $1
     `;
@@ -174,23 +179,77 @@ app.get('/empresas/:id', async (req, res) => {
 
 app.put('/empresas/:id/update', async (req, res) => {
   const { id } = req.params;
-  const { nome, email, telefone, endereco, logo, nif } = req.body;
+  const {
+  nome,
+  email,
+  telefone,
+  endereco,
+  logo,
+  nif,
+
+  iban1,
+  titular_iban1,
+
+  iban2,
+  titular_iban2,
+
+  mbway,
+} = req.body;
 
   try {
     const query = `
-      UPDATE empresas
-      SET 
-        nome = COALESCE($1, nome),
-        email = COALESCE($2, email),
-        telefone = COALESCE($3, telefone),
-        endereco = COALESCE($4, endereco),
-        logo = COALESCE($5, logo),
-        nif = COALESCE($6, nif)
-      WHERE id = $7
-      RETURNING id, nome, email, telefone, endereco, logo, nif;
-    `;
+  UPDATE empresas
+  SET
+    nome = COALESCE($1, nome),
+    email = COALESCE($2, email),
+    telefone = COALESCE($3, telefone),
+    endereco = COALESCE($4, endereco),
+    logo = COALESCE($5, logo),
+    nif = COALESCE($6, nif),
 
-    const values = [nome, email, telefone, endereco, logo, nif, id];
+    iban1 = COALESCE($7, iban1),
+    titular_iban1 = COALESCE($8, titular_iban1),
+
+    iban2 = COALESCE($9, iban2),
+    titular_iban2 = COALESCE($10, titular_iban2),
+
+    mbway = COALESCE($11, mbway)
+
+  WHERE id = $12
+
+  RETURNING
+    id,
+    nome,
+    email,
+    telefone,
+    endereco,
+    logo,
+    nif,
+    iban1,
+    titular_iban1,
+    iban2,
+    titular_iban2,
+    mbway;
+`;
+
+    const values = [
+  nome,
+  email,
+  telefone,
+  endereco,
+  logo,
+  nif,
+
+  iban1,
+  titular_iban1,
+
+  iban2,
+  titular_iban2,
+
+  mbway,
+
+  id,
+];
     const result = await pool.query(query, values);
 
     if (result.rows.length === 0) {
@@ -313,6 +372,7 @@ app.get('/clientes', async (req, res) => {
     res.status(500).send('Erro ao buscar clientes.');
   }
 });
+
 app.get('/clientes/:id', async (req, res) => {
   const { id } = req.params;
   const { empresaid } = req.query; // Inclui o empresaid como filtro
@@ -378,159 +438,171 @@ app.get('/conta-corrente-clientes', async (req, res) => {
 
   try {
     const query = `
+  SELECT
+    c.id AS cliente_id,
+    c.nome,
+    c.morada,
+    c.email,
+    c.telefone,
+
+    COALESCE(pc.valor_manutencao, 0) AS valor_manutencao,
+
+    pc.id AS pagamento_id,
+    pc.mes_referencia,
+
+    COALESCE(extras.total_extras, 0) AS valor_extra,
+    COALESCE(extras.extras_pendentes, 0) AS extras_pendentes,
+
+    EXISTS (
+      SELECT 1
+      FROM comunicacoes_clientes cc
+      WHERE cc.empresaid = c.empresaid
+        AND cc.cliente_id = c.id
+        AND cc.mes_referencia = $2
+        AND cc.canal = 'email'
+        AND cc.estado = 'enviado'
+    ) AS email_enviado,
+
+    COALESCE(movimentos.total_pago, 0) AS valor_pago,
+
+    pc.estado,
+    pc.observacoes,
+    pc.data_pagamento,
+
+    COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+
+    (
+      COALESCE(pc.valor_manutencao, 0)
+      + COALESCE(extras.total_extras, 0)
+      - COALESCE(movimentos.total_pago, 0)
+    ) AS saldo_mes,
+
+    (
+      COALESCE(anteriores.saldo_anterior, 0)
+      + COALESCE(pc.valor_manutencao, 0)
+      + COALESCE(extras.total_extras, 0)
+      - COALESCE(movimentos.total_pago, 0)
+    ) AS saldo_total
+
+  FROM clientes c
+
+  LEFT JOIN pagamentos_clientes pc
+    ON pc.cliente_id = c.id
+    AND pc.empresaid = c.empresaid
+    AND pc.mes_referencia = $2
+
+  LEFT JOIN (
+    SELECT
+      cliente_id,
+      empresaid,
+
+      SUM(
+        CASE
+          WHEN estado = 'valorizado'
+          THEN COALESCE(valor_total, 0)
+          ELSE 0
+        END
+      ) AS total_extras,
+
+      COUNT(*) FILTER (
+        WHERE estado = 'pendente'
+      ) AS extras_pendentes
+
+    FROM extras_clientes
+
+    WHERE TO_CHAR(data_servico, 'YYYY-MM') = $2
+
+    GROUP BY
+      cliente_id,
+      empresaid
+  ) extras
+    ON extras.cliente_id = c.id
+    AND extras.empresaid = c.empresaid
+
+  LEFT JOIN (
+    SELECT
+      cliente_id,
+      empresaid,
+      mes_referencia,
+      SUM(valor) AS total_pago
+    FROM pagamentos_movimentos
+    GROUP BY
+      cliente_id,
+      empresaid,
+      mes_referencia
+  ) movimentos
+    ON movimentos.cliente_id = c.id
+    AND movimentos.empresaid = c.empresaid
+    AND movimentos.mes_referencia = $2
+
+  LEFT JOIN (
+    SELECT
+      pc_ant.cliente_id,
+      pc_ant.empresaid,
+
+      SUM(
+        COALESCE(pc_ant.valor_manutencao, 0)
+        + COALESCE(extras_ant.total_extras, 0)
+        - COALESCE(mov_ant.total_pago, 0)
+      ) AS saldo_anterior
+
+    FROM pagamentos_clientes pc_ant
+
+    LEFT JOIN (
       SELECT
-        c.id AS cliente_id,
-        c.nome,
-        c.morada,
+        cliente_id,
+        empresaid,
+        TO_CHAR(data_servico, 'YYYY-MM') AS mes_referencia,
 
-        COALESCE(pc.valor_manutencao, 0) AS valor_manutencao,
+        SUM(
+          CASE
+            WHEN estado = 'valorizado'
+            THEN COALESCE(valor_total, 0)
+            ELSE 0
+          END
+        ) AS total_extras
 
-        pc.id AS pagamento_id,
-        pc.mes_referencia,
+      FROM extras_clientes
 
-        COALESCE(extras.total_extras, 0) AS valor_extra,
-        COALESCE(extras.extras_pendentes, 0) AS extras_pendentes,
+      GROUP BY
+        cliente_id,
+        empresaid,
+        TO_CHAR(data_servico, 'YYYY-MM')
+    ) extras_ant
+      ON extras_ant.cliente_id = pc_ant.cliente_id
+      AND extras_ant.empresaid = pc_ant.empresaid
+      AND extras_ant.mes_referencia = pc_ant.mes_referencia
 
-        COALESCE(movimentos.total_pago, 0) AS valor_pago,
+    LEFT JOIN (
+      SELECT
+        cliente_id,
+        empresaid,
+        mes_referencia,
+        SUM(valor) AS total_pago
+      FROM pagamentos_movimentos
+      GROUP BY
+        cliente_id,
+        empresaid,
+        mes_referencia
+    ) mov_ant
+      ON mov_ant.cliente_id = pc_ant.cliente_id
+      AND mov_ant.empresaid = pc_ant.empresaid
+      AND mov_ant.mes_referencia = pc_ant.mes_referencia
 
-        pc.estado,
-        pc.observacoes,
-        pc.data_pagamento,
+    WHERE pc_ant.empresaid = $1
+      AND pc_ant.mes_referencia < $2
 
-        COALESCE(anteriores.saldo_anterior, 0) AS saldo_anterior,
+    GROUP BY
+      pc_ant.cliente_id,
+      pc_ant.empresaid
+  ) anteriores
+    ON anteriores.cliente_id = c.id
+    AND anteriores.empresaid = c.empresaid
 
-        (
-          COALESCE(pc.valor_manutencao, 0)
-          + COALESCE(extras.total_extras, 0)
-          - COALESCE(movimentos.total_pago, 0)
-        ) AS saldo_mes,
+  WHERE c.empresaid = $1
 
-        (
-          COALESCE(anteriores.saldo_anterior, 0)
-          + COALESCE(pc.valor_manutencao, 0)
-          + COALESCE(extras.total_extras, 0)
-          - COALESCE(movimentos.total_pago, 0)
-        ) AS saldo_total
-
-      FROM clientes c
-
-      LEFT JOIN pagamentos_clientes pc
-        ON pc.cliente_id = c.id
-        AND pc.empresaid = c.empresaid
-        AND pc.mes_referencia = $2
-
-      LEFT JOIN (
-        SELECT
-          cliente_id,
-          empresaid,
-
-          SUM(
-            CASE
-              WHEN estado = 'valorizado'
-              THEN COALESCE(valor_total, 0)
-              ELSE 0
-            END
-          ) AS total_extras,
-
-          COUNT(*) FILTER (
-            WHERE estado = 'pendente'
-          ) AS extras_pendentes
-
-        FROM extras_clientes
-
-        WHERE TO_CHAR(data_servico, 'YYYY-MM') = $2
-
-        GROUP BY
-          cliente_id,
-          empresaid
-      ) extras
-        ON extras.cliente_id = c.id
-        AND extras.empresaid = c.empresaid
-
-      LEFT JOIN (
-        SELECT
-          cliente_id,
-          empresaid,
-          mes_referencia,
-          SUM(valor) AS total_pago
-        FROM pagamentos_movimentos
-        GROUP BY
-          cliente_id,
-          empresaid,
-          mes_referencia
-      ) movimentos
-        ON movimentos.cliente_id = c.id
-        AND movimentos.empresaid = c.empresaid
-        AND movimentos.mes_referencia = $2
-
-      LEFT JOIN (
-        SELECT
-          pc_ant.cliente_id,
-          pc_ant.empresaid,
-
-          SUM(
-            COALESCE(pc_ant.valor_manutencao, 0)
-            + COALESCE(extras_ant.total_extras, 0)
-            - COALESCE(mov_ant.total_pago, 0)
-          ) AS saldo_anterior
-
-        FROM pagamentos_clientes pc_ant
-
-        LEFT JOIN (
-          SELECT
-            cliente_id,
-            empresaid,
-            TO_CHAR(data_servico, 'YYYY-MM') AS mes_referencia,
-
-            SUM(
-              CASE
-                WHEN estado = 'valorizado'
-                THEN COALESCE(valor_total, 0)
-                ELSE 0
-              END
-            ) AS total_extras
-
-          FROM extras_clientes
-
-          GROUP BY
-            cliente_id,
-            empresaid,
-            TO_CHAR(data_servico, 'YYYY-MM')
-        ) extras_ant
-          ON extras_ant.cliente_id = pc_ant.cliente_id
-          AND extras_ant.empresaid = pc_ant.empresaid
-          AND extras_ant.mes_referencia = pc_ant.mes_referencia
-
-        LEFT JOIN (
-          SELECT
-            cliente_id,
-            empresaid,
-            mes_referencia,
-            SUM(valor) AS total_pago
-          FROM pagamentos_movimentos
-          GROUP BY
-            cliente_id,
-            empresaid,
-            mes_referencia
-        ) mov_ant
-          ON mov_ant.cliente_id = pc_ant.cliente_id
-          AND mov_ant.empresaid = pc_ant.empresaid
-          AND mov_ant.mes_referencia = pc_ant.mes_referencia
-
-        WHERE pc_ant.empresaid = $1
-          AND pc_ant.mes_referencia < $2
-
-        GROUP BY
-          pc_ant.cliente_id,
-          pc_ant.empresaid
-      ) anteriores
-        ON anteriores.cliente_id = c.id
-        AND anteriores.empresaid = c.empresaid
-
-      WHERE c.empresaid = $1
-
-      ORDER BY c.nome ASC;
-    `;
+  ORDER BY c.nome ASC;
+`;
 
     const result = await pool.query(query, [
       empresaid,
@@ -717,6 +789,562 @@ if (saldoTotalAtual <= 0) {
   } catch (error) {
     console.error('Erro ao registar pagamento:', error);
     return res.status(500).json({ error: 'Erro ao registar pagamento.' });
+  }
+});
+
+app.get('/clientes-preferencias-pagamento', async (req, res) => {
+  const { empresaid, cliente_id } = req.query;
+
+  if (!empresaid || !cliente_id) {
+    return res.status(400).json({
+      error: 'Empresaid e cliente_id são obrigatórios.',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        empresaid,
+        cliente_id,
+        usar_iban1,
+        usar_iban2,
+        usar_mbway,
+        created_at,
+        updated_at
+      FROM clientes_preferencias_pagamento
+      WHERE empresaid = $1
+        AND cliente_id = $2
+      LIMIT 1;
+      `,
+      [Number(empresaid), Number(cliente_id)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(200).json({
+        preferencias: {
+          empresaid: Number(empresaid),
+          cliente_id: Number(cliente_id),
+          usar_iban1: true,
+          usar_iban2: false,
+          usar_mbway: false,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      preferencias: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao buscar preferências de pagamento:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao buscar preferências de pagamento.',
+    });
+  }
+});
+
+app.put('/clientes-preferencias-pagamento', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+    usar_iban1,
+    usar_iban2,
+    usar_mbway,
+  } = req.body;
+
+  if (!empresaid || !cliente_id) {
+    return res.status(400).json({
+      error: 'Empresaid e cliente_id são obrigatórios.',
+    });
+  }
+
+  try {
+    const clienteResult = await pool.query(
+      `
+      SELECT id
+      FROM clientes
+      WHERE id = $1
+        AND empresaid = $2;
+      `,
+      [Number(cliente_id), Number(empresaid)]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado ou não pertence à empresa.',
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO clientes_preferencias_pagamento (
+        empresaid,
+        cliente_id,
+        usar_iban1,
+        usar_iban2,
+        usar_mbway,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+
+      ON CONFLICT (empresaid, cliente_id)
+      DO UPDATE SET
+        usar_iban1 = EXCLUDED.usar_iban1,
+        usar_iban2 = EXCLUDED.usar_iban2,
+        usar_mbway = EXCLUDED.usar_mbway,
+        updated_at = NOW()
+
+      RETURNING *;
+      `,
+      [
+        Number(empresaid),
+        Number(cliente_id),
+        usar_iban1 === true,
+        usar_iban2 === true,
+        usar_mbway === true,
+      ]
+    );
+
+    return res.status(200).json({
+      message: 'Preferências de pagamento guardadas com sucesso.',
+      preferencias: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao guardar preferências de pagamento:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao guardar preferências de pagamento.',
+    });
+  }
+});
+
+app.get('/modelos-comunicacao', async (req, res) => {
+  const { empresaid, tipo } = req.query;
+
+  if (!empresaid) {
+    return res.status(400).json({
+      error: 'Empresaid é obrigatório.',
+    });
+  }
+
+  try {
+    let query = `
+      SELECT
+        id,
+        empresaid,
+        tipo,
+        assunto,
+        corpo,
+        created_at,
+        updated_at
+      FROM modelos_comunicacao
+      WHERE empresaid = $1
+    `;
+
+    const values = [Number(empresaid)];
+
+    if (tipo) {
+      query += ` AND tipo = $2`;
+      values.push(String(tipo));
+    }
+
+    query += ` ORDER BY tipo ASC;`;
+
+    const result = await pool.query(query, values);
+
+    return res.status(200).json({
+      modelos: result.rows,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar modelos de comunicação:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao buscar modelos de comunicação.',
+    });
+  }
+});
+
+app.post('/modelos-comunicacao', async (req, res) => {
+  const {
+    empresaid,
+    tipo,
+    assunto,
+    corpo,
+  } = req.body;
+
+  const limparTextoPostgres = (texto) => {
+  if (texto === null || texto === undefined) {
+    return texto;
+  }
+
+  return String(texto).replace(/\u0000/g, '');
+};
+
+const assuntoLimpo = limparTextoPostgres(assunto);
+const corpoLimpo = limparTextoPostgres(corpo);
+
+  if (!empresaid || !tipo || !corpo) {
+    return res.status(400).json({
+      error: 'Empresaid, tipo e corpo são obrigatórios.',
+    });
+  }
+
+  try {
+    const empresaResult = await pool.query(
+      `
+      SELECT id
+      FROM empresas
+      WHERE id = $1;
+      `,
+      [Number(empresaid)]
+    );
+
+    if (empresaResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Empresa não encontrada.',
+      });
+    }
+
+    const tiposPermitidos = [
+      'mensalidade_email',
+      'mensalidade_whatsapp',
+    ];
+
+    if (!tiposPermitidos.includes(tipo)) {
+      return res.status(400).json({
+        error: 'Tipo de modelo inválido.',
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO modelos_comunicacao (
+        empresaid,
+        tipo,
+        assunto,
+        corpo,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+
+      ON CONFLICT (empresaid, tipo)
+      DO UPDATE SET
+        assunto = EXCLUDED.assunto,
+        corpo = EXCLUDED.corpo,
+        updated_at = NOW()
+
+      RETURNING *;
+      `,
+      [
+        Number(empresaid),
+        tipo,
+        assuntoLimpo || null,
+        corpoLimpo,
+      ]
+    );
+
+    return res.status(200).json({
+      message: 'Modelo de comunicação guardado com sucesso.',
+      modelo: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao guardar modelo de comunicação:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao guardar modelo de comunicação.',
+    });
+  }
+});
+
+app.put('/modelos-comunicacao/:id', async (req, res) => {
+  const { id } = req.params;
+
+  const {
+    empresaid,
+    assunto,
+    corpo,
+  } = req.body;
+
+  const assuntoLimpo =
+  assunto === undefined
+    ? undefined
+    : String(assunto).replace(/\u0000/g, '');
+
+  const corpoLimpo =
+  corpo === undefined
+    ? undefined
+    : String(corpo).replace(/\u0000/g, '');
+
+  if (!empresaid) {
+    return res.status(400).json({
+      error: 'Empresaid é obrigatório.',
+    });
+  }
+
+  if (assunto === undefined && corpo === undefined) {
+    return res.status(400).json({
+      error: 'É necessário enviar assunto ou corpo.',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE modelos_comunicacao
+      SET
+        assunto = COALESCE($1, assunto),
+        corpo = COALESCE($2, corpo),
+        updated_at = NOW()
+      WHERE id = $3
+        AND empresaid = $4
+      RETURNING *;
+      `,
+      [
+        assuntoLimpo ?? null,
+        corpoLimpo ?? null,
+        Number(id),
+        Number(empresaid),
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Modelo não encontrado ou não pertence à empresa.',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Modelo de comunicação atualizado com sucesso.',
+      modelo: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar modelo de comunicação:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao atualizar modelo de comunicação.',
+    });
+  }
+});
+
+app.post('/comunicacoes-clientes', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+    mes_referencia,
+    canal,
+    assunto,
+    mensagem,
+    criado_por,
+  } = req.body;
+
+  if (!empresaid || !cliente_id || !mes_referencia || !canal || !mensagem) {
+    return res.status(400).json({
+      error:
+        'Empresaid, cliente_id, mes_referencia, canal e mensagem são obrigatórios.',
+    });
+  }
+
+  if (!['email', 'whatsapp'].includes(canal)) {
+    return res.status(400).json({
+      error: 'Canal inválido.',
+    });
+  }
+
+  try {
+    const clienteResult = await pool.query(
+      `
+      SELECT id
+      FROM clientes
+      WHERE id = $1
+        AND empresaid = $2;
+      `,
+      [Number(cliente_id), Number(empresaid)]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado ou não pertence à empresa.',
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO comunicacoes_clientes (
+        empresaid,
+        cliente_id,
+        mes_referencia,
+        canal,
+        assunto,
+        mensagem,
+        estado,
+        criado_por,
+        data_preparacao,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        'preparado',
+        $7,
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      RETURNING *;
+      `,
+      [
+        Number(empresaid),
+        Number(cliente_id),
+        String(mes_referencia),
+        canal,
+        assunto || null,
+        mensagem,
+        criado_por ? Number(criado_por) : null,
+      ]
+    );
+
+    return res.status(201).json({
+      message: 'Comunicação preparada com sucesso.',
+      comunicacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao preparar comunicação:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao preparar comunicação.',
+    });
+  }
+});
+
+app.put('/comunicacoes-clientes/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { empresaid, estado } = req.body;
+
+  if (!empresaid || !estado) {
+    return res.status(400).json({
+      error: 'Empresaid e estado são obrigatórios.',
+    });
+  }
+
+  if (!['preparado', 'enviado', 'cancelado'].includes(estado)) {
+    return res.status(400).json({
+      error: 'Estado inválido.',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+  `
+  UPDATE comunicacoes_clientes
+  SET
+    estado = $1::varchar,
+    data_envio = CASE
+      WHEN $1::varchar = 'enviado' THEN NOW()
+      ELSE data_envio
+    END,
+    updated_at = NOW()
+  WHERE id = $2
+    AND empresaid = $3
+  RETURNING *;
+  `,
+  [
+    estado,
+    Number(id),
+    Number(empresaid),
+  ]
+);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Comunicação não encontrada ou não pertence à empresa.',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Estado da comunicação atualizado com sucesso.',
+      comunicacao: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar estado da comunicação:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao atualizar estado da comunicação.',
+    });
+  }
+});
+
+app.get('/comunicacoes-clientes', async (req, res) => {
+  const {
+    empresaid,
+    cliente_id,
+    mes_referencia,
+    canal,
+  } = req.query;
+
+  if (!empresaid) {
+    return res.status(400).json({
+      error: 'Empresaid é obrigatório.',
+    });
+  }
+
+  try {
+    let query = `
+      SELECT
+        id,
+        empresaid,
+        cliente_id,
+        mes_referencia,
+        canal,
+        assunto,
+        mensagem,
+        estado,
+        criado_por,
+        data_preparacao,
+        data_envio,
+        created_at,
+        updated_at
+      FROM comunicacoes_clientes
+      WHERE empresaid = $1
+    `;
+
+    const values = [Number(empresaid)];
+    let index = 2;
+
+    if (cliente_id) {
+      query += ` AND cliente_id = $${index}`;
+      values.push(Number(cliente_id));
+      index++;
+    }
+
+    if (mes_referencia) {
+      query += ` AND mes_referencia = $${index}`;
+      values.push(String(mes_referencia));
+      index++;
+    }
+
+    if (canal) {
+      query += ` AND canal = $${index}`;
+      values.push(String(canal));
+      index++;
+    }
+
+    query += ` ORDER BY data_preparacao DESC;`;
+
+    const result = await pool.query(query, values);
+
+    return res.status(200).json({
+      comunicacoes: result.rows,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar comunicações:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao buscar comunicações.',
+    });
   }
 });
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Appearance, FlatList, Alert, ActivityIndicator, Modal, TextInput, TouchableOpacity, } from 'react-native';
+import { View, Text, StyleSheet, Appearance, FlatList, Alert, ActivityIndicator, Modal, TextInput, TouchableOpacity, Linking, ScrollView, AppState, } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
@@ -10,6 +10,8 @@ type ContaCliente = {
   cliente_id: number;
   nome: string;
   morada: string;
+  email: string | null;
+  telefone: string | null;
   valor_manutencao: string | number | null;
   pagamento_id: number | null;
   mes_referencia: string | null;
@@ -22,6 +24,7 @@ type ContaCliente = {
   saldo_mes: string | number | null;
   saldo_anterior: string | number | null;
   saldo_total: string | number | null;
+  email_enviado: boolean | null;
 };
 
 type MovimentoPagamento = {
@@ -47,6 +50,37 @@ type ExtraCliente = {
   data_servico: string;
 };
 
+type DadosEmpresa = {
+  id: number;
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  endereco: string | null;
+  nif: string | null;
+
+  iban1: string | null;
+  titular_iban1: string | null;
+
+  iban2: string | null;
+  titular_iban2: string | null;
+
+  mbway: string | null;
+};
+
+type PreferenciasPagamento = {
+  usar_iban1: boolean;
+  usar_iban2: boolean;
+  usar_mbway: boolean;
+};
+
+type ModeloComunicacao = {
+  id: number;
+  empresaid: number;
+  tipo: string;
+  assunto: string | null;
+  corpo: string;
+};
+
 const ContaCorrenteClientesScreen = () => {
   const [clientes, setClientes] = useState<ContaCliente[]>([]);
   const getMesAnterior = () => {
@@ -66,6 +100,7 @@ const ContaCorrenteClientesScreen = () => {
   const [valorPagoInput, setValorPagoInput] = useState('');
   const [observacoesInput, setObservacoesInput] = useState('');
   const [pesquisa, setPesquisa] = useState('');
+  const [clientesPagosExpandidos, setClientesPagosExpandidos] = useState<Record<number, boolean>>({});
   const [movimentos, setMovimentos] = useState<MovimentoPagamento[]>([]);
   const [totalRecebidoMes, setTotalRecebidoMes] = useState(0);
   const [extrasCliente, setExtrasCliente] = useState<ExtraCliente[]>([]);
@@ -78,6 +113,17 @@ const ContaCorrenteClientesScreen = () => {
   const [modalMensalidadeVisible, setModalMensalidadeVisible] = useState(false);
   const [valorMensalidadeInput, setValorMensalidadeInput] = useState('');
   const [observacoesMensalidadeInput, setObservacoesMensalidadeInput] = useState('');
+  const [modalEmailVisible, setModalEmailVisible] = useState(false);
+  const [emailAssunto, setEmailAssunto] = useState('');
+  const [emailCorpo, setEmailCorpo] = useState('');
+  const [comunicacaoEmailId, setComunicacaoEmailId] = useState<number | null>(null);
+  const [aguardarConfirmacaoEmail, setAguardarConfirmacaoEmail] = useState(false);
+  const [emailPagamentoAtual, setEmailPagamentoAtual] = useState('');
+  const [dadosEmpresa, setDadosEmpresa] = useState<DadosEmpresa | null>(null);
+  const [modeloEmail, setModeloEmail] = useState<ModeloComunicacao | null>(null);
+  const [usarIban1, setUsarIban1] = useState(true);
+  const [usarIban2, setUsarIban2] = useState(false);
+  const [usarMbway, setUsarMbway] = useState(false);
 
   const carregarContaCorrente = useCallback(async (empresaIdAtual: number) => {
     setLoading(true);
@@ -114,10 +160,62 @@ const ContaCorrenteClientesScreen = () => {
     iniciar();
   }, [carregarContaCorrente]);
 
-  const formatEuro = (valor: string | number | null) => {
+  useEffect(() => {
+  const subscription = AppState.addEventListener(
+    'change',
+    (nextAppState) => {
+      if (
+        nextAppState === 'active' &&
+        aguardarConfirmacaoEmail
+      ) {
+        setAguardarConfirmacaoEmail(false);
+
+        setTimeout(() => {
+          confirmarEmailEnviado();
+        }, 500);
+      }
+    }
+  );
+
+  return () => {
+    subscription.remove();
+  };
+}, [
+  aguardarConfirmacaoEmail,
+  comunicacaoEmailId,
+  empresaid,
+]);
+
+const formatEuro = (valor: string | number | null) => {
     const n = Number(valor || 0);
     return `${n.toFixed(2)} €`;
-  };
+};
+
+const formatarMesExtenso = (mesReferenciaAtual: string) => {
+  const meses = [
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+  ];
+
+  const [ano, mes] = mesReferenciaAtual.split('-');
+  const indice = Number(mes) - 1;
+
+  if (indice < 0 || indice > 11) {
+    return mesReferenciaAtual;
+  }
+
+  return `${meses[indice]} de ${ano}`;
+};
 
 const carregarMovimentosPagamento = async (clienteId: number) => {
   if (!empresaid || !mesReferencia) {
@@ -280,6 +378,458 @@ const guardarValorExtra = async () => {
   }
 };
 
+const construirTextoPagamento = () => {
+  if (!dadosEmpresa) {
+    return '';
+  }
+
+  const blocos: string[] = [];
+
+  if (
+    usarIban1 &&
+    dadosEmpresa.iban1
+  ) {
+    let texto =
+      `Pagamento por transferência bancária:\n` +
+      `IBAN: ${dadosEmpresa.iban1}`;
+
+    if (dadosEmpresa.titular_iban1) {
+      texto += `\nTitular: ${dadosEmpresa.titular_iban1}`;
+    }
+
+    blocos.push(texto);
+  }
+
+  if (
+    usarIban2 &&
+    dadosEmpresa.iban2
+  ) {
+    let texto =
+      `Pagamento por transferência bancária:\n` +
+      `IBAN: ${dadosEmpresa.iban2}`;
+
+    if (dadosEmpresa.titular_iban2) {
+      texto += `\nTitular: ${dadosEmpresa.titular_iban2}`;
+    }
+
+    blocos.push(texto);
+  }
+
+  if (
+    usarMbway &&
+    dadosEmpresa.mbway
+  ) {
+    blocos.push(
+      `Pagamento por MB WAY:\n${dadosEmpresa.mbway}`
+    );
+  }
+
+  return blocos.join('\n\nOu\n\n');
+};
+
+const prepararEmail = async () => {
+  if (!clienteSelecionado) {
+    Alert.alert('Erro', 'Cliente não identificado.');
+    return;
+  }
+
+  if (!clienteSelecionado.email) {
+    Alert.alert(
+      'E-mail em falta',
+      'Este cliente não tem endereço de e-mail registado.'
+    );
+    return;
+  }
+
+  if (totalExtrasPendentes > 0) {
+    Alert.alert(
+      'Extras pendentes',
+      `Existem ${totalExtrasPendentes} extra(s) por valorizar. Valorize todos os extras antes de preparar o e-mail.`
+    );
+    return;
+  }
+
+  const valorMensalidade =
+    Number(valorMensalidadeInput.replace(',', '.')) || 0;
+
+  if (valorMensalidade <= 0) {
+    Alert.alert(
+      'Mensalidade em falta',
+      'Introduza ou confirme o valor da mensalidade antes de preparar o e-mail.'
+    );
+    return;
+  }
+
+  const mensalidadeGuardada =
+    Number(clienteSelecionado.valor_manutencao || 0);
+
+  if (valorMensalidade !== mensalidadeGuardada) {
+    Alert.alert(
+      'Mensalidade alterada',
+      'O valor da mensalidade foi alterado. Guarde primeiro a mensalidade e depois prepare o e-mail.'
+    );
+    return;
+  }
+
+    const mesExtenso = formatarMesExtenso(mesReferencia);
+
+  if (!modeloEmail) {
+    Alert.alert(
+      'Modelo em falta',
+      'Não existe um modelo de e-mail de mensalidade configurado para esta empresa.'
+    );
+    return;
+  }
+
+  if (!dadosEmpresa) {
+    Alert.alert(
+      'Dados da empresa em falta',
+      'Não foi possível carregar os dados da empresa.'
+    );
+    return;
+  }
+
+  const extrasValorizados = extrasCliente.filter(
+    (extra) => extra.estado === 'valorizado'
+  );
+
+  const linhasExtras = extrasValorizados.map((extra) => {
+    const quantidade = Number(extra.quantidade || 1);
+
+    const descricao =
+      quantidade > 1
+        ? `${quantidade} x ${extra.descricao}`
+        : extra.descricao;
+
+    return `- ${descricao}: ${formatEuro(extra.valor_total)}`;
+  });
+
+  const saldoAnterior =
+    Number(clienteSelecionado.saldo_anterior || 0);
+
+  const valorPago =
+    Number(clienteSelecionado.valor_pago || 0);
+
+  const totalAtual =
+    saldoAnterior +
+    valorMensalidade +
+    totalExtrasValorizados -
+    valorPago;
+
+  let textoExtras = '';
+
+  if (extrasValorizados.length > 0) {
+    textoExtras =
+`Serviços / Materiais Extra:
+${linhasExtras.join('\n')}
+
+Total de extras: ${formatEuro(totalExtrasValorizados)}`;
+  }
+
+  let textoPagamento = construirTextoPagamento();
+
+  let assunto = modeloEmail.assunto || '';
+
+  let corpo = modeloEmail.corpo || '';
+
+  assunto = assunto
+    .replaceAll('{MES}', mesExtenso)
+    .replaceAll('{NOME_EMPRESA}', dadosEmpresa.nome || '');
+
+  corpo = corpo
+  .replaceAll('{MES}', mesExtenso)
+  .replaceAll(
+    '{VALOR_MANUTENCAO}',
+    formatEuro(valorMensalidade)
+  )
+  .replaceAll(
+    '{EXTRAS}',
+    textoExtras
+  )
+  .replaceAll(
+    '{SALDO_ANTERIOR}',
+    formatEuro(saldoAnterior)
+  )
+  .replaceAll(
+    '{TOTAL}',
+    formatEuro(totalAtual)
+  )
+  .replaceAll(
+    '{PAGAMENTO}',
+    textoPagamento
+  )
+  .replaceAll(
+    '{NOME_EMPRESA}',
+    dadosEmpresa.nome || ''
+  );
+
+if (valorPago > 0) {
+  corpo += `
+
+Pagamentos já registados: ${formatEuro(valorPago)}`;
+}
+
+await guardarPreferenciasPagamento();
+
+setEmailPagamentoAtual(textoPagamento);
+
+setEmailAssunto(assunto);
+setEmailCorpo(corpo);
+setModalEmailVisible(true);
+};
+
+const registarEmailPreparado = async () => {
+  if (!clienteSelecionado || !empresaid || !mesReferencia) {
+    return null;
+  }
+
+  try {
+    const usuarioIdStorage = await AsyncStorage.getItem('usuarioId');
+
+    const response = await axios.post(
+      `${Config.API_URL}/comunicacoes-clientes`,
+      {
+        empresaid,
+        cliente_id: clienteSelecionado.cliente_id,
+        mes_referencia: mesReferencia,
+        canal: 'email',
+        assunto: emailAssunto,
+        mensagem: emailCorpo,
+        criado_por: usuarioIdStorage
+          ? Number(usuarioIdStorage)
+          : null,
+      }
+    );
+
+    return response.data.comunicacao?.id || null;
+  } catch (error) {
+    console.error(
+      'Erro ao registar comunicação preparada:',
+      error
+    );
+
+    return null;
+  }
+};
+
+const confirmarEmailEnviado = () => {
+  if (!comunicacaoEmailId) {
+    return;
+  }
+
+  Alert.alert(
+    'E-mail enviado?',
+    'Confirme se o e-mail foi efetivamente enviado ao cliente.',
+    [
+      {
+        text: 'Não',
+        style: 'cancel',
+        onPress: async () => {
+          try {
+            await axios.put(
+              `${Config.API_URL}/comunicacoes-clientes/${comunicacaoEmailId}/estado`,
+              {
+                empresaid,
+                estado: 'cancelado',
+              }
+            );
+          } catch (error) {
+            console.error(
+              'Erro ao cancelar comunicação:',
+              error
+            );
+          }
+
+          setComunicacaoEmailId(null);
+        },
+      },
+      {
+        text: 'Sim',
+        onPress: async () => {
+          try {
+            await axios.put(
+              `${Config.API_URL}/comunicacoes-clientes/${comunicacaoEmailId}/estado`,
+              {
+                empresaid,
+                estado: 'enviado',
+              }
+            );
+
+            Alert.alert(
+              'Registado',
+              'O e-mail ficou marcado como enviado.'
+            );
+
+            setModalEmailVisible(false);
+          } catch (error) {
+            console.error(
+              'Erro ao confirmar envio do e-mail:',
+              error
+            );
+
+            Alert.alert(
+              'Erro',
+              'Não foi possível registar o envio do e-mail.'
+            );
+          }
+
+          setComunicacaoEmailId(null);
+        },
+      },
+    ]
+  );
+};
+
+const abrirEmail = () => {
+  if (!clienteSelecionado?.email) {
+    Alert.alert(
+      'Erro',
+      'O cliente não tem endereço de e-mail registado.'
+    );
+    return;
+  }
+
+  Alert.alert(
+    'Abrir aplicação de e-mail',
+    `Abrir o e-mail preparado para ${clienteSelecionado.email}?`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Abrir e-mail',
+        onPress: async () => {
+  try {
+    const comunicacaoId =
+      await registarEmailPreparado();
+
+    if (!comunicacaoId) {
+      Alert.alert(
+        'Erro',
+        'Não foi possível registar a preparação do e-mail.'
+      );
+      return;
+    }
+
+    setComunicacaoEmailId(comunicacaoId);
+    setAguardarConfirmacaoEmail(true);
+
+    const url =
+      `mailto:${clienteSelecionado.email}` +
+      `?subject=${encodeURIComponent(emailAssunto)}` +
+      `&body=${encodeURIComponent(emailCorpo)}`;
+
+    await Linking.openURL(url);
+  } catch (error) {
+    console.error(
+      'Erro ao abrir aplicação de e-mail:',
+      error
+    );
+
+    setAguardarConfirmacaoEmail(false);
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível abrir uma aplicação de e-mail neste dispositivo.'
+    );
+  }
+},
+      },
+    ]
+  );
+};
+
+const carregarDadosEmpresa = async () => {
+  if (!empresaid) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/empresas/${empresaid}`
+    );
+
+    setDadosEmpresa(response.data);
+
+    return response.data as DadosEmpresa;
+  } catch (error) {
+    console.error('Erro ao carregar dados da empresa:', error);
+
+    setDadosEmpresa(null);
+    return null;
+  }
+};
+
+const carregarModeloEmail = async () => {
+  if (!empresaid) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/modelos-comunicacao`,
+      {
+        params: {
+          empresaid,
+          tipo: 'mensalidade_email',
+        },
+      }
+    );
+
+    const modelo =
+      response.data.modelos?.length > 0
+        ? response.data.modelos[0]
+        : null;
+
+    setModeloEmail(modelo);
+
+    return modelo as ModeloComunicacao | null;
+  } catch (error) {
+    console.error('Erro ao carregar modelo de e-mail:', error);
+
+    setModeloEmail(null);
+    return null;
+  }
+};
+
+const carregarPreferenciasPagamento = async (
+  clienteId: number
+) => {
+  if (!empresaid) {
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/clientes-preferencias-pagamento`,
+      {
+        params: {
+          empresaid,
+          cliente_id: clienteId,
+        },
+      }
+    );
+
+    const preferencias =
+      response.data.preferencias as PreferenciasPagamento;
+
+    setUsarIban1(preferencias.usar_iban1);
+    setUsarIban2(preferencias.usar_iban2);
+    setUsarMbway(preferencias.usar_mbway);
+  } catch (error) {
+    console.error(
+      'Erro ao carregar preferências de pagamento:',
+      error
+    );
+
+    // padrão neutro
+    setUsarIban1(true);
+    setUsarIban2(false);
+    setUsarMbway(false);
+  }
+};
+
 const abrirModalMensalidade = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
 
@@ -298,7 +848,12 @@ const abrirModalMensalidade = async (cliente: ContaCliente) => {
 
   setModalMensalidadeVisible(true);
 
-  await carregarExtrasClienteMes(cliente.cliente_id);
+await Promise.all([
+  carregarExtrasClienteMes(cliente.cliente_id),
+  carregarDadosEmpresa(),
+  carregarModeloEmail(),
+  carregarPreferenciasPagamento(cliente.cliente_id),
+]);
 };
 
 const confirmarMensalidade = () => {
@@ -374,6 +929,90 @@ const guardarMensalidadeManual = async () => {
   }
 };
 
+const guardarPreferenciasPagamento = async () => {
+  if (!clienteSelecionado || !empresaid) {
+    return;
+  }
+
+  try {
+    await axios.put(
+      `${Config.API_URL}/clientes-preferencias-pagamento`,
+      {
+        empresaid,
+        cliente_id: clienteSelecionado.cliente_id,
+        usar_iban1: usarIban1,
+        usar_iban2: usarIban2,
+        usar_mbway: usarMbway,
+      }
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao guardar preferências de pagamento:',
+      error
+    );
+  }
+};
+
+const atualizarMetodosPagamentoEmail = async () => {
+  if (!clienteSelecionado) {
+    Alert.alert(
+      'Erro',
+      'Cliente não identificado.'
+    );
+    return;
+  }
+
+  const novoTextoPagamento = construirTextoPagamento();
+
+  try {
+    await guardarPreferenciasPagamento();
+
+    setEmailCorpo((corpoAtual) => {
+      // Se já existia um bloco de pagamento,
+      // substitui apenas esse bloco.
+      if (
+        emailPagamentoAtual &&
+        corpoAtual.includes(emailPagamentoAtual)
+      ) {
+        return corpoAtual.replace(
+          emailPagamentoAtual,
+          novoTextoPagamento
+        );
+      }
+
+      // Se não existia anteriormente e agora existe,
+      // acrescenta-o no final.
+      if (
+        !emailPagamentoAtual &&
+        novoTextoPagamento
+      ) {
+        return `${corpoAtual.trim()}
+
+${novoTextoPagamento}`;
+      }
+
+      return corpoAtual;
+    });
+
+    setEmailPagamentoAtual(novoTextoPagamento);
+
+    Alert.alert(
+      'Atualizado',
+      'Os métodos de pagamento foram atualizados para este cliente.'
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao atualizar métodos de pagamento:',
+      error
+    );
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível atualizar os métodos de pagamento.'
+    );
+  }
+};
+
 const abrirModalPagamento = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
 
@@ -416,7 +1055,7 @@ const confirmarPagamento = () => {
   );
 };
 
-  const guardarPagamento = async () => {
+const guardarPagamento = async () => {
   if (!clienteSelecionado || !empresaid || !mesReferencia) {
     Alert.alert('Erro', 'Dados incompletos para registar pagamento.');
     return;
@@ -447,7 +1086,7 @@ const confirmarPagamento = () => {
   }
 };
 
-  const clientesFiltrados = clientes.filter((cliente) => {
+const clientesFiltrados = clientes.filter((cliente) => {
   const termo = pesquisa.toLowerCase().trim();
 
   if (!termo) {
@@ -468,7 +1107,7 @@ const confirmarPagamento = () => {
   );
 });
 
-  const formatSaldoTotal = (valor: string | number | null) => {
+const formatSaldoTotal = (valor: string | number | null) => {
   const n = Number(valor || 0);
 
   if (n < 0) {
@@ -478,13 +1117,65 @@ const confirmarPagamento = () => {
   return `Saldo total: ${n.toFixed(2)} €`;
 };
 
+const toggleClientePagoExpandido = (clienteId: number) => {
+  setClientesPagosExpandidos((prev) => ({
+    ...prev,
+    [clienteId]: !prev[clienteId],
+  }));
+};
 
-  const renderItem = ({ item }: { item: ContaCliente }) => {
-    const estado = item.estado || 'pendente';
+const renderItem = ({ item }: { item: ContaCliente }) => {
+  const estado = item.estado || 'pendente';
 
+  const saldoTotal = Number(item.saldo_total || 0);
+
+  const clientePago = saldoTotal <= 0;
+
+  const pagoExpandido =
+    clientesPagosExpandidos[item.cliente_id] === true;
+
+  const mostrarCartaoCompleto =
+    !clientePago || pagoExpandido;
+
+  if (!mostrarCartaoCompleto) {
     return (
+      <TouchableOpacity
+        style={styles.cardPagoFechado}
+        onPress={() =>
+          toggleClientePagoExpandido(item.cliente_id)
+        }
+      >
+        <View style={styles.cardPagoCabecalho}>
+          <Text style={styles.cardPagoNome}>
+            {item.nome}
+          </Text>
+
+          <Text style={styles.cardPagoEstado}>
+            ✓ Pago
+          </Text>
+        </View>
+
+        {item.email_enviado && (
+          <Text style={styles.cardPagoEmail}>
+            ✓ E-mail enviado
+          </Text>
+        )}
+
+        <Text style={styles.cardPagoAbrir}>
+          Tocar para ver detalhes
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
       <View style={styles.card}>
         <Text style={styles.nome}>{item.nome}</Text>
+        {item.email_enviado && (
+  <Text style={styles.emailEnviado}>
+    ✓ E-mail enviado
+  </Text>
+)}
         <Text style={styles.morada}>{item.morada}</Text>
 
         <Text style={styles.mesReferencia}>
@@ -553,9 +1244,21 @@ const confirmarPagamento = () => {
     Registar novo pagamento
   </Text>
 </TouchableOpacity>
+{clientePago && (
+  <TouchableOpacity
+    style={styles.fecharCartaoPagoButton}
+    onPress={() =>
+      toggleClientePagoExpandido(item.cliente_id)
+    }
+  >
+    <Text style={styles.fecharCartaoPagoText}>
+      Fechar detalhes
+    </Text>
+  </TouchableOpacity>
+)}
       </View>
     );
-  };
+};
 
   const totalClientesPagos = clientes.filter(
   (c) => Number(c.saldo_total || 0) <= 0
@@ -639,7 +1342,7 @@ const totalClientesPorPagar = clientes.filter(
       )}
 
 
-     <Modal
+<Modal
   visible={modalVisible}
   transparent
   animationType="slide"
@@ -860,6 +1563,15 @@ const totalClientesPorPagar = clientes.filter(
       </TouchableOpacity>
 
       <TouchableOpacity
+         style={styles.emailButton}
+         onPress={prepararEmail}
+      >
+        <Text style={styles.modalButtonText}>
+          Preparar E-mail
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={styles.modalCancelButton}
         onPress={() => setModalMensalidadeVisible(false)}
       >
@@ -867,6 +1579,130 @@ const totalClientesPorPagar = clientes.filter(
           Cancelar
         </Text>
       </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+<Modal
+  visible={modalEmailVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setModalEmailVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={[styles.modalContent, styles.modalEmailContent]}>
+      <ScrollView
+        style={styles.modalEmailScroll}
+        contentContainerStyle={styles.modalEmailScrollContent}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.modalTitle}>
+          Preparar E-mail
+        </Text>
+
+        <Text style={styles.modalCliente}>
+          {clienteSelecionado?.nome}
+        </Text>
+
+        <Text style={styles.emailDestinatario}>
+          Para: {clienteSelecionado?.email || '-'}
+        </Text>
+
+        <View style={styles.metodosPagamentoContainer}>
+          <Text style={styles.metodosPagamentoTitulo}>
+            Métodos de pagamento
+          </Text>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarIban1(!usarIban1)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarIban1 ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              IBAN Principal
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarIban2(!usarIban2)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarIban2 ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              IBAN Secundário
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarMbway(!usarMbway)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarMbway ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              MB WAY
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={styles.atualizarPagamentoButton}
+          onPress={atualizarMetodosPagamentoEmail}
+        >
+          <Text style={styles.modalButtonText}>
+            Atualizar métodos de pagamento
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.emailLabel}>
+          Assunto
+        </Text>
+
+        <TextInput
+          style={styles.input}
+          value={emailAssunto}
+          onChangeText={setEmailAssunto}
+        />
+
+        <Text style={styles.emailLabel}>
+          Mensagem
+        </Text>
+
+        <TextInput
+          style={[styles.input, styles.emailCorpoInput]}
+          value={emailCorpo}
+          onChangeText={setEmailCorpo}
+          multiline
+          textAlignVertical="top"
+        />
+
+        <TouchableOpacity
+          style={styles.emailButton}
+          onPress={abrirEmail}
+        >
+          <Text style={styles.modalButtonText}>
+            Abrir E-mail
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.modalCancelButton}
+          onPress={() => setModalEmailVisible(false)}
+        >
+          <Text style={styles.modalButtonText}>
+            Voltar
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   </View>
 </Modal>
@@ -1033,6 +1869,68 @@ const styles = StyleSheet.create({
   justifyContent: 'center',
   alignItems: 'center',
   padding: 20,
+},
+
+cardPagoFechado: {
+  backgroundColor: '#CCFFCC',
+  borderRadius: 18,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  marginBottom: 10,
+  width: '92%',
+  alignSelf: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.18,
+  shadowRadius: 3,
+  elevation: 4,
+},
+
+cardPagoCabecalho: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+
+cardPagoNome: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#000',
+  flex: 1,
+  marginRight: 10,
+},
+
+cardPagoEstado: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#000',
+},
+
+cardPagoEmail: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#000',
+  marginTop: 4,
+},
+
+cardPagoAbrir: {
+  fontSize: 11,
+  color: '#555',
+  marginTop: 5,
+},
+
+fecharCartaoPagoButton: {
+  backgroundColor: '#D3D3D3',
+  marginTop: 10,
+  paddingVertical: 8,
+  borderRadius: 20,
+  alignItems: 'center',
+},
+
+fecharCartaoPagoText: {
+  color: '#000',
+  fontSize: 13,
+  fontWeight: '600',
 },
 
 modalContent: {
@@ -1373,6 +2271,102 @@ extrasMensalidadeSeta: {
 
 extrasMensalidadeDetalhes: {
   marginTop: 10,
+},
+
+emailButton: {
+  backgroundColor: '#ADD8E6',
+  width: '100%',
+  paddingVertical: 12,
+  borderRadius: 20,
+  alignItems: 'center',
+  marginTop: 10,
+},
+
+emailDestinatario: {
+  width: '100%',
+  fontSize: 13,
+  color: '#000',
+  marginBottom: 12,
+},
+
+emailLabel: {
+  width: '100%',
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+  marginBottom: 5,
+},
+
+emailCorpoInput: {
+  minHeight: 280,
+  maxHeight: 400,
+},
+
+atualizarPagamentoButton: {
+  backgroundColor: '#FFF5CC',
+  width: '100%',
+  paddingVertical: 10,
+  borderRadius: 20,
+  alignItems: 'center',
+  marginBottom: 15,
+},
+
+metodosPagamentoContainer: {
+  width: '100%',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 15,
+  padding: 12,
+  marginBottom: 15,
+},
+
+metodosPagamentoTitulo: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#000',
+  marginBottom: 8,
+},
+
+metodoPagamentoLinha: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 6,
+},
+
+checkboxPagamento: {
+  fontSize: 22,
+  marginRight: 10,
+  color: '#000',
+},
+
+metodoPagamentoTexto: {
+  fontSize: 14,
+  color: '#000',
+},
+
+modalEmailContent: {
+  maxHeight: '92%',
+},
+
+modalEmailScroll: {
+  width: '100%',
+},
+
+modalEmailScrollContent: {
+  width: '100%',
+  alignItems: 'center',
+  paddingBottom: 10,
+},
+
+emailEnviado: {
+  alignSelf: 'flex-start',
+  backgroundColor: '#CCFFCC',
+  color: '#000',
+  fontSize: 12,
+  fontWeight: 'bold',
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+  borderRadius: 12,
+  marginBottom: 6,
 },
 });
 
