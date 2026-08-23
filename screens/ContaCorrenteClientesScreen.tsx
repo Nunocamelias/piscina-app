@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Appearance, FlatList, Alert, ActivityIndicator, Modal, TextInput, TouchableOpacity, Linking, ScrollView, AppState, } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
@@ -25,6 +26,7 @@ type ContaCliente = {
   saldo_anterior: string | number | null;
   saldo_total: string | number | null;
   email_enviado: boolean | null;
+  whatsapp_enviado: boolean | null;
 };
 
 type MovimentoPagamento = {
@@ -116,6 +118,12 @@ const ContaCorrenteClientesScreen = () => {
   const [modalEmailVisible, setModalEmailVisible] = useState(false);
   const [emailAssunto, setEmailAssunto] = useState('');
   const [emailCorpo, setEmailCorpo] = useState('');
+  const [modalWhatsappVisible, setModalWhatsappVisible] = useState(false);
+  const [whatsappCorpo, setWhatsappCorpo] = useState('');
+  const [whatsappPagamentoAtual, setWhatsappPagamentoAtual] = useState('');
+  const [modeloWhatsapp, setModeloWhatsapp] = useState<ModeloComunicacao | null>(null);
+  const [comunicacaoWhatsappId, setComunicacaoWhatsappId] = useState<number | null>(null);
+  const [aguardarConfirmacaoWhatsapp, setAguardarConfirmacaoWhatsapp] = useState(false);
   const [comunicacaoEmailId, setComunicacaoEmailId] = useState<number | null>(null);
   const [aguardarConfirmacaoEmail, setAguardarConfirmacaoEmail] = useState(false);
   const [emailPagamentoAtual, setEmailPagamentoAtual] = useState('');
@@ -124,6 +132,8 @@ const ContaCorrenteClientesScreen = () => {
   const [usarIban1, setUsarIban1] = useState(true);
   const [usarIban2, setUsarIban2] = useState(false);
   const [usarMbway, setUsarMbway] = useState(false);
+  const listaRef = useRef<FlatList<ContaCliente>>(null);
+  const scrollOffsetRef = useRef(0);
 
   const carregarContaCorrente = useCallback(async (empresaIdAtual: number) => {
     setLoading(true);
@@ -164,14 +174,25 @@ const ContaCorrenteClientesScreen = () => {
   const subscription = AppState.addEventListener(
     'change',
     (nextAppState) => {
-      if (
-        nextAppState === 'active' &&
-        aguardarConfirmacaoEmail
-      ) {
+      if (nextAppState !== 'active') {
+        return;
+      }
+
+      if (aguardarConfirmacaoEmail) {
         setAguardarConfirmacaoEmail(false);
 
         setTimeout(() => {
           confirmarEmailEnviado();
+        }, 500);
+
+        return;
+      }
+
+      if (aguardarConfirmacaoWhatsapp) {
+        setAguardarConfirmacaoWhatsapp(false);
+
+        setTimeout(() => {
+          confirmarWhatsappEnviado();
         }, 500);
       }
     }
@@ -183,6 +204,10 @@ const ContaCorrenteClientesScreen = () => {
 }, [
   aguardarConfirmacaoEmail,
   comunicacaoEmailId,
+
+  aguardarConfirmacaoWhatsapp,
+  comunicacaoWhatsappId,
+
   empresaid,
 ]);
 
@@ -578,6 +603,178 @@ setEmailCorpo(corpo);
 setModalEmailVisible(true);
 };
 
+const normalizarTelefoneWhatsapp = (
+  telefone: string
+) => {
+  const original = telefone.trim();
+
+  let numero = original.replace(/\D/g, '');
+
+  // Formato internacional 00...
+  if (original.startsWith('00')) {
+    numero = numero.substring(2);
+  }
+
+  // Número português sem indicativo
+  if (numero.length === 9) {
+    numero = `351${numero}`;
+  }
+
+  return numero;
+};
+
+const prepararWhatsapp = async () => {
+  if (!clienteSelecionado) {
+    Alert.alert('Erro', 'Cliente não identificado.');
+    return;
+  }
+
+  if (!clienteSelecionado.telefone) {
+    Alert.alert(
+      'Telefone em falta',
+      'Este cliente não tem número de telefone registado.'
+    );
+    return;
+  }
+
+  if (totalExtrasPendentes > 0) {
+    Alert.alert(
+      'Extras pendentes',
+      `Existem ${totalExtrasPendentes} extra(s) por valorizar. Valorize todos os extras antes de preparar a mensagem.`
+    );
+    return;
+  }
+
+  const valorMensalidade =
+    Number(valorMensalidadeInput.replace(',', '.')) || 0;
+
+  if (valorMensalidade <= 0) {
+    Alert.alert(
+      'Mensalidade em falta',
+      'Introduza ou confirme o valor da mensalidade antes de preparar a mensagem.'
+    );
+    return;
+  }
+
+  const mensalidadeGuardada =
+    Number(clienteSelecionado.valor_manutencao || 0);
+
+  if (valorMensalidade !== mensalidadeGuardada) {
+    Alert.alert(
+      'Mensalidade alterada',
+      'O valor da mensalidade foi alterado. Guarde primeiro a mensalidade e depois prepare a mensagem.'
+    );
+    return;
+  }
+
+  if (!dadosEmpresa) {
+    Alert.alert(
+      'Dados da empresa em falta',
+      'Não foi possível carregar os dados da empresa.'
+    );
+    return;
+  }
+
+  /*
+    Se ainda não existir modelo próprio de WhatsApp,
+    utilizamos o corpo do modelo de e-mail.
+  */
+  const corpoModelo =
+    modeloWhatsapp?.corpo ||
+    modeloEmail?.corpo ||
+    '';
+
+  if (!corpoModelo) {
+    Alert.alert(
+      'Modelo em falta',
+      'Não existe um modelo de comunicação configurado para esta empresa.'
+    );
+    return;
+  }
+
+  const mesExtenso = formatarMesExtenso(mesReferencia);
+
+  const extrasValorizados = extrasCliente.filter(
+    (extra) => extra.estado === 'valorizado'
+  );
+
+  const linhasExtras = extrasValorizados.map((extra) => {
+    const quantidade = Number(extra.quantidade || 1);
+
+    const descricao =
+      quantidade > 1
+        ? `${quantidade} x ${extra.descricao}`
+        : extra.descricao;
+
+    return `- ${descricao}: ${formatEuro(extra.valor_total)}`;
+  });
+
+  const saldoAnterior =
+    Number(clienteSelecionado.saldo_anterior || 0);
+
+  const valorPago =
+    Number(clienteSelecionado.valor_pago || 0);
+
+  const totalAtual =
+    saldoAnterior +
+    valorMensalidade +
+    totalExtrasValorizados -
+    valorPago;
+
+  let textoExtras = '';
+
+  if (extrasValorizados.length > 0) {
+    textoExtras =
+`Serviços / Materiais Extra:
+${linhasExtras.join('\n')}
+
+Total de extras: ${formatEuro(totalExtrasValorizados)}`;
+  }
+
+  const textoPagamento = construirTextoPagamento();
+
+  let corpo = corpoModelo;
+
+  corpo = corpo
+    .replaceAll('{MES}', mesExtenso)
+    .replaceAll(
+      '{VALOR_MANUTENCAO}',
+      formatEuro(valorMensalidade)
+    )
+    .replaceAll(
+      '{EXTRAS}',
+      textoExtras
+    )
+    .replaceAll(
+      '{SALDO_ANTERIOR}',
+      formatEuro(saldoAnterior)
+    )
+    .replaceAll(
+      '{TOTAL}',
+      formatEuro(totalAtual)
+    )
+    .replaceAll(
+      '{PAGAMENTO}',
+      textoPagamento
+    )
+    .replaceAll(
+      '{NOME_EMPRESA}',
+      dadosEmpresa.nome || ''
+    );
+
+  if (valorPago > 0) {
+    corpo += `
+
+Pagamentos já registados: ${formatEuro(valorPago)}`;
+  }
+
+  await guardarPreferenciasPagamento();
+
+  setWhatsappPagamentoAtual(textoPagamento);
+  setWhatsappCorpo(corpo);
+  setModalWhatsappVisible(true);
+};
+
 const registarEmailPreparado = async () => {
   if (!clienteSelecionado || !empresaid || !mesReferencia) {
     return null;
@@ -646,19 +843,32 @@ const confirmarEmailEnviado = () => {
       {
         text: 'Sim',
         onPress: async () => {
-          try {
-            await axios.put(
-              `${Config.API_URL}/comunicacoes-clientes/${comunicacaoEmailId}/estado`,
-              {
-                empresaid,
-                estado: 'enviado',
-              }
-            );
+  try {
+    await axios.put(
+      `${Config.API_URL}/comunicacoes-clientes/${comunicacaoEmailId}/estado`,
+      {
+        empresaid,
+        estado: 'enviado',
+      }
+    );
 
-            Alert.alert(
-              'Registado',
-              'O e-mail ficou marcado como enviado.'
-            );
+    if (empresaid) {
+      const posicaoAnterior = scrollOffsetRef.current;
+
+      await carregarContaCorrente(empresaid);
+
+      setTimeout(() => {
+        listaRef.current?.scrollToOffset({
+          offset: posicaoAnterior,
+          animated: false,
+        });
+      }, 150);
+    }
+
+    Alert.alert(
+      'Registado',
+      'O e-mail ficou marcado como enviado.'
+    );
 
             setModalEmailVisible(false);
           } catch (error) {
@@ -674,6 +884,126 @@ const confirmarEmailEnviado = () => {
           }
 
           setComunicacaoEmailId(null);
+        },
+      },
+    ]
+  );
+};
+
+const registarWhatsappPreparado = async () => {
+  if (
+    !clienteSelecionado ||
+    !empresaid ||
+    !mesReferencia
+  ) {
+    return null;
+  }
+
+  try {
+    const usuarioIdStorage =
+      await AsyncStorage.getItem('usuarioId');
+
+    const response = await axios.post(
+      `${Config.API_URL}/comunicacoes-clientes`,
+      {
+        empresaid,
+        cliente_id: clienteSelecionado.cliente_id,
+        mes_referencia: mesReferencia,
+        canal: 'whatsapp',
+        assunto: null,
+        mensagem: whatsappCorpo,
+        criado_por: usuarioIdStorage
+          ? Number(usuarioIdStorage)
+          : null,
+      }
+    );
+
+    return response.data.comunicacao?.id || null;
+  } catch (error) {
+    console.error(
+      'Erro ao registar WhatsApp preparado:',
+      error
+    );
+
+    return null;
+  }
+};
+
+const confirmarWhatsappEnviado = () => {
+  if (!comunicacaoWhatsappId) {
+    return;
+  }
+
+  Alert.alert(
+    'Mensagem enviada?',
+    'Confirme se a mensagem foi efetivamente enviada pelo WhatsApp.',
+    [
+      {
+        text: 'Não',
+        style: 'cancel',
+        onPress: async () => {
+          try {
+            await axios.put(
+              `${Config.API_URL}/comunicacoes-clientes/${comunicacaoWhatsappId}/estado`,
+              {
+                empresaid,
+                estado: 'cancelado',
+              }
+            );
+          } catch (error) {
+            console.error(
+              'Erro ao cancelar comunicação WhatsApp:',
+              error
+            );
+          }
+
+          setComunicacaoWhatsappId(null);
+        },
+      },
+      {
+        text: 'Sim',
+        onPress: async () => {
+  try {
+    await axios.put(
+      `${Config.API_URL}/comunicacoes-clientes/${comunicacaoWhatsappId}/estado`,
+      {
+        empresaid,
+        estado: 'enviado',
+      }
+    );
+
+    if (empresaid) {
+      const posicaoAnterior = scrollOffsetRef.current;
+
+      await carregarContaCorrente(empresaid);
+
+      setTimeout(() => {
+        listaRef.current?.scrollToOffset({
+          offset: posicaoAnterior,
+          animated: false,
+        });
+      }, 150);
+    }
+
+    Alert.alert(
+      'Registado',
+      'A mensagem ficou marcada como enviada.'
+    );
+
+            setModalWhatsappVisible(false);
+          } catch (error) {
+            console.error(
+              'Erro ao confirmar envio do WhatsApp:',
+              error
+            );
+
+            Alert.alert(
+              'Erro',
+              'Não foi possível registar o envio da mensagem.'
+            );
+          }
+
+          setComunicacaoWhatsappId(null);
         },
       },
     ]
@@ -740,6 +1070,95 @@ const abrirEmail = () => {
   );
 };
 
+const copiarMensagemWhatsapp = () => {
+  if (!whatsappCorpo.trim()) {
+    Alert.alert(
+      'Mensagem em falta',
+      'Não existe nenhuma mensagem preparada para copiar.'
+    );
+    return;
+  }
+
+  Clipboard.setString(whatsappCorpo);
+
+  Alert.alert(
+    'Mensagem copiada',
+    'A mensagem foi copiada. Pode agora colá-la em qualquer conversa do WhatsApp.'
+  );
+};
+
+const abrirWhatsapp = () => {
+  if (!clienteSelecionado?.telefone) {
+    Alert.alert(
+      'Erro',
+      'O cliente não tem número de telefone registado.'
+    );
+    return;
+  }
+
+  const telefoneWhatsapp =
+    normalizarTelefoneWhatsapp(
+      clienteSelecionado.telefone
+    );
+
+  if (telefoneWhatsapp.length < 9) {
+    Alert.alert(
+      'Telefone inválido',
+      'Verifique o número de telefone do cliente.'
+    );
+    return;
+  }
+
+  Alert.alert(
+    'Abrir WhatsApp',
+    `Abrir a conversa de WhatsApp com ${clienteSelecionado.nome}?`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Abrir WhatsApp',
+        onPress: async () => {
+          try {
+            const comunicacaoId =
+              await registarWhatsappPreparado();
+
+            if (!comunicacaoId) {
+              Alert.alert(
+                'Erro',
+                'Não foi possível registar a preparação da mensagem.'
+              );
+              return;
+            }
+
+            setComunicacaoWhatsappId(comunicacaoId);
+            setAguardarConfirmacaoWhatsapp(true);
+
+            const url =
+              `https://wa.me/${telefoneWhatsapp}` +
+              `?text=${encodeURIComponent(whatsappCorpo)}`;
+
+            await Linking.openURL(url);
+          } catch (error) {
+            console.error(
+              'Erro ao abrir WhatsApp:',
+              error
+            );
+
+            setAguardarConfirmacaoWhatsapp(false);
+
+            Alert.alert(
+              'Erro',
+              'Não foi possível abrir o WhatsApp.'
+            );
+          }
+        },
+      },
+    ]
+  );
+};
+
 const carregarDadosEmpresa = async () => {
   if (!empresaid) {
     return null;
@@ -789,6 +1208,41 @@ const carregarModeloEmail = async () => {
     console.error('Erro ao carregar modelo de e-mail:', error);
 
     setModeloEmail(null);
+    return null;
+  }
+};
+
+const carregarModeloWhatsapp = async () => {
+  if (!empresaid) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get(
+      `${Config.API_URL}/modelos-comunicacao`,
+      {
+        params: {
+          empresaid,
+          tipo: 'mensalidade_whatsapp',
+        },
+      }
+    );
+
+    const modelo =
+      response.data.modelos?.length > 0
+        ? response.data.modelos[0]
+        : null;
+
+    setModeloWhatsapp(modelo);
+
+    return modelo as ModeloComunicacao | null;
+  } catch (error) {
+    console.error(
+      'Erro ao carregar modelo de WhatsApp:',
+      error
+    );
+
+    setModeloWhatsapp(null);
     return null;
   }
 };
@@ -852,6 +1306,7 @@ await Promise.all([
   carregarExtrasClienteMes(cliente.cliente_id),
   carregarDadosEmpresa(),
   carregarModeloEmail(),
+  carregarModeloWhatsapp(),
   carregarPreferenciasPagamento(cliente.cliente_id),
 ]);
 };
@@ -1013,6 +1468,59 @@ ${novoTextoPagamento}`;
   }
 };
 
+const atualizarMetodosPagamentoWhatsapp = async () => {
+  if (!clienteSelecionado) {
+    Alert.alert('Erro', 'Cliente não identificado.');
+    return;
+  }
+
+  const novoTextoPagamento = construirTextoPagamento();
+
+  try {
+    await guardarPreferenciasPagamento();
+
+    setWhatsappCorpo((corpoAtual) => {
+      if (
+        whatsappPagamentoAtual &&
+        corpoAtual.includes(whatsappPagamentoAtual)
+      ) {
+        return corpoAtual.replace(
+          whatsappPagamentoAtual,
+          novoTextoPagamento
+        );
+      }
+
+      if (
+        !whatsappPagamentoAtual &&
+        novoTextoPagamento
+      ) {
+        return `${corpoAtual.trim()}
+
+${novoTextoPagamento}`;
+      }
+
+      return corpoAtual;
+    });
+
+    setWhatsappPagamentoAtual(novoTextoPagamento);
+
+    Alert.alert(
+      'Atualizado',
+      'Os métodos de pagamento foram atualizados.'
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao atualizar métodos de pagamento do WhatsApp:',
+      error
+    );
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível atualizar os métodos de pagamento.'
+    );
+  }
+};
+
 const abrirModalPagamento = async (cliente: ContaCliente) => {
   setClienteSelecionado(cliente);
 
@@ -1075,11 +1583,25 @@ const guardarPagamento = async () => {
     });
 
     if (response.status === 200) {
-      Alert.alert('Sucesso', response.data.message || 'Pagamento registado.');
-      setModalVisible(false);
-      setClienteSelecionado(null);
-      carregarContaCorrente(empresaid);
-    }
+  const posicaoAnterior = scrollOffsetRef.current;
+
+  setModalVisible(false);
+  setClienteSelecionado(null);
+
+  await carregarContaCorrente(empresaid);
+
+  setTimeout(() => {
+    listaRef.current?.scrollToOffset({
+      offset: posicaoAnterior,
+      animated: false,
+    });
+  }, 150);
+
+  Alert.alert(
+    'Sucesso',
+    response.data.message || 'Pagamento registado.'
+  );
+}
   } catch (error) {
     console.error('Erro ao guardar pagamento:', error);
     Alert.alert('Erro', 'Não foi possível registar o pagamento.');
@@ -1174,6 +1696,12 @@ const renderItem = ({ item }: { item: ContaCliente }) => {
         {item.email_enviado && (
   <Text style={styles.emailEnviado}>
     ✓ E-mail enviado
+  </Text>
+)}
+
+{item.whatsapp_enviado && (
+  <Text style={styles.whatsappEnviado}>
+    ✓ WhatsApp enviado
   </Text>
 )}
         <Text style={styles.morada}>{item.morada}</Text>
@@ -1301,11 +1829,24 @@ const totalClientesPorPagar = clientes.filter(
         <ActivityIndicator size="large" />
       ) : (
         <FlatList
-  data={clientesFiltrados}
-  keyExtractor={(item) => item.cliente_id.toString()}
-  renderItem={renderItem}
-  contentContainerStyle={styles.listContent}
-  ListHeaderComponent={
+          ref={listaRef}
+          data={clientesFiltrados}
+          keyExtractor={(item) => item.cliente_id.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+
+          onScroll={(event) => {
+        scrollOffsetRef.current =
+      event.nativeEvent.contentOffset.y;
+  }}
+  scrollEventThrottle={16}
+
+  maintainVisibleContentPosition={{
+    minIndexForVisible: 0,
+  }}
+
+
+        ListHeaderComponent={
     <View style={styles.resumoCard}>
       <Text style={styles.resumoTitle}>Resumo do mês</Text>
 
@@ -1435,13 +1976,12 @@ const totalClientesPorPagar = clientes.filter(
         onPress={() => setModalVisible(false)}
       >
         <Text style={styles.modalButtonText}>
-          Cancelar
+          Voltar
         </Text>
       </TouchableOpacity>
     </View>
   </View>
 </Modal>
-
 
 <Modal
   visible={modalMensalidadeVisible}
@@ -1572,11 +2112,20 @@ const totalClientesPorPagar = clientes.filter(
       </TouchableOpacity>
 
       <TouchableOpacity
+         style={styles.whatsappButton}
+         onPress={prepararWhatsapp}
+      >
+        <Text style={styles.modalButtonText}>
+          Preparar WhatsApp
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={styles.modalCancelButton}
         onPress={() => setModalMensalidadeVisible(false)}
       >
         <Text style={styles.modalButtonText}>
-          Cancelar
+          Voltar
         </Text>
       </TouchableOpacity>
     </View>
@@ -1697,6 +2246,129 @@ const totalClientesPorPagar = clientes.filter(
         <TouchableOpacity
           style={styles.modalCancelButton}
           onPress={() => setModalEmailVisible(false)}
+        >
+          <Text style={styles.modalButtonText}>
+            Voltar
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+<Modal
+  visible={modalWhatsappVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setModalWhatsappVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={[styles.modalContent, styles.modalEmailContent]}>
+      <ScrollView
+        style={styles.modalEmailScroll}
+        contentContainerStyle={styles.modalEmailScrollContent}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.modalTitle}>
+          Preparar WhatsApp
+        </Text>
+
+        <Text style={styles.modalCliente}>
+          {clienteSelecionado?.nome}
+        </Text>
+
+        <Text style={styles.emailDestinatario}>
+          Telefone: {clienteSelecionado?.telefone || '-'}
+        </Text>
+
+        <View style={styles.metodosPagamentoContainer}>
+          <Text style={styles.metodosPagamentoTitulo}>
+            Métodos de pagamento
+          </Text>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarIban1(!usarIban1)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarIban1 ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              IBAN Principal
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarIban2(!usarIban2)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarIban2 ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              IBAN Secundário
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.metodoPagamentoLinha}
+            onPress={() => setUsarMbway(!usarMbway)}
+          >
+            <Text style={styles.checkboxPagamento}>
+              {usarMbway ? '☑' : '☐'}
+            </Text>
+
+            <Text style={styles.metodoPagamentoTexto}>
+              MB WAY
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={styles.atualizarPagamentoButton}
+          onPress={atualizarMetodosPagamentoWhatsapp}
+        >
+          <Text style={styles.modalButtonText}>
+            Atualizar métodos de pagamento
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.emailLabel}>
+          Mensagem
+        </Text>
+
+        <TextInput
+          style={[styles.input, styles.emailCorpoInput]}
+          value={whatsappCorpo}
+          onChangeText={setWhatsappCorpo}
+          multiline
+          textAlignVertical="top"
+        />
+
+        <TouchableOpacity
+          style={styles.copiarWhatsappButton}
+          onPress={copiarMensagemWhatsapp}
+        >
+          <Text style={styles.modalButtonText}>
+             Copiar mensagem
+          </Text>
+      </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.whatsappButton}
+          onPress={abrirWhatsapp}
+        >
+          <Text style={styles.modalButtonText}>
+            Abrir WhatsApp
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.modalCancelButton}
+          onPress={() => setModalWhatsappVisible(false)}
         >
           <Text style={styles.modalButtonText}>
             Voltar
@@ -2358,6 +3030,36 @@ modalEmailScrollContent: {
 },
 
 emailEnviado: {
+  alignSelf: 'flex-start',
+  backgroundColor: '#CCFFCC',
+  color: '#000',
+  fontSize: 12,
+  fontWeight: 'bold',
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+  borderRadius: 12,
+  marginBottom: 6,
+},
+
+whatsappButton: {
+  backgroundColor: '#FFF5CC',
+  width: '100%',
+  paddingVertical: 12,
+  borderRadius: 20,
+  alignItems: 'center',
+  marginTop: 10,
+},
+
+copiarWhatsappButton: {
+  backgroundColor: '#ADD8E6',
+  width: '100%',
+  paddingVertical: 12,
+  borderRadius: 25,
+  alignItems: 'center',
+  marginTop: 10,
+},
+
+whatsappEnviado: {
   alignSelf: 'flex-start',
   backgroundColor: '#CCFFCC',
   color: '#000',

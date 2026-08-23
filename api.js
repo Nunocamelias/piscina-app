@@ -463,6 +463,16 @@ app.get('/conta-corrente-clientes', async (req, res) => {
         AND cc.estado = 'enviado'
     ) AS email_enviado,
 
+    EXISTS (
+      SELECT 1
+      FROM comunicacoes_clientes cc
+      WHERE cc.empresaid = c.empresaid
+        AND cc.cliente_id = c.id
+        AND cc.mes_referencia = $2
+        AND cc.canal = 'whatsapp'
+        AND cc.estado = 'enviado'
+    ) AS whatsapp_enviado,
+
     COALESCE(movimentos.total_pago, 0) AS valor_pago,
 
     pc.estado,
