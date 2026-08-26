@@ -1543,6 +1543,7 @@ app.post('/extras-clientes', async (req, res) => {
     valor_unitario,
     observacoes,
     criado_por,
+    data_servico,
   } = req.body;
 
   if (!empresaid || !cliente_id || !descricao?.trim()) {
@@ -1652,7 +1653,7 @@ app.post('/extras-clientes', async (req, res) => {
         $9,
         $10,
         $11,
-        NOW(),
+        COALESCE($12::timestamp, NOW()),
         NOW(),
         NOW()
       )
@@ -1670,6 +1671,7 @@ app.post('/extras-clientes', async (req, res) => {
         estado,
         observacoes?.trim() || null,
         criado_por || null,
+        data_servico || null,
       ]
     );
 

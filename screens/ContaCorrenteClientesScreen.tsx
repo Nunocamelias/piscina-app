@@ -110,6 +110,10 @@ const ContaCorrenteClientesScreen = () => {
   const [totalExtrasPendentes, setTotalExtrasPendentes] = useState(0);
   const [extrasExpandidos, setExtrasExpandidos] = useState(false);
   const [modalValorizarExtraVisible, setModalValorizarExtraVisible] = useState(false);
+  const [modalAdicionarExtraVisible, setModalAdicionarExtraVisible] = useState(false);
+  const [extraManualDescricao, setExtraManualDescricao] = useState('');
+  const [extraManualQuantidade, setExtraManualQuantidade] = useState('1');
+  const [extraManualValorUnitario, setExtraManualValorUnitario] =  useState('');
   const [extraSelecionado, setExtraSelecionado] = useState<ExtraCliente | null>(null);
   const [valorExtraPendenteInput, setValorExtraPendenteInput] = useState('');
   const [modalMensalidadeVisible, setModalMensalidadeVisible] = useState(false);
@@ -303,6 +307,140 @@ const carregarExtrasClienteMes = async (clienteId: number) => {
     setExtrasCliente([]);
     setTotalExtrasValorizados(0);
     setTotalExtrasPendentes(0);
+  }
+};
+
+const abrirAdicionarExtraManual = () => {
+  setExtraManualDescricao('');
+  setExtraManualQuantidade('1');
+  setExtraManualValorUnitario('');
+  setModalAdicionarExtraVisible(true);
+};
+
+const confirmarAdicionarExtraManual = () => {
+  if (!clienteSelecionado) {
+    Alert.alert('Erro', 'Cliente não identificado.');
+    return;
+  }
+
+  const descricao = extraManualDescricao.trim();
+
+  const quantidade =
+    Number(extraManualQuantidade.replace(',', '.')) || 0;
+
+  const valorUnitario =
+    Number(extraManualValorUnitario.replace(',', '.')) || 0;
+
+  if (!descricao) {
+    Alert.alert(
+      'Atenção',
+      'Introduza a descrição do extra.'
+    );
+    return;
+  }
+
+  if (quantidade <= 0) {
+    Alert.alert(
+      'Atenção',
+      'Introduza uma quantidade superior a zero.'
+    );
+    return;
+  }
+
+  if (valorUnitario < 0) {
+    Alert.alert(
+      'Atenção',
+      'Introduza um valor unitário válido.'
+    );
+    return;
+  }
+
+  const total = quantidade * valorUnitario;
+
+  Alert.alert(
+    'Confirmar extra',
+    `${descricao}\n\n` +
+      `Quantidade: ${quantidade}\n` +
+      `Valor unitário: ${formatEuro(valorUnitario)}\n` +
+      `Total: ${formatEuro(total)}`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Confirmar',
+        onPress: guardarExtraManual,
+      },
+    ]
+  );
+};
+
+const guardarExtraManual = async () => {
+  if (
+    !clienteSelecionado ||
+    !empresaid ||
+    !mesReferencia
+  ) {
+    Alert.alert(
+      'Erro',
+      'Dados incompletos para adicionar o extra.'
+    );
+    return;
+  }
+
+  const quantidade =
+    Number(extraManualQuantidade.replace(',', '.')) || 1;
+
+  const valorUnitario =
+    Number(extraManualValorUnitario.replace(',', '.')) || 0;
+
+  try {
+    await axios.post(
+      `${Config.API_URL}/extras-clientes`,
+      {
+        empresaid,
+        cliente_id: clienteSelecionado.cliente_id,
+
+        descricao: extraManualDescricao.trim(),
+
+        quantidade,
+        valor_unitario: valorUnitario,
+
+        estado: 'valorizado',
+
+        // Queremos que o extra pertença ao mês
+        // que estamos a faturar.
+        data_servico: `${mesReferencia}-15T12:00:00`,
+      }
+    );
+
+    setModalAdicionarExtraVisible(false);
+
+    setExtraManualDescricao('');
+    setExtraManualQuantidade('1');
+    setExtraManualValorUnitario('');
+
+    await carregarExtrasClienteMes(
+      clienteSelecionado.cliente_id
+    );
+
+    await carregarContaCorrente(empresaid);
+
+    Alert.alert(
+      'Sucesso',
+      'Extra adicionado com sucesso.'
+    );
+  } catch (error) {
+    console.error(
+      'Erro ao adicionar extra manual:',
+      error
+    );
+
+    Alert.alert(
+      'Erro',
+      'Não foi possível adicionar o extra.'
+    );
   }
 };
 
@@ -2055,14 +2193,14 @@ const totalClientesPorPagar = clientes.filter(
             </Text>
 
             {extra.estado === 'pendente' ? (
-            <TouchableOpacity
-            onPress={() => abrirValorizarExtra(extra)}
-          >
-            <Text style={styles.extraResumoPendente}>
-             Pendente de valorização — tocar para definir valor
-            </Text>
-            </TouchableOpacity>
-           ) : extra.estado === 'nao_cobrar' ? (
+              <TouchableOpacity
+                onPress={() => abrirValorizarExtra(extra)}
+              >
+                <Text style={styles.extraResumoPendente}>
+                  Pendente de valorização — tocar para definir valor
+                </Text>
+              </TouchableOpacity>
+            ) : extra.estado === 'nao_cobrar' ? (
               <Text style={styles.extraResumoNaoCobrar}>
                 Não cobrar
               </Text>
@@ -2082,6 +2220,15 @@ const totalClientesPorPagar = clientes.filter(
       )}
     </View>
   )}
+
+  <TouchableOpacity
+    style={styles.adicionarExtraManualButton}
+    onPress={abrirAdicionarExtraManual}
+  >
+    <Text style={styles.adicionarExtraManualText}>
+      + Adicionar Extra Manual
+    </Text>
+  </TouchableOpacity>
 </View>
 
       <TextInput
@@ -2375,6 +2522,76 @@ const totalClientesPorPagar = clientes.filter(
           </Text>
         </TouchableOpacity>
       </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+<Modal
+  visible={modalAdicionarExtraVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() =>
+    setModalAdicionarExtraVisible(false)
+  }
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>
+        Adicionar Extra Manual
+      </Text>
+
+      <Text style={styles.modalCliente}>
+        {clienteSelecionado?.nome}
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Descrição do extra"
+        placeholderTextColor="#666"
+        value={extraManualDescricao}
+        onChangeText={setExtraManualDescricao}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Quantidade"
+        placeholderTextColor="#666"
+        keyboardType="decimal-pad"
+        value={extraManualQuantidade}
+        onChangeText={setExtraManualQuantidade}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Valor unitário"
+        placeholderTextColor="#666"
+        keyboardType="decimal-pad"
+        value={extraManualValorUnitario}
+        onChangeText={setExtraManualValorUnitario}
+      />
+
+      <TouchableOpacity
+        style={styles.modalSaveButton}
+        onPress={confirmarAdicionarExtraManual}
+      >
+        <Text style={styles.modalButtonText}>
+          Guardar Extra
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.modalCancelButton}
+        onPress={() => {
+          setModalAdicionarExtraVisible(false);
+          setExtraManualDescricao('');
+          setExtraManualQuantidade('1');
+          setExtraManualValorUnitario('');
+        }}
+      >
+        <Text style={styles.modalButtonText}>
+          Voltar
+        </Text>
+      </TouchableOpacity>
     </View>
   </View>
 </Modal>
@@ -3069,6 +3286,20 @@ whatsappEnviado: {
   paddingVertical: 4,
   borderRadius: 12,
   marginBottom: 6,
+},
+
+adicionarExtraManualButton: {
+  backgroundColor: '#ADD8E6',
+  marginTop: 12,
+  paddingVertical: 9,
+  borderRadius: 20,
+  alignItems: 'center',
+},
+
+adicionarExtraManualText: {
+  color: '#000',
+  fontSize: 13,
+  fontWeight: 'bold',
 },
 });
 
