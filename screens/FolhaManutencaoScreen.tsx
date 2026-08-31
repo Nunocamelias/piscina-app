@@ -3967,6 +3967,24 @@ const corParametro = (() => {
   )}
 </View>
 
+{/* Posição Final das Válvulas */}
+<View style={styles.section}>
+  <TouchableOpacity
+    onPress={() => {
+      navigation.navigate('ValvulasFotos', {
+        clienteId,
+        empresaid,
+        nome: cliente?.nome || 'Cliente',
+        modoConsulta: true,
+      });
+    }}
+  >
+    <Text style={styles.sectionTitle}>
+      Posição Final das Válvulas
+    </Text>
+  </TouchableOpacity>
+</View>
+
 {/* Reportar Anomalias */}
 <View style={styles.section}>
   <TouchableOpacity onPress={() => setIsReportExpanded(!isReportExpanded)}>

@@ -31,6 +31,7 @@ import HeaderLogo from './components/HeaderLogo';
 import TesteRapidoScreen from './screens/TesteRapidoScreen';
 import ContaCorrenteClientesScreen from './screens/ContaCorrenteClientesScreen';
 import ModelosComunicacaoScreen from './screens/ModelosComunicacaoScreen';
+import ValvulasFotosScreen from './screens/ValvulasFotosScreen';
 
 
 
@@ -41,6 +42,7 @@ export type RootStackParamList = {
   AddCliente: undefined;
   ListaClientes: undefined;
   EditCliente: { clienteId: number };
+  ValvulasFotos: { clienteId: number; empresaid: number; nome?: string; modoConsulta?: boolean; };
   Equipes: undefined;
   AddEquipe: undefined;
   ListaEquipes: undefined;
@@ -189,6 +191,21 @@ const App = (): React.JSX.Element => {
           shadowRadius: 4.65,
           elevation: 10,
           },
+          headerTitleAlign: 'center',
+          headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="ValvulasFotos"
+          component={ValvulasFotosScreen}
+          options={{
+          headerTitle: CustomHeaderTitle,
+          headerStyle: {
+          backgroundColor: '#22b4b4ff',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4.65,
+          elevation: 10,
+        },
           headerTitleAlign: 'center',
           headerTintColor: '#000', }}/>
         <Stack.Screen

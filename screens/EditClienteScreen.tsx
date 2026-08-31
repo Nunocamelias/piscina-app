@@ -13,6 +13,7 @@ const EditClienteScreen = ({ route, navigation }: any) => {
   const [isEditable, setIsEditable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [empresaNome, setEmpresaNome] = useState('');
+  const [empresaIdAtual, setEmpresaIdAtual] = useState<number | null>(null);
 
   // Fetch cliente data + nome da empresa
 useEffect(() => {
@@ -24,6 +25,7 @@ useEffect(() => {
         navigation.navigate('Login'); // Redireciona para o login se empresaid não for encontrado
         return;
       }
+      setEmpresaIdAtual(parseInt(empresaid, 10));
 
       // 🔹 Busca os dados do cliente
       const response = await axios.get(`${Config.API_URL}/clientes/${clienteId}`, {
@@ -442,6 +444,28 @@ if (loading || !form) {
   </View>
 </View>
 
+<TouchableOpacity
+  style={styles.button}
+  onPress={() => {
+    if (!empresaIdAtual) {
+      Alert.alert(
+        'Erro',
+        'Não foi possível identificar a empresa.'
+      );
+      return;
+    }
+
+    navigation.navigate('ValvulasFotos', {
+      clienteId,
+      empresaid: empresaIdAtual,
+      nome: form?.nome || 'Cliente',
+    });
+  }}
+>
+  <Text style={styles.buttonText}>
+    Posição das Válvulas
+  </Text>
+</TouchableOpacity>
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>

@@ -7,7 +7,6 @@ const moment = require('moment'); // Certifique-se de que o moment.js está inst
 const jwt = require('jsonwebtoken'); // Para gerar tokens JWT
 const bcrypt = require('bcrypt'); // Para criptografar senhas
 const { v4: uuidv4 } = require('uuid');
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
@@ -19,7 +18,7 @@ app.use(bodyParser.urlencoded({ limit: '20mb', extended: true }));
 
 // Rota de teste
 app.get('/', (req, res) => {
-  res.send('Servidor funcionando!');
+  res.send('Servidor GESPOOL - TESTE SUPABASE!');
 });
 
 // Configuração do PostgreSQL
@@ -53,6 +52,410 @@ const formatArrayForPostgres = (array) => {
   }
   return '{}'; // Retorna array vazio como padrão
 };
+const { createClient } = require('@supabase/supabase-js');
+
+const WebSocket = require('ws');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SECRET_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    realtime: {
+      transport: WebSocket,
+    },
+  }
+);
+
+app.get('/test-supabase-storage', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .storage
+      .from('valvulas-clientes')
+      .list('', {
+        limit: 10,
+      });
+
+    if (error) {
+      console.error('Erro Supabase Storage:', error);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      mensagem: 'Ligação ao Supabase Storage efetuada com sucesso.',
+      ficheiros: data,
+    });
+  } catch (error) {
+    console.error('Erro inesperado Supabase:', error);
+
+    return res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+// ============================================================
+// POSIÇÃO DAS VÁLVULAS - CONSULTAR FOTOGRAFIAS
+// ============================================================
+app.get('/clientes/:id/valvulas-fotos', async (req, res) => {
+  const clienteId = parseInt(req.params.id, 10);
+  const empresaid = parseInt(req.query.empresaid, 10);
+
+  if (!clienteId || !empresaid) {
+    return res.status(400).json({
+      error: 'clienteId e empresaid são obrigatórios.',
+    });
+  }
+
+  try {
+    // Confirmar que o cliente pertence à empresa
+    const clienteResult = await pool.query(
+      `
+      SELECT id
+      FROM clientes
+      WHERE id = $1
+        AND empresaid = $2
+      `,
+      [clienteId, empresaid]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado.',
+      });
+    }
+
+    const fotosResult = await pool.query(
+      `
+      SELECT
+        id,
+        empresaid,
+        cliente_id,
+        ordem,
+        storage_path,
+        created_at,
+        updated_at
+      FROM clientes_valvulas_fotos
+      WHERE cliente_id = $1
+        AND empresaid = $2
+      ORDER BY ordem ASC
+      `,
+      [clienteId, empresaid]
+    );
+
+    const fotos = [];
+
+    for (const foto of fotosResult.rows) {
+      const { data, error } = await supabase.storage
+        .from('valvulas-clientes')
+        .createSignedUrl(foto.storage_path, 3600);
+
+      if (error) {
+        console.error(
+          `Erro ao gerar URL da fotografia ${foto.id}:`,
+          error
+        );
+
+        continue;
+      }
+
+      fotos.push({
+        id: foto.id,
+        ordem: foto.ordem,
+        url: data.signedUrl,
+      });
+    }
+
+    return res.status(200).json(fotos);
+  } catch (error) {
+    console.error('Erro ao consultar fotografias das válvulas:', error);
+
+    return res.status(500).json({
+      error: 'Erro ao consultar fotografias das válvulas.',
+    });
+  }
+});
+// ============================================================
+// POSIÇÃO DAS VÁLVULAS - ADICIONAR / SUBSTITUIR FOTOGRAFIA
+// ============================================================
+app.post('/clientes/:id/valvulas-fotos', async (req, res) => {
+  const clienteId = parseInt(req.params.id, 10);
+
+  const {
+    empresaid,
+    ordem,
+    imagem_base64,
+    mime_type,
+  } = req.body;
+
+  const empresaIdNumero = parseInt(empresaid, 10);
+  const ordemNumero = parseInt(ordem, 10);
+
+  if (
+    !clienteId ||
+    !empresaIdNumero ||
+    !ordemNumero ||
+    !imagem_base64 ||
+    !mime_type
+  ) {
+    return res.status(400).json({
+      error:
+        'clienteId, empresaid, ordem, imagem_base64 e mime_type são obrigatórios.',
+    });
+  }
+
+  if (ordemNumero < 1 || ordemNumero > 3) {
+    return res.status(400).json({
+      error: 'A ordem da fotografia deve ser 1, 2 ou 3.',
+    });
+  }
+
+  if (!['image/jpeg', 'image/png'].includes(mime_type)) {
+    return res.status(400).json({
+      error: 'Apenas são permitidas imagens JPEG ou PNG.',
+    });
+  }
+
+  try {
+    // Confirmar que o cliente pertence à empresa
+    const clienteResult = await pool.query(
+      `
+      SELECT id
+      FROM clientes
+      WHERE id = $1
+        AND empresaid = $2
+      `,
+      [clienteId, empresaIdNumero]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Cliente não encontrado.',
+      });
+    }
+
+    // Ver se já existe fotografia nesta posição
+    const fotoAnteriorResult = await pool.query(
+      `
+      SELECT id, storage_path
+      FROM clientes_valvulas_fotos
+      WHERE empresaid = $1
+        AND cliente_id = $2
+        AND ordem = $3
+      `,
+      [empresaIdNumero, clienteId, ordemNumero]
+    );
+
+    const fotoAnterior = fotoAnteriorResult.rows[0];
+
+    const extensao =
+      mime_type === 'image/png'
+        ? 'png'
+        : 'jpg';
+
+    const storagePath =
+      `empresa-${empresaIdNumero}/` +
+      `cliente-${clienteId}/` +
+      `foto-${ordemNumero}-${Date.now()}.${extensao}`;
+
+    // Remover prefixo data:image/... caso exista
+    const base64Limpo = imagem_base64.replace(
+      /^data:image\/[a-zA-Z0-9.+-]+;base64,/,
+      ''
+    );
+
+    const buffer = Buffer.from(base64Limpo, 'base64');
+
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        error: 'A fotografia não pode ultrapassar 5 MB.',
+      });
+    }
+
+    // Enviar para Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('valvulas-clientes')
+      .upload(storagePath, buffer, {
+        contentType: mime_type,
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Erro ao enviar fotografia:', uploadError);
+
+      return res.status(500).json({
+        error: 'Erro ao guardar fotografia.',
+      });
+    }
+
+    try {
+      const dbResult = await pool.query(
+        `
+        INSERT INTO clientes_valvulas_fotos (
+          empresaid,
+          cliente_id,
+          ordem,
+          storage_path
+        )
+        VALUES ($1, $2, $3, $4)
+
+        ON CONFLICT (empresaid, cliente_id, ordem)
+
+        DO UPDATE SET
+          storage_path = EXCLUDED.storage_path,
+          updated_at = NOW()
+
+        RETURNING
+          id,
+          empresaid,
+          cliente_id,
+          ordem,
+          storage_path
+        `,
+        [
+          empresaIdNumero,
+          clienteId,
+          ordemNumero,
+          storagePath,
+        ]
+      );
+
+      // Se substituímos uma fotografia antiga,
+      // apagamos o ficheiro antigo do Supabase
+      if (
+        fotoAnterior &&
+        fotoAnterior.storage_path &&
+        fotoAnterior.storage_path !== storagePath
+      ) {
+        const { error: deleteOldError } =
+          await supabase.storage
+            .from('valvulas-clientes')
+            .remove([fotoAnterior.storage_path]);
+
+        if (deleteOldError) {
+          console.error(
+            'Não foi possível eliminar fotografia antiga:',
+            deleteOldError
+          );
+        }
+      }
+
+      return res.status(201).json({
+        ok: true,
+        mensagem: 'Fotografia guardada com sucesso.',
+        foto: dbResult.rows[0],
+      });
+
+    } catch (dbError) {
+      // Se a BD falhar depois do upload,
+      // apagamos a fotografia recém-enviada
+      await supabase.storage
+        .from('valvulas-clientes')
+        .remove([storagePath]);
+
+      throw dbError;
+    }
+
+  } catch (error) {
+    console.error(
+      'Erro ao guardar fotografia das válvulas:',
+      error
+    );
+
+    return res.status(500).json({
+      error: 'Erro ao guardar fotografia das válvulas.',
+    });
+  }
+});
+// ============================================================
+// POSIÇÃO DAS VÁLVULAS - APAGAR FOTOGRAFIA
+// ============================================================
+
+app.delete(
+  '/clientes/:clienteId/valvulas-fotos/:fotoId',
+  async (req, res) => {
+    const clienteId = parseInt(req.params.clienteId, 10);
+    const fotoId = parseInt(req.params.fotoId, 10);
+    const empresaid = parseInt(req.query.empresaid, 10);
+
+    if (!clienteId || !fotoId || !empresaid) {
+      return res.status(400).json({
+        error:
+          'clienteId, fotoId e empresaid são obrigatórios.',
+      });
+    }
+
+    try {
+      const fotoResult = await pool.query(
+        `
+        SELECT id, storage_path
+        FROM clientes_valvulas_fotos
+        WHERE id = $1
+          AND cliente_id = $2
+          AND empresaid = $3
+        `,
+        [fotoId, clienteId, empresaid]
+      );
+
+      if (fotoResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Fotografia não encontrada.',
+        });
+      }
+
+      const foto = fotoResult.rows[0];
+
+      const { error: storageError } =
+        await supabase.storage
+          .from('valvulas-clientes')
+          .remove([foto.storage_path]);
+
+      if (storageError) {
+        console.error(
+          'Erro ao apagar fotografia do Supabase:',
+          storageError
+        );
+
+        return res.status(500).json({
+          error: 'Erro ao apagar fotografia.',
+        });
+      }
+
+      await pool.query(
+        `
+        DELETE FROM clientes_valvulas_fotos
+        WHERE id = $1
+          AND cliente_id = $2
+          AND empresaid = $3
+        `,
+        [fotoId, clienteId, empresaid]
+      );
+
+      return res.status(200).json({
+        ok: true,
+        mensagem: 'Fotografia apagada com sucesso.',
+      });
+
+    } catch (error) {
+      console.error(
+        'Erro ao apagar fotografia das válvulas:',
+        error
+      );
+
+      return res.status(500).json({
+        error: 'Erro ao apagar fotografia das válvulas.',
+      });
+    }
+  }
+);
 
 // Endpoint POST para adicionar cliente
 app.post('/clientes', async (req, res) => {
