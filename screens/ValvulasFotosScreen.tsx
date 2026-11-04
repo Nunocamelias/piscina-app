@@ -6,6 +6,7 @@ import ImageViewing from 'react-native-image-viewing';
 import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import Config from 'react-native-config';
+import ImageResizer from 'react-native-image-resizer';
 
 import { RootStackParamList } from '../App';
 
@@ -107,7 +108,7 @@ const ValvulasFotosScreen: React.FC<Props> = ({
   // ESCOLHER E ENVIAR FOTOGRAFIA
   // ============================================================
 
-  const escolherFoto = async (ordem: number) => {
+const escolherFoto = async (ordem: number) => {
   try {
     const res = await DocumentPicker.pick({
       type: [DocumentPicker.types.images],
@@ -129,27 +130,70 @@ const ValvulasFotosScreen: React.FC<Props> = ({
       Platform.OS === 'android' &&
       finalUri.startsWith('content://')
     ) {
-      const extensao =
-        file.type === 'image/png' ? 'png' : 'jpg';
-
       const filePath =
         `${RNFS.CachesDirectoryPath}/` +
-        `valvula_${Date.now()}.${extensao}`;
+        `valvula_original_${Date.now()}.jpg`;
 
       await RNFS.copyFile(finalUri, filePath);
 
       finalUri = `file://${filePath}`;
     }
 
-    const mimeType =
-      file.type === 'image/png'
-        ? 'image/png'
-        : 'image/jpeg';
-
     setUploadingOrdem(ordem);
 
-    const base64Data = await RNFS.readFile(
+    // =====================================================
+    // REDIMENSIONAR / COMPRIMIR ANTES DO UPLOAD
+    // =====================================================
+
+    let imagemComprimida = await ImageResizer.createResizedImage(
       finalUri,
+      1600,       // largura máxima
+      1600,       // altura máxima
+      'JPEG',     // formato final
+      75,         // qualidade 0-100
+      0           // rotação
+    );
+
+    let uriComprimida = imagemComprimida.uri;
+
+    // Verificar tamanho real do ficheiro comprimido
+    let caminhoStat = uriComprimida.replace('file://', '');
+    let stats = await RNFS.stat(caminhoStat);
+
+    console.log(
+      `📸 Foto comprimida: ${(Number(stats.size) / 1024 / 1024).toFixed(2)} MB`
+    );
+
+    // Segunda compressão de segurança caso continue demasiado grande
+    if (Number(stats.size) > 4.5 * 1024 * 1024) {
+      imagemComprimida = await ImageResizer.createResizedImage(
+        uriComprimida,
+        1280,
+        1280,
+        'JPEG',
+        65,
+        0
+      );
+
+      uriComprimida = imagemComprimida.uri;
+      caminhoStat = uriComprimida.replace('file://', '');
+      stats = await RNFS.stat(caminhoStat);
+
+      console.log(
+        `📸 Foto recomprimida: ${(Number(stats.size) / 1024 / 1024).toFixed(2)} MB`
+      );
+    }
+
+    // Segurança final
+    if (Number(stats.size) > 5 * 1024 * 1024) {
+      throw new Error(
+        'Não foi possível reduzir a fotografia para menos de 5 MB.'
+      );
+    }
+
+    // Agora convertemos a fotografia JÁ comprimida para Base64
+    const base64Data = await RNFS.readFile(
+      caminhoStat,
       'base64'
     );
 
@@ -164,7 +208,9 @@ const ValvulasFotosScreen: React.FC<Props> = ({
           empresaid,
           ordem,
           imagem_base64: base64Data,
-          mime_type: mimeType,
+
+          // A imagem enviada passa sempre a JPEG
+          mime_type: 'image/jpeg',
         }),
       }
     );
@@ -191,9 +237,7 @@ const ValvulasFotosScreen: React.FC<Props> = ({
       err
     );
 
-    if (
-      err?.code === 'DOCUMENT_PICKER_CANCELED'
-    ) {
+    if (err?.code === 'DOCUMENT_PICKER_CANCELED') {
       return;
     }
 
@@ -442,6 +486,12 @@ const ValvulasFotosScreen: React.FC<Props> = ({
           {nome}
         </Text>
 
+        <View style={styles.lembreteFinalCard}>
+  <Text style={styles.lembreteFinalText}>
+    Filtro a filtrar · Água a entrar · Injetores a injetar · Esgoto a fechar · Motor em automático a ficar.
+  </Text>
+</View>
+
         <Text style={styles.descricao}>
           Fotografias de referência para a posição final das válvulas.
         </Text>
@@ -607,6 +657,24 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#555555',
   },
+  lembreteFinalCard: {
+  backgroundColor: '#FFF5CC',
+  borderRadius: 20,
+  paddingVertical: 14,
+  paddingHorizontal: 16,
+  marginTop: 12,
+  marginBottom: 18,
+  borderWidth: 1,
+  borderColor: '#D3D3D3',
+},
+
+lembreteFinalText: {
+  color: '#000000',
+  fontSize: 16,
+  fontWeight: '600',
+  textAlign: 'center',
+  lineHeight: 23,
+},
 });
 
 export default ValvulasFotosScreen;
