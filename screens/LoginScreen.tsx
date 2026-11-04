@@ -128,17 +128,55 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
     }
 
     if (userType === 'equipa_manutencao' || userType === 'equipe') {
-      if (!equipeId) {
-        Alert.alert('Erro', 'ID da equipe não encontrado para este utilizador.');
-        return;
-      }
 
-      navigation.navigate('EquipeHome', {
-        equipeId: equipeId,
-        equipeNome: user.nome,
-      });
-      return;
+  if (!equipeId) {
+    Alert.alert('Erro', 'ID da equipe não encontrado para este utilizador.');
+    return;
+  }
+
+  // Nome da equipa deve vir da tabela equipes,
+  // e não do campo nome da tabela usuarios
+  let equipeNomeAtual = user.nome || '';
+
+  try {
+    const detalhesEquipe = await axios.get(
+      `${Config.API_URL}/detalhes-equipe`,
+      {
+        params: {
+          equipeId,
+          empresaid: user.empresaid,
+        },
+        timeout: 12000,
+      }
+    );
+
+    if (detalhesEquipe.data?.nomeequipe) {
+      equipeNomeAtual = detalhesEquipe.data.nomeequipe;
+
+      // Guarda para permitir apresentar o nome correto em modo offline
+      await AsyncStorage.setItem('equipeNome', equipeNomeAtual);
     }
+  } catch (error) {
+    console.log(
+      '⚠️ Não foi possível atualizar o nome da equipa no login:',
+      error
+    );
+
+    // Se já existir um nome correto guardado anteriormente, usa-o
+    const equipeNomeCache = await AsyncStorage.getItem('equipeNome');
+
+    if (equipeNomeCache) {
+      equipeNomeAtual = equipeNomeCache;
+    }
+  }
+
+  navigation.navigate('EquipeHome', {
+    equipeId,
+    equipeNome: equipeNomeAtual,
+  });
+
+  return;
+}
 
     if (userType === 'equipa_tecnica') {
       if (!equipeId) {
@@ -204,6 +242,7 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
     // ✅ isto é o que faltava
     const equipeIdStr = await AsyncStorage.getItem('equipeId');
     const userNome = await AsyncStorage.getItem('userNome');
+    const equipeNome = await AsyncStorage.getItem('equipeNome');
 
     const loginHoje = ultimoLoginDia === hoje;
     const emailIgual = ultimoLoginEmail === emailLimpo;
@@ -238,9 +277,9 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
       // equipa_manutencao / equipe
       navigation.navigate('EquipeHome', {
-        equipeId: equipeIdNum,
-        equipeNome: userNome || '',
-      });
+  equipeId: equipeIdNum,
+  equipeNome: equipeNome || userNome || '',
+});
       return;
     }
 

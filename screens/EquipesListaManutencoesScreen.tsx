@@ -146,7 +146,10 @@ const EquipesListaManutencoesScreen = ({ navigation, route }: Props) => {
         <TouchableOpacity
           style={styles.button}
           onPress={() =>
-            navigation.navigate('EquipesDiasDaSemana', { equipeId, equipeNome })
+            navigation.navigate('EquipesDiasDaSemana', {
+            equipeId,
+            equipeNome: equipeDetalhes.nomeequipe,
+        })
           }>
           <Text style={styles.buttonText}>Dias da Semana</Text>
         </TouchableOpacity>

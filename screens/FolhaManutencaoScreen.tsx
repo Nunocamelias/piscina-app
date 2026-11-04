@@ -1334,16 +1334,28 @@ const calcularProduto = (
     return { resultado: 'Dados insuficientes para calcular a quantidade.', quantidade: 0 };
   }
 
-  const quantidade = parseFloat(
-    ((diferenca / incremento) * dosagem * (volumePiscina / volumeCalculoNum)).toFixed(2)
-  );
+  const quantidadeCalculada =
+  (diferenca / incremento) *
+  dosagem *
+  (volumePiscina / volumeCalculoNum);
 
-  return {
-    resultado: `Adicionar ${quantidade}kg de ${produto}`,
-    quantidade,
-    produto,
-    status: 'pendente',
-  };
+// Mantemos a quantidade internamente em kg
+const quantidade = parseFloat(quantidadeCalculada.toFixed(3));
+
+// Apenas a apresentação muda:
+// menos de 1 kg -> gramas
+// 1 kg ou mais -> quilogramas
+const quantidadeApresentacao =
+  quantidade < 1
+    ? `${Math.round(quantidade * 1000)} g`
+    : `${quantidade.toFixed(3).replace('.', ',')} kg`;
+
+return {
+  resultado: `Adicionar ${quantidadeApresentacao} de ${produto}`,
+  quantidade,
+  produto,
+  status: 'pendente',
+};
 };
 
 const calcularUmParametro = useCallback(
@@ -3981,6 +3993,10 @@ const corParametro = (() => {
   >
     <Text style={styles.sectionTitle}>
       Posição Final das Válvulas
+    </Text>
+
+    <Text style={styles.label}>
+      Verificar antes de terminar a manutenção
     </Text>
   </TouchableOpacity>
 </View>
