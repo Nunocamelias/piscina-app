@@ -6931,34 +6931,6 @@ app.get('/notificacoes/:id/historico', async (req, res) => {
   }
 });
 
-function obterMesAnteriorLisboa() {
-  const partes = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Lisbon',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date());
-
-  const ano = Number(
-    partes.find((parte) => parte.type === 'year')?.value
-  );
-
-  const mes = Number(
-    partes.find((parte) => parte.type === 'month')?.value
-  );
-
-  const dataMesAnterior = new Date(
-    Date.UTC(ano, mes - 2, 1)
-  );
-
-  const anoAnterior = dataMesAnterior.getUTCFullYear();
-
-  const mesAnterior = String(
-    dataMesAnterior.getUTCMonth() + 1
-  ).padStart(2, '0');
-
-  return `${anoAnterior}-${mesAnterior}`;
-}
-
 async function lancarMensalidadesMes(mesReferencia) {
   if (!/^\d{4}-\d{2}$/.test(mesReferencia)) {
     throw new Error('Mês de referência inválido. Use YYYY-MM.');
@@ -7102,7 +7074,7 @@ cron.schedule('55 23 * * 0', async () => {
 cron.schedule(
   '5 0 1 * *',
   async () => {
-    const mesReferencia = obterMesAnteriorLisboa();
+    const mesReferencia = moment().format('YYYY-MM');
 
     console.log(
       `📅 Iniciando lançamento automático das mensalidades de ${mesReferencia}...`
