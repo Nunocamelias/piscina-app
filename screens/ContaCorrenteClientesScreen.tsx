@@ -85,14 +85,6 @@ type ModeloComunicacao = {
 
 const ContaCorrenteClientesScreen = () => {
   const [clientes, setClientes] = useState<ContaCliente[]>([]);
-  const getMesAtual = () => {
-  const hoje = new Date();
-
-  const ano = hoje.getFullYear();
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-
-  return `${ano}-${mes}`;
-};
   const getMesAnterior = () => {
   const hoje = new Date();
   hoje.setMonth(hoje.getMonth() - 1);
@@ -102,7 +94,6 @@ const ContaCorrenteClientesScreen = () => {
 
   return `${ano}-${mes}`;
 };
-  const [mesCobranca, setMesCobranca] = useState(getMesAtual());
   const [mesReferencia, setMesReferencia] = useState(getMesAnterior());
   const [loading, setLoading] = useState(false);
   const [empresaid, setEmpresaid] = useState<number | null>(null);
@@ -153,13 +144,9 @@ const ContaCorrenteClientesScreen = () => {
 
     try {
       const response = await axios.get(`${Config.API_URL}/conta-corrente-clientes`, {
-      params: {
-        empresaid: empresaIdAtual,
-        mes: mesCobranca,
-      },
-    });
+        params: { empresaid: empresaIdAtual, mes: mesReferencia },
+      });
 
-      setMesCobranca(response.data.mes_cobranca);
       setMesReferencia(response.data.mes_referencia);
       setClientes(response.data.clientes || []);
     } catch (error) {
@@ -168,7 +155,7 @@ const ContaCorrenteClientesScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [mesCobranca]);
+  }, [mesReferencia]);
 
   useEffect(() => {
     const iniciar = async () => {
@@ -260,7 +247,7 @@ const formatarMesExtenso = (mesReferenciaAtual: string) => {
 };
 
 const carregarMovimentosPagamento = async (clienteId: number) => {
-  if (!empresaid || !mesCobranca) {
+  if (!empresaid || !mesReferencia) {
     return;
   }
 
@@ -271,7 +258,7 @@ const carregarMovimentosPagamento = async (clienteId: number) => {
         params: {
           cliente_id: clienteId,
           empresaid,
-          mes_referencia: mesCobranca,
+          mes_referencia: mesReferencia,
         },
       }
     );
@@ -927,7 +914,7 @@ Pagamentos já registados: ${formatEuro(valorPago)}`;
 };
 
 const registarEmailPreparado = async () => {
-  if (!clienteSelecionado || !empresaid || !mesCobranca) {
+  if (!clienteSelecionado || !empresaid || !mesReferencia) {
     return null;
   }
 
@@ -939,7 +926,7 @@ const registarEmailPreparado = async () => {
       {
         empresaid,
         cliente_id: clienteSelecionado.cliente_id,
-        mes_referencia: mesCobranca,
+        mes_referencia: mesReferencia,
         canal: 'email',
         assunto: emailAssunto,
         mensagem: emailCorpo,
@@ -1045,7 +1032,7 @@ const registarWhatsappPreparado = async () => {
   if (
     !clienteSelecionado ||
     !empresaid ||
-    !mesCobranca
+    !mesReferencia
   ) {
     return null;
   }
@@ -1059,7 +1046,7 @@ const registarWhatsappPreparado = async () => {
       {
         empresaid,
         cliente_id: clienteSelecionado.cliente_id,
-        mes_referencia: mesCobranca,
+        mes_referencia: mesReferencia,
         canal: 'whatsapp',
         assunto: null,
         mensagem: whatsappCorpo,
@@ -1494,7 +1481,7 @@ const confirmarMensalidade = () => {
 };
 
 const guardarMensalidadeManual = async () => {
-  if (!clienteSelecionado || !empresaid || !mesCobranca) {
+  if (!clienteSelecionado || !empresaid || !mesReferencia) {
     Alert.alert('Erro', 'Dados incompletos para lançar a mensalidade.');
     return;
   }
@@ -1508,7 +1495,7 @@ const guardarMensalidadeManual = async () => {
       {
         cliente_id: clienteSelecionado.cliente_id,
         empresaid,
-        mes_referencia: mesCobranca,
+        mes_referencia: mesReferencia,
         valor_manutencao: valorMensalidade,
         observacoes: observacoesMensalidadeInput,
       }
@@ -1715,7 +1702,7 @@ const confirmarPagamento = () => {
 };
 
 const guardarPagamento = async () => {
-  if (!clienteSelecionado || !empresaid || !mesCobranca) {
+  if (!clienteSelecionado || !empresaid || !mesReferencia) {
     Alert.alert('Erro', 'Dados incompletos para registar pagamento.');
     return;
   }
@@ -1726,7 +1713,7 @@ const guardarPagamento = async () => {
     const response = await axios.post(`${Config.API_URL}/conta-corrente-clientes/pagamento`, {
       cliente_id: clienteSelecionado.cliente_id,
       empresaid,
-      mes_referencia: mesCobranca,
+      mes_referencia: mesReferencia,
       valor_manutencao: Number(clienteSelecionado.valor_manutencao || 0),
       valor_extra: Number(clienteSelecionado.valor_extra || 0),
       valor_pago: valorPago,

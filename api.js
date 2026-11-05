@@ -828,46 +828,6 @@ app.delete('/clientes/:id', async (req, res) => {
     }
 });
 
-function obterMesAtualLisboa() {
-  const partes = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Lisbon',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date());
-
-  const ano = partes.find(
-    (parte) => parte.type === 'year'
-  )?.value;
-
-  const mes = partes.find(
-    (parte) => parte.type === 'month'
-  )?.value;
-
-  if (!ano || !mes) {
-    throw new Error('Não foi possível determinar o mês atual.');
-  }
-
-  return `${ano}-${mes}`;
-}
-
-function obterMesAnterior(mesAtual) {
-  if (!/^\d{4}-\d{2}$/.test(String(mesAtual))) {
-    throw new Error('Mês inválido. Use YYYY-MM.');
-  }
-
-  const [ano, mes] = String(mesAtual)
-    .split('-')
-    .map(Number);
-
-  const dataAnterior = new Date(
-    Date.UTC(ano, mes - 2, 1)
-  );
-
-  return `${dataAnterior.getUTCFullYear()}-${String(
-    dataAnterior.getUTCMonth() + 1
-  ).padStart(2, '0')}`;
-}
-
 app.get('/conta-corrente-clientes', async (req, res) => {
   const { empresaid, mes } = req.query;
 
@@ -877,11 +837,7 @@ app.get('/conta-corrente-clientes', async (req, res) => {
     });
   }
 
-  const mesCobranca =
-  String(mes || moment().format('YYYY-MM'));
-
-const mesReferencia =
-  obterMesAnterior(mesCobranca);
+  const mesReferencia = mes || moment().format('YYYY-MM');
 
   try {
     const query = `
@@ -967,7 +923,7 @@ const mesReferencia =
 
     FROM extras_clientes
 
-    WHERE TO_CHAR(data_servico, 'YYYY-MM') = $3
+    WHERE TO_CHAR(data_servico, 'YYYY-MM') = $2
 
     GROUP BY
       cliente_id,
@@ -1028,13 +984,7 @@ const mesReferencia =
     ) extras_ant
       ON extras_ant.cliente_id = pc_ant.cliente_id
       AND extras_ant.empresaid = pc_ant.empresaid
-      AND extras_ant.mes_referencia = TO_CHAR(
-  TO_DATE(
-    pc_ant.mes_referencia || '-01',
-    'YYYY-MM-DD'
-  ) - INTERVAL '1 month',
-  'YYYY-MM'
-)
+      AND extras_ant.mes_referencia = pc_ant.mes_referencia
 
     LEFT JOIN (
       SELECT
@@ -1068,16 +1018,14 @@ const mesReferencia =
 `;
 
     const result = await pool.query(query, [
-  empresaid,
-  mesCobranca,
-  mesReferencia,
-]);
+      empresaid,
+      mesReferencia,
+    ]);
 
     return res.status(200).json({
-  mes_cobranca: mesCobranca,
-  mes_referencia: mesReferencia,
-  clientes: result.rows,
-});
+      mes_referencia: mesReferencia,
+      clientes: result.rows,
+    });
   } catch (error) {
     console.error('Erro ao buscar conta corrente:', error);
 
@@ -7126,7 +7074,7 @@ cron.schedule('55 23 * * 0', async () => {
 cron.schedule(
   '5 0 1 * *',
   async () => {
-    const mesReferencia = obterMesAtualLisboa();
+    const mesReferencia = moment().format('YYYY-MM');
 
     console.log(
       `📅 Iniciando lançamento automático das mensalidades de ${mesReferencia}...`
