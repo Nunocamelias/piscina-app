@@ -92,11 +92,18 @@ function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeI
   const ultimo = ultimaConclusaoISO || null;
   const concluidaSemana = Boolean(ultimo && ultimo >= segunda && ultimo <= somarDiasISO(segunda,6));
   const proxima = ultimo
-    ? (() => {
-        const candidato = somarDiasISO(ultimo, 14);
-        return somarDiasISO(candidato, (diaNumero - numeroDiaSemanaISO(candidato) + 7) % 7);
-      })()
-    : null;
+  ? (() => {
+      const segundaDaUltimaSemana = somarDiasISO(
+        ultimo,
+        1 - numeroDiaSemanaISO(ultimo)
+      );
+
+      return somarDiasISO(
+        segundaDaUltimaSemana,
+        14 + diaNumero - 1
+      );
+    })()
+  : null;
   const diaProgramado = somarDiasISO(segunda, diaNumero - 1);
   const programada = !concluidaSemana && (!proxima || proxima <= diaProgramado);
   return {

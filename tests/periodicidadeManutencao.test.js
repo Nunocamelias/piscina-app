@@ -60,3 +60,15 @@ test('antecipação para quarta-feira não muda o dia habitual da equipa', () =>
 test('data atual é interpretada com o fuso de Lisboa', () => {
   assert.equal(dataLisboaISO(new Date('2026-11-08T23:45:00Z')), '2026-11-08');
 });
+
+test('conclusão no domingo mantém a visita quinzenal de sexta-feira', () => {
+  const resultado = avaliarAgendaManutencao(
+    contrato,
+    'Sexta-feira',
+    '2026-11-08',
+    '2026-11-08'
+  );
+
+  assert.equal(resultado.agenda_estado, 'concluida');
+  assert.equal(resultado.proxima_visita, '2026-11-20');
+});
