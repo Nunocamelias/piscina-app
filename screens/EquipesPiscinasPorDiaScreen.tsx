@@ -52,6 +52,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
   const { equipeId, equipeNome, diaSemana, empresaid } = route.params; // Recebe o empresaid
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
+  const [agendaEmCache, setAgendaEmCache] = useState(false);
 
 
 
@@ -68,6 +69,7 @@ const fetchClientes = useCallback(async () => {
     if (cached?.data && Array.isArray(cached.data)) {
       console.log('[fetchClientes] carregou do cache. ts=', cached.ts);
       setClientes(cached.data);
+      setAgendaEmCache(true);
     }
 
     // 2) Tenta online
@@ -77,6 +79,7 @@ const fetchClientes = useCallback(async () => {
 
     console.log('📊 Dados recebidos de clientes-por-dia:', response.data);
     setClientes(response.data);
+    setAgendaEmCache(false);
 
     // 3) Guardar cache
     await setClientesPorDiaCache(empresaid, equipeId, diaSemana, response.data);
@@ -87,9 +90,11 @@ const fetchClientes = useCallback(async () => {
     const cached = await getClientesPorDiaCache<any[]>(empresaid, equipeId, diaSemana);
     if (cached?.data && Array.isArray(cached.data)) {
       setClientes(cached.data);
+      setAgendaEmCache(true);
       return;
     }
 
+    setAgendaEmCache(true);
     Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
   } finally {
     setLoading(false);
@@ -127,6 +132,15 @@ const fetchClientes = useCallback(async () => {
   };
 
   const abrirPiscina = (item: Cliente) => {
+    // Um cartão em cache pode pertencer a outra semana. Não criar visitas antecipadas
+    // sem confirmar primeiro a agenda atual no servidor.
+    if (agendaEmCache && item.frequencia === 'quinzenal') {
+      Alert.alert(
+        'Agenda por sincronizar',
+        'Os dados desta piscina foram carregados do cache. É necessário sincronizar a agenda antes de iniciar ou antecipar uma manutenção quinzenal.'
+      );
+      return;
+    }
     const semVisita = item.frequencia === 'quinzenal' && item.agenda_estado === 'sem_visita';
     const semRegistoEstaSemana = item.frequencia === 'quinzenal'
       && item.agenda_estado === 'programada' && !item.status_semana;
@@ -178,8 +192,11 @@ const fetchClientes = useCallback(async () => {
       <Text style={styles.title}>
         Clientes - {diaSemana} : {equipeNome}
       </Text>
-
-  
+      {agendaEmCache && (
+        <Text style={styles.avisoCache}>
+          Agenda em cache: as semanas quinzenais podem estar desatualizadas. Sincroniza antes de iniciar visitas.
+        </Text>
+      )}
 
       {clientes.length > 0 ? (
         <FlatList
@@ -256,6 +273,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 3.65,
     elevation: 10,
+  },
+  avisoCache: {
+    color: '#733D00',
+    backgroundColor: '#FFF5CC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    fontSize: 13,
   },
   cardQuinzenal: {
     borderColor: '#8D78BC',
