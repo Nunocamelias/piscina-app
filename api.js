@@ -2679,7 +2679,7 @@ app.get('/clientes-por-dia', async (req, res) => {
       WHERE a.equipeId = $1 
         AND a.diaSemana = $2
         AND c.empresaid = $3
-      ORDER BY c.id, m.data_manutencao DESC;
+      ORDER BY c.id;
     `;
     const values = [equipeId, diaSemana, empresaid, dataLisboaISO()];
     const result = await pool.query(query, values);
@@ -2893,84 +2893,42 @@ app.delete('/associados/:id', async (req, res) => {
  });
 // Endpoint para buscar clientes disponíveis
 app.get('/clientes-disponiveis', async (req, res) => {
-     const { diaSemana, empresaid } = req.query;
-
-     if (!diaSemana || !empresaid) {
-       return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
-     }
-
-     try {
-     const query = `
-      SELECT 
-        c.id, 
-        c.nome, 
-        c.morada, 
-        c.telefone, 
+  const { diaSemana, empresaid } = req.query;
+  if (!diaSemana || !empresaid) {
+    return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
+  }
+  try {
+    const query = `
+      SELECT c.id, c.nome, c.morada, c.telefone,
         freq.limite_semana AS periodicidade,
         (freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeRestante,
         CONCAT('P', freq.limite_semana, '/',
                freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeFormatada
       FROM clientes c
       LEFT JOIN (
-        SELECT clienteId, COUNT(*) AS total_associacoes
+        SELECT clienteid, COUNT(*) AS total_associacoes
         FROM associados
-        GROUP BY clienteId
-      ) a ON c.id = a.clienteId
+        GROUP BY clienteid
+      ) a ON c.id = a.clienteid
       CROSS JOIN LATERAL (
-        -- O limite de associações corresponde ao maior número de visitas
-        -- semanais entre os períodos. 'quinzenal' conta como 1 vaga.
         SELECT GREATEST(
-          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]
-        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
-    `;
-
-    const result = await pool.query(query, [empresaid, diaSemana]);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Erro ao buscar clientes disponíveis:', error);
-    res.status(500).send('Erro ao buscar clientes disponíveis.');
-  }
-});
-
+          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]$'
             THEN TRIM(c.periodicidade)::integer ELSE 1 END,
-          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]
-        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
-    `;
-
-    const result = await pool.query(query, [empresaid, diaSemana]);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Erro ao buscar clientes disponíveis:', error);
-    res.status(500).send('Erro ao buscar clientes disponíveis.');
-  }
-});
-
+          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]$'
             THEN TRIM(c.periodicidade_verao)::integer ELSE 1 END,
-          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]
-        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
-    `;
-
-    const result = await pool.query(query, [empresaid, diaSemana]);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Erro ao buscar clientes disponíveis:', error);
-    res.status(500).send('Erro ao buscar clientes disponíveis.');
-  }
-});
-
+          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]$'
             THEN TRIM(c.periodicidade_inverno)::integer ELSE 1 END
         ) AS limite_semana
       ) freq
       WHERE c.empresaid = $1
         AND (freq.limite_semana - COALESCE(a.total_associacoes, 0)) > 0
-        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
+        AND NOT ($2 = ANY(COALESCE(c.condicionantes, ARRAY[]::varchar[])));
     `;
-
     const result = await pool.query(query, [empresaid, diaSemana]);
-    res.status(200).json(result.rows);
+    return res.status(200).json(result.rows);
   } catch (error) {
     console.error('Erro ao buscar clientes disponíveis:', error);
-    res.status(500).send('Erro ao buscar clientes disponíveis.');
+    return res.status(500).send('Erro ao buscar clientes disponíveis.');
   }
 });
 // Rota para obter contadores de clientes por dia da semana para uma equipe específica
