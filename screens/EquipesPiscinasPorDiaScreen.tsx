@@ -132,18 +132,18 @@ const fetchClientes = useCallback(async () => {
   };
 
   const abrirPiscina = (item: Cliente) => {
-    // Um cartão em cache pode pertencer a outra semana. Não criar visitas antecipadas
-    // sem confirmar primeiro a agenda atual no servidor.
-    if (agendaEmCache && item.frequencia === 'quinzenal') {
-      Alert.alert(
-        'Agenda por sincronizar',
-        'Os dados desta piscina foram carregados do cache. É necessário sincronizar a agenda antes de iniciar ou antecipar uma manutenção quinzenal.'
-      );
-      return;
-    }
     const semVisita = item.frequencia === 'quinzenal' && item.agenda_estado === 'sem_visita';
     const semRegistoEstaSemana = item.frequencia === 'quinzenal'
       && item.agenda_estado === 'programada' && !item.status_semana;
+    // Consultar uma manutenção já aberta continua possível offline.
+    // Só abrir uma visita NOVA exige sincronização com a API.
+    if (agendaEmCache && (semVisita || semRegistoEstaSemana)) {
+      Alert.alert(
+        'Agenda por sincronizar',
+        'É necessário confirmar a agenda online antes de abrir uma nova manutenção quinzenal.'
+      );
+      return;
+    }
 
     if (!semVisita && !semRegistoEstaSemana) {
       navegarFolha(item);
