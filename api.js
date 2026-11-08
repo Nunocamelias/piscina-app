@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
+const { avaliarAgendaManutencao, dataLisboaISO } = require('./services/periodicidadeManutencao');
 
 // Middlewares
 app.use(cors());
@@ -2614,6 +2615,18 @@ app.get('/clientes-por-dia', async (req, res) => {
         c.equipamentos_especiais,
         c.eletrolise_sal,
         c.ultima_substituicao,
+        c.periodicidade,
+        c.periodicidade_verao,
+        c.periodicidade_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id
+            AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao,
         COALESCE(m.status, 'pendente') AS status,
         m.motivo
       FROM associados a
@@ -2630,7 +2643,14 @@ app.get('/clientes-por-dia', async (req, res) => {
     `;
     const values = [equipeId, diaSemana, empresaid];
     const result = await pool.query(query, values);
-    res.status(200).json(result.rows);
+    const hojeLisboa = dataLisboaISO();
+    const clientesComAgenda = result.rows.map((cliente) => ({
+      ...cliente,
+      ...avaliarAgendaManutencao(
+        cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa
+      ),
+    }));
+    res.status(200).json(clientesComAgenda);
   } catch (error) {
     console.error('Erro ao buscar clientes:', error);
     res.status(500).json({ error: 'Erro ao buscar clientes.' });
