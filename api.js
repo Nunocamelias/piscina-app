@@ -2656,29 +2656,49 @@ app.get('/clientes-por-dia', async (req, res) => {
             AND mc.empresaid = c.empresaid
             AND mc.status = 'concluida'
         ) AS ultima_conclusao,
+        m.status AS status_semana,
         COALESCE(m.status, 'pendente') AS status,
         m.motivo
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
-      LEFT JOIN manutencoes m 
-        ON m.cliente_id = c.id
-        AND m.equipe_id = $1 
-        AND m.dia_semana = $2
-        AND m.empresaid = $3
+      LEFT JOIN LATERAL (
+        SELECT mm.status, mm.motivo
+        FROM manutencoes mm
+        WHERE mm.cliente_id = c.id
+          AND mm.equipe_id = $1
+          AND mm.dia_semana = $2
+          AND mm.empresaid = $3
+          AND (
+            mm.data_manutencao::date BETWEEN
+              date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
+            OR mm.data_conclusao::date BETWEEN
+              date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
+          )
+        ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
+      ) m ON TRUE
       WHERE a.equipeId = $1 
         AND a.diaSemana = $2
         AND c.empresaid = $3
       ORDER BY c.id, m.data_manutencao DESC;
     `;
-    const values = [equipeId, diaSemana, empresaid];
+    const values = [equipeId, diaSemana, empresaid, dataLisboaISO()];
     const result = await pool.query(query, values);
     const hojeLisboa = dataLisboaISO();
-    const clientesComAgenda = result.rows.map((cliente) => ({
-      ...cliente,
-      ...avaliarAgendaManutencao(
+    const clientesComAgenda = result.rows.map((cliente) => {
+      const agenda = avaliarAgendaManutencao(
         cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa
-      ),
-    }));
+      );
+      const emCurso = agenda.agenda_estado === 'sem_visita'
+        && (cliente.status_semana === 'pendente' || cliente.status_semana === 'nao_concluida');
+      const concluida = cliente.status_semana === 'concluida';
+      return {
+        ...cliente,
+        ...agenda,
+        agenda_estado: emCurso ? 'antecipada_em_curso'
+          : concluida ? 'concluida' : agenda.agenda_estado,
+        visita_programada: agenda.visita_programada || emCurso || concluida,
+      };
+    });
     res.status(200).json(clientesComAgenda);
   } catch (error) {
     console.error('Erro ao buscar clientes:', error);
@@ -2956,58 +2976,64 @@ app.get('/clientes-disponiveis', async (req, res) => {
 // Rota para obter contadores de clientes por dia da semana para uma equipe específica
 app.get('/contador-clientes', async (req, res) => {
   const { equipeId, empresaid } = req.query;
-
   if (!equipeId || !empresaid) {
     return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
   }
-
   try {
+    const hojeLisboa = dataLisboaISO();
     const query = `
-      WITH ultima_manutencao AS (
-        SELECT DISTINCT ON (m.cliente_id, m.dia_semana, m.equipe_id)
-          m.cliente_id,
-          m.dia_semana,
-          m.equipe_id,
-          m.status,
-          m.data_manutencao
-        FROM manutencoes m
-        WHERE m.empresaid = $2
-          AND m.equipe_id = $1
-        ORDER BY m.cliente_id, m.dia_semana, m.equipe_id, m.data_manutencao DESC
-      )
-      SELECT
-        a.diasemana,
-        COUNT(DISTINCT a.clienteid) AS total,
-        COALESCE(SUM(CASE WHEN um.status = 'concluida' THEN 1 ELSE 0 END), 0) AS concluidas,
-        COALESCE(SUM(CASE WHEN um.status = 'nao_concluida' THEN 1 ELSE 0 END), 0) AS nao_concluidas
+      SELECT DISTINCT ON (a.clienteid, a.diasemana)
+        a.clienteid, a.diasemana,
+        c.periodicidade, c.periodicidade_verao, c.periodicidade_inverno,
+        c.mes_inicio_verao, c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao,
+        m.status AS status_semana
       FROM associados a
-      INNER JOIN equipes e ON a.equipeid = e.id
-      LEFT JOIN ultima_manutencao um
-        ON um.cliente_id = a.clienteid
-        AND um.equipe_id = a.equipeid
-        AND um.dia_semana = a.diasemana
-      WHERE a.equipeid = $1
-        AND e.empresaid = $2
-      GROUP BY a.diasemana
-      ORDER BY a.diasemana;
+      JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
+      JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+      LEFT JOIN LATERAL (
+        SELECT mm.status
+        FROM manutencoes mm
+        WHERE mm.cliente_id = a.clienteid AND mm.equipe_id = a.equipeid
+          AND mm.dia_semana = a.diasemana AND mm.empresaid = $2
+          AND (
+            mm.data_manutencao::date BETWEEN
+              date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
+            OR mm.data_conclusao::date BETWEEN
+              date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
+          )
+        ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
+      ) m ON TRUE
+      WHERE a.equipeid = $1 AND a.empresaid = $2 AND c.empresaid = $2
+      ORDER BY a.clienteid, a.diasemana
     `;
-
-    const values = [equipeId, empresaid];
-    const result = await pool.query(query, values);
-
-    const contadores = result.rows.length > 0
-      ? result.rows.map(row => ({
-          diasemana: row.diasemana,
-          total: parseInt(row.total, 10),
-          concluidas: parseInt(row.concluidas, 10),
-          naoConcluidas: parseInt(row.nao_concluidas, 10),
-        }))
-      : [];
-
-    res.status(200).json(contadores);
+    const result = await pool.query(query, [equipeId, empresaid, hojeLisboa]);
+    const porDia = new Map();
+    for (const row of result.rows) {
+      const agenda = avaliarAgendaManutencao(row, row.diasemana, row.ultima_conclusao, hojeLisboa);
+      const feita = row.status_semana === 'concluida';
+      const trabalhoAberto = row.status_semana === 'pendente' || row.status_semana === 'nao_concluida';
+      const incluir = agenda.frequencia !== 'quinzenal'
+        || agenda.visita_programada || agenda.agenda_estado === 'concluida'
+        || feita || trabalhoAberto;
+      if (!incluir) continue;
+      const atual = porDia.get(row.diasemana) || {
+        diasemana: row.diasemana, total: 0, concluidas: 0, naoConcluidas: 0
+      };
+      atual.total++;
+      if (feita || agenda.agenda_estado === 'concluida') atual.concluidas++;
+      else if (row.status_semana === 'nao_concluida') atual.naoConcluidas++;
+      porDia.set(row.diasemana, atual);
+    }
+    return res.status(200).json([...porDia.values()].sort((a, b) => a.diasemana.localeCompare(b.diasemana)));
   } catch (error) {
-    console.error('❌ Erro ao buscar contadores de clientes:', error);
-    res.status(500).json({ error: 'Erro ao buscar contadores de clientes.' });
+    console.error('Erro ao buscar contadores de clientes:', error);
+    return res.status(500).json({ error: 'Erro ao buscar contadores de clientes.' });
   }
 });
 
