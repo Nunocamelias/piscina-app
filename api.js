@@ -482,6 +482,10 @@ app.post('/clientes', async (req, res) => {
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
+    periodicidade_verao,
+    periodicidade_inverno,
+    mes_inicio_verao,
+    mes_inicio_inverno,
     condicionantes,
   } = req.body;
 
@@ -498,7 +502,8 @@ app.post('/clientes', async (req, res) => {
         comprimento, largura, profundidade_media, volume,
         tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais,
         eletrolise_sal, tem_orp,
-        ultima_substituicao, valor_manutencao, periodicidade, condicionantes
+        ultima_substituicao, valor_manutencao, periodicidade, condicionantes,
+        periodicidade_verao, periodicidade_inverno, mes_inicio_verao, mes_inicio_inverno
       )
       VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -506,7 +511,7 @@ app.post('/clientes', async (req, res) => {
         $10, $11, $12, $13,
         $14, $15, $16, $17,
         $18, $19,
-        $20, $21, $22, $23
+        $20, $21, $22, $23, $24, $25, $26, $27
       )
       RETURNING *;
     `;
@@ -535,6 +540,10 @@ app.post('/clientes', async (req, res) => {
       parseFloat(valor_manutencao),
       sanitizeString(periodicidade),
       formatArrayForPostgres(condicionantes),
+      periodicidade_verao || null,
+      periodicidade_inverno || null,
+      mes_inicio_verao == null ? 5 : Number(mes_inicio_verao),
+      mes_inicio_inverno == null ? 11 : Number(mes_inicio_inverno),
     ];
 
     const result = await pool.query(query, values);
@@ -695,6 +704,10 @@ app.put('/clientes/:id', async (req, res) => {
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
+    periodicidade_verao,
+    periodicidade_inverno,
+    mes_inicio_verao,
+    mes_inicio_inverno,
     condicionantes,
   } = req.body;
 
@@ -720,8 +733,11 @@ app.put('/clientes/:id', async (req, res) => {
       SET nome = $1, morada = $2, localidade = $3, codigo_postal = $4, google_maps = $5, email = $6, telefone = $7, 
           info_acesso = $8, comprimento = $9, largura = $10, profundidade_media = $11, volume = $12, 
           tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17, tem_orp = $18,
-ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22, updated_at = NOW()
-WHERE id = $23 AND empresaid = $24
+ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22,
+    periodicidade_verao = $23, periodicidade_inverno = $24,
+    mes_inicio_verao = $25, mes_inicio_inverno = $26,
+    updated_at = NOW()
+WHERE id = $27 AND empresaid = $28
       RETURNING *;
     `;
     const values = [
@@ -747,6 +763,10 @@ WHERE id = $23 AND empresaid = $24
       parseFloat(valor_manutencao),
       periodicidade,
       `{${condicionantes?.join(',')}}`,
+      periodicidade_verao === undefined ? verificarResult.rows[0].periodicidade_verao : (periodicidade_verao || null),
+      periodicidade_inverno === undefined ? verificarResult.rows[0].periodicidade_inverno : (periodicidade_inverno || null),
+      mes_inicio_verao === undefined ? verificarResult.rows[0].mes_inicio_verao : Number(mes_inicio_verao),
+      mes_inicio_inverno === undefined ? verificarResult.rows[0].mes_inicio_inverno : Number(mes_inicio_inverno),
       id,
       empresaid,
     ];
