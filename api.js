@@ -2886,18 +2886,63 @@ app.get('/clientes-disponiveis', async (req, res) => {
         c.nome, 
         c.morada, 
         c.telefone, 
-        CAST(c.periodicidade AS BIGINT) AS periodicidade,
-        (CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) AS periodicidadeRestante,
-        CONCAT('P', CAST(c.periodicidade AS BIGINT), '/', 
-               CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) AS periodicidadeFormatada
+        freq.limite_semana AS periodicidade,
+        (freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeRestante,
+        CONCAT('P', freq.limite_semana, '/',
+               freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeFormatada
       FROM clientes c
       LEFT JOIN (
         SELECT clienteId, COUNT(*) AS total_associacoes
         FROM associados
         GROUP BY clienteId
       ) a ON c.id = a.clienteId
+      CROSS JOIN LATERAL (
+        -- O limite de associações corresponde ao maior número de visitas
+        -- semanais entre os períodos. 'quinzenal' conta como 1 vaga.
+        SELECT GREATEST(
+          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]
+        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
+    `;
+
+    const result = await pool.query(query, [empresaid, diaSemana]);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar clientes disponíveis:', error);
+    res.status(500).send('Erro ao buscar clientes disponíveis.');
+  }
+});
+
+            THEN TRIM(c.periodicidade)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]
+        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
+    `;
+
+    const result = await pool.query(query, [empresaid, diaSemana]);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar clientes disponíveis:', error);
+    res.status(500).send('Erro ao buscar clientes disponíveis.');
+  }
+});
+
+            THEN TRIM(c.periodicidade_verao)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]
+        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
+    `;
+
+    const result = await pool.query(query, [empresaid, diaSemana]);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar clientes disponíveis:', error);
+    res.status(500).send('Erro ao buscar clientes disponíveis.');
+  }
+});
+
+            THEN TRIM(c.periodicidade_inverno)::integer ELSE 1 END
+        ) AS limite_semana
+      ) freq
       WHERE c.empresaid = $1
-        AND (CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) > 0
+        AND (freq.limite_semana - COALESCE(a.total_associacoes, 0)) > 0
         AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
     `;
 
