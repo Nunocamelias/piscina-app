@@ -3529,6 +3529,113 @@ app.get('/detalhes-equipe', async (req, res) => {
   }
 });
 
+// Abre uma nova visita quinzenal (programada ou antecipada) sem alterar o histórico.
+// Um bloqueio no cliente impede a abertura simultânea de duas visitas.
+app.post('/manutencoes/iniciar-visita', async (req, res) => {
+  const { clienteId, equipeId, diaSemana, empresaid } = req.body;
+  if (!clienteId || !equipeId || !diaSemana || !empresaid) {
+    return res.status(400).json({ error: 'Cliente, equipa, dia e empresa são obrigatórios.' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cfg = await client.query(`
+      SELECT c.id, c.empresaid, c.periodicidade,
+             c.periodicidade_verao, c.periodicidade_inverno,
+             c.mes_inicio_verao, c.mes_inicio_inverno
+      FROM clientes c
+      JOIN associados a ON a.clienteid = c.id AND a.empresaid = c.empresaid
+      JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+      WHERE c.id = $1 AND c.empresaid = $2
+        AND a.equipeid = $3 AND a.diasemana = $4
+      LIMIT 1 FOR UPDATE OF c
+    `, [clienteId, empresaid, equipeId, diaSemana]);
+    if (!cfg.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Cliente não associado a esta equipa e dia.' });
+    }
+    const hoje = dataLisboaISO();
+    const semanaInicio = moment(hoje, 'YYYY-MM-DD').startOf('isoWeek').format('YYYY-MM-DD');
+    const frequencia = avaliarAgendaManutencao(cfg.rows[0], diaSemana, null, hoje).frequencia;
+    if (frequencia !== 'quinzenal') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A abertura especial só se aplica a manutenções quinzenais.' });
+    }
+
+    const existente = await client.query(`
+      SELECT m.id, m.status
+      FROM manutencoes m
+      WHERE m.cliente_id = $1 AND m.equipe_id = $2
+        AND m.dia_semana = $3 AND m.empresaid = $4
+        AND (
+          m.data_manutencao::date BETWEEN $5::date AND $5::date + 6
+          OR m.data_conclusao::date BETWEEN $5::date AND $5::date + 6
+        )
+      ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
+    `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
+    if (existente.rowCount) {
+      await client.query('COMMIT');
+      if (existente.rows[0].status === 'concluida') {
+        return res.status(409).json({ error: 'Esta manutenção já foi concluída nesta semana.' });
+      }
+      return res.status(200).json({
+        message: 'A manutenção desta semana já estava aberta.',
+        manutencaoId: existente.rows[0].id, criada: false
+      });
+    }
+
+    const ult = await client.query(`
+      SELECT id, metodo_analise, modo_tratamento
+      FROM manutencoes
+      WHERE cliente_id = $1 AND empresaid = $2
+      ORDER BY data_manutencao DESC, id DESC LIMIT 1
+    `, [clienteId, empresaid]);
+    const anterior = ult.rows[0];
+    const nova = await client.query(`
+      INSERT INTO manutencoes (
+        cliente_id, equipe_id, dia_semana, status, data_manutencao,
+        empresaid, metodo_analise, modo_tratamento
+      ) VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+      RETURNING id
+    `, [clienteId, equipeId, diaSemana, empresaid,
+      anterior?.metodo_analise || 'fitas', anterior?.modo_tratamento || 'cloro']);
+    const novaId = nova.rows[0].id;
+
+    // Semeia os parâmetros ativos sem copiar medições como atuais.
+    await client.query(`
+      INSERT INTO manutencoes_parametros (
+        manutencao_id, parametro, valor_ultimo, valor_atual,
+        produto_usado, quantidade_usada, status, empresaid
+      )
+      SELECT $1, pq.parametro, ant.valor_atual, NULL, NULL, 0, 'pendente', $2
+      FROM parametros_quimicos pq
+      LEFT JOIN LATERAL (
+        SELECT mp.valor_atual
+        FROM manutencoes_parametros mp
+        JOIN manutencoes m ON m.id = mp.manutencao_id
+        WHERE m.cliente_id = $3 AND m.empresaid = $2
+          AND m.status = 'concluida' AND mp.parametro = pq.parametro
+        ORDER BY m.data_conclusao DESC NULLS LAST, m.data_manutencao DESC, m.id DESC
+        LIMIT 1
+      ) ant ON TRUE
+      WHERE pq.empresaid = $2 AND pq.ativo = TRUE
+      ON CONFLICT (manutencao_id, parametro) DO NOTHING
+    `, [novaId, empresaid, clienteId]);
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      message: 'Nova manutenção quinzenal iniciada.', manutencaoId: novaId, criada: true
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao iniciar visita quinzenal:', error);
+    return res.status(500).json({ error: 'Não foi possível iniciar a visita.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/manutencao-atual', async (req, res) => {
   const { clienteId, diaSemana, empresaid } = req.query;
 
