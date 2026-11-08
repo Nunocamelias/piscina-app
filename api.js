@@ -3950,7 +3950,16 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
       ELSE motivo
     END,
     metodo_analise = COALESCE($5::varchar, metodo_analise),
-    modo_tratamento = COALESCE($6::varchar, modo_tratamento)
+    modo_tratamento = COALESCE($6::varchar, modo_tratamento),
+    -- A data só é fixada na transição para 'concluida'.
+    -- Guardar novamente a mesma manutenção não reinicia os 14 dias.
+    data_conclusao = CASE
+      WHEN $1::varchar = 'concluida' AND status IS DISTINCT FROM 'concluida'
+        THEN (NOW() AT TIME ZONE 'Europe/Lisbon')
+      WHEN $1::varchar IN ('pendente', 'nao_concluida') AND status = 'concluida'
+        THEN NULL
+      ELSE data_conclusao
+    END
   WHERE id = $2 AND empresaid = $3
   RETURNING *;
 `;
@@ -5211,11 +5220,19 @@ app.post('/manutencoes/concluir', async (req, res) => {
 
     // 1) Criar manutenção
     const query = `
-      INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao)
-      VALUES ($1, $2, $3, $4, NOW())
+      INSERT INTO manutencoes (
+        cliente_id, equipe_id, dia_semana, status,
+        data_manutencao, data_conclusao, empresaid
+      )
+      VALUES (
+        $1, $2, $3, $4,
+        NOW(),
+        CASE WHEN $4 = 'concluida' THEN (NOW() AT TIME ZONE 'Europe/Lisbon') ELSE NULL END,
+        $5
+      )
       RETURNING *;
     `;
-    const values = [cliente_id, equipe_id, dia_semana, status];
+    const values = [cliente_id, equipe_id, dia_semana, status, empresaid];
     const result = await client.query(query, values);
     const manutencaoId = result.rows[0].id;
 
