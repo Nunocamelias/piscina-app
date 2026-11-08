@@ -4475,7 +4475,10 @@ async function resetStatusEmpresa(empresaid) {
 
     // O cron corre ao domingo às 23h55: prepara as visitas da semana seguinte.
     // Para um reset manual, também prepara a semana seguinte nos quinzenais.
-    const semanaAlvo = somarDiasISO(dataLisboaISO(), 7);
+    const semanaAlvo = moment(dataLisboaISO(), 'YYYY-MM-DD')
+      .startOf('isoWeek')
+      .add(1, 'week')
+      .format('YYYY-MM-DD');
 
     for (const cliente of clientesAtivosResult.rows) {
       const agenda = avaliarAgendaManutencao(
