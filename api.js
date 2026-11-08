@@ -2912,17 +2912,17 @@ app.get('/clientes-disponiveis', async (req, res) => {
       ) a ON c.id = a.clienteid
       CROSS JOIN LATERAL (
         SELECT GREATEST(
-          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]$'
-            THEN TRIM(c.periodicidade)::integer ELSE 1 END,
-          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]$'
-            THEN TRIM(c.periodicidade_verao)::integer ELSE 1 END,
-          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]$'
-            THEN TRIM(c.periodicidade_inverno)::integer ELSE 1 END
+          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade), 1)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade_verao), 1)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade_inverno), 1)::integer ELSE 1 END
         ) AS limite_semana
       ) freq
       WHERE c.empresaid = $1
         AND (freq.limite_semana - COALESCE(a.total_associacoes, 0)) > 0
-        AND NOT ($2 = ANY(COALESCE(c.condicionantes, ARRAY[]::varchar[])));
+        AND NOT ($2 = ANY(COALESCE(c.condicionantes, ARRAY[]::text[])));
     `;
     const result = await pool.query(query, [empresaid, diaSemana]);
     return res.status(200).json(result.rows);
