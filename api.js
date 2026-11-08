@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
-const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO } = require('./services/periodicidadeManutencao');
+const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO, valorMensalidadeNaData } = require('./services/periodicidadeManutencao');
 
 // Middlewares
 app.use(cors());
@@ -53,6 +53,13 @@ const formatArrayForPostgres = (array) => {
   }
   return '{}'; // Retorna array vazio como padrão
 };
+// Valores por época são opcionais; NULL significa usar o valor base.
+const valorSazonalOuNulo = (valor) => {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+  const numero = Number(String(valor).trim().replace(',', '.'));
+  return Number.isFinite(numero) && numero >= 0 ? numero : NaN;
+};
+
 const { createClient } = require('@supabase/supabase-js');
 
 const WebSocket = require('ws');
@@ -487,11 +494,19 @@ app.post('/clientes', async (req, res) => {
     periodicidade_inverno,
     mes_inicio_verao,
     mes_inicio_inverno,
+    valor_manutencao_verao,
+    valor_manutencao_inverno,
     condicionantes,
   } = req.body;
 
   if (!empresaid) {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  const valorVerao = valorSazonalOuNulo(valor_manutencao_verao);
+  const valorInverno = valorSazonalOuNulo(valor_manutencao_inverno);
+  if (Number.isNaN(valorVerao) || Number.isNaN(valorInverno)) {
+    return res.status(400).json({ error: 'Os valores mensais das épocas devem ser números válidos e não negativos.' });
   }
 
   try {
@@ -504,7 +519,8 @@ app.post('/clientes', async (req, res) => {
         tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais,
         eletrolise_sal, tem_orp,
         ultima_substituicao, valor_manutencao, periodicidade, condicionantes,
-        periodicidade_verao, periodicidade_inverno, mes_inicio_verao, mes_inicio_inverno
+        periodicidade_verao, periodicidade_inverno, mes_inicio_verao, mes_inicio_inverno,
+        valor_manutencao_verao, valor_manutencao_inverno
       )
       VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -512,7 +528,7 @@ app.post('/clientes', async (req, res) => {
         $10, $11, $12, $13,
         $14, $15, $16, $17,
         $18, $19,
-        $20, $21, $22, $23, $24, $25, $26, $27
+        $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
       )
       RETURNING *;
     `;
@@ -545,6 +561,8 @@ app.post('/clientes', async (req, res) => {
       periodicidade_inverno || null,
       mes_inicio_verao == null ? 5 : Number(mes_inicio_verao),
       mes_inicio_inverno == null ? 11 : Number(mes_inicio_inverno),
+      valorVerao,
+      valorInverno,
     ];
 
     const result = await pool.query(query, values);
@@ -709,12 +727,20 @@ app.put('/clientes/:id', async (req, res) => {
     periodicidade_inverno,
     mes_inicio_verao,
     mes_inicio_inverno,
+    valor_manutencao_verao,
+    valor_manutencao_inverno,
     condicionantes,
   } = req.body;
 
   // Validação básica
   if (!empresaid) {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  const valorVerao = valorSazonalOuNulo(valor_manutencao_verao);
+  const valorInverno = valorSazonalOuNulo(valor_manutencao_inverno);
+  if (Number.isNaN(valorVerao) || Number.isNaN(valorInverno)) {
+    return res.status(400).json({ error: 'Os valores mensais das épocas devem ser números válidos e não negativos.' });
   }
 
   try {
@@ -737,8 +763,9 @@ app.put('/clientes/:id', async (req, res) => {
 ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22,
     periodicidade_verao = $23, periodicidade_inverno = $24,
     mes_inicio_verao = $25, mes_inicio_inverno = $26,
+    valor_manutencao_verao = $27, valor_manutencao_inverno = $28,
     updated_at = NOW()
-WHERE id = $27 AND empresaid = $28
+WHERE id = $29 AND empresaid = $30
       RETURNING *;
     `;
     const values = [
@@ -768,6 +795,8 @@ WHERE id = $27 AND empresaid = $28
       periodicidade_inverno === undefined ? verificarResult.rows[0].periodicidade_inverno : (periodicidade_inverno || null),
       mes_inicio_verao === undefined ? verificarResult.rows[0].mes_inicio_verao : Number(mes_inicio_verao),
       mes_inicio_inverno === undefined ? verificarResult.rows[0].mes_inicio_inverno : Number(mes_inicio_inverno),
+      valor_manutencao_verao === undefined ? verificarResult.rows[0].valor_manutencao_verao : valorVerao,
+      valor_manutencao_inverno === undefined ? verificarResult.rows[0].valor_manutencao_inverno : valorInverno,
       id,
       empresaid,
     ];
@@ -7053,18 +7082,25 @@ async function lancarMensalidadesMes(mesReferencia) {
       SELECT DISTINCT
         c.id AS cliente_id,
         c.empresaid,
-        COALESCE(c.valor_manutencao, 0) AS valor_manutencao
+        COALESCE(c.valor_manutencao, 0) AS valor_manutencao,
+        c.valor_manutencao_verao,
+        c.valor_manutencao_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno
       FROM clientes c
       INNER JOIN associados a
         ON a.clienteid = c.id
         AND a.empresaid = c.empresaid
-      WHERE COALESCE(c.valor_manutencao, 0) > 0;
+      WHERE COALESCE(c.valor_manutencao, 0) > 0
+         OR COALESCE(c.valor_manutencao_verao, 0) > 0
+         OR COALESCE(c.valor_manutencao_inverno, 0) > 0;
     `);
 
     let criados = 0;
-    let atualizados = 0;
+    let jaExistentes = 0;
 
     for (const clienteAtual of clientesAtivosResult.rows) {
+      const valorMes = valorMensalidadeNaData(clienteAtual, `${mesReferencia}-01`);
       const resultado = await client.query(
         `
           INSERT INTO pagamentos_clientes (
@@ -7091,24 +7127,23 @@ async function lancarMensalidadesMes(mesReferencia) {
             NULL,
             NOW()
           )
+          -- Se já existe um lançamento, não apagar correções manuais do mês.
           ON CONFLICT (cliente_id, empresaid, mes_referencia)
-          DO UPDATE SET
-            valor_manutencao = EXCLUDED.valor_manutencao,
-            updated_at = NOW()
-          RETURNING (xmax = 0) AS criado;
+          DO NOTHING
+          RETURNING id;
         `,
         [
           clienteAtual.cliente_id,
           clienteAtual.empresaid,
           mesReferencia,
-          Number(clienteAtual.valor_manutencao || 0),
+          valorMes,
         ]
       );
 
-      if (resultado.rows[0]?.criado) {
+      if (resultado.rowCount > 0) {
         criados += 1;
       } else {
-        atualizados += 1;
+        jaExistentes += 1;
       }
     }
 
@@ -7118,7 +7153,8 @@ async function lancarMensalidadesMes(mesReferencia) {
       mes_referencia: mesReferencia,
       clientes_processados: clientesAtivosResult.rows.length,
       registos_criados: criados,
-      registos_atualizados: atualizados,
+      registos_atualizados: 0,
+      registos_ja_existentes: jaExistentes,
     };
   } catch (error) {
     await client.query('ROLLBACK');
