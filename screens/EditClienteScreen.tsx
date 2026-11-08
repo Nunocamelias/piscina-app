@@ -5,6 +5,15 @@ import axios from 'axios';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const mesesAno = [
+  { nome: 'Janeiro', numero: 1 }, { nome: 'Fevereiro', numero: 2 },
+  { nome: 'Março', numero: 3 }, { nome: 'Abril', numero: 4 },
+  { nome: 'Maio', numero: 5 }, { nome: 'Junho', numero: 6 },
+  { nome: 'Julho', numero: 7 }, { nome: 'Agosto', numero: 8 },
+  { nome: 'Setembro', numero: 9 }, { nome: 'Outubro', numero: 10 },
+  { nome: 'Novembro', numero: 11 }, { nome: 'Dezembro', numero: 12 },
+];
+
 const isDarkMode = Appearance.getColorScheme() === 'dark';
 
 const EditClienteScreen = ({ route, navigation }: any) => {
@@ -63,6 +72,18 @@ useEffect(() => {
     }
   }, [form?.comprimento, form?.largura, form?.profundidade_media, form?.volume]); // 🔹 Adiciona `form.volume`
     const salvarCliente = async () => {
+    if (Number(form.mes_inicio_verao ?? 5) === Number(form.mes_inicio_inverno ?? 11)) {
+      Alert.alert('Erro', 'O verão e o inverno não podem começar no mesmo mês.');
+      return;
+    }
+    for (const campo of ['valor_manutencao_verao', 'valor_manutencao_inverno']) {
+      const valor = String(form[campo] ?? '').trim();
+      if (valor && (!Number.isFinite(Number(valor.replace(',', '.'))) || Number(valor.replace(',', '.')) < 0)) {
+        Alert.alert('Erro', 'Os valores mensais sazonais devem ser números não negativos.');
+        return;
+      }
+    }
+
     try {
       // Recupera o empresaid do AsyncStorage
       const empresaid = await AsyncStorage.getItem('empresaid');
@@ -126,7 +147,7 @@ useEffect(() => {
     );
   };
 
-  const handleChange = (field: keyof typeof form, value: string | boolean) => {
+  const handleChange = (field: keyof typeof form, value: string | boolean | number) => {
   if (field === 'codigo_postal' && typeof value === 'string') {
     let formattedValue = value.replace(/\D/g, '');
     if (formattedValue.length > 4) {
@@ -443,6 +464,92 @@ if (loading || !form) {
     <Text style={styles.unitText}>€</Text>
   </View>
 </View>
+
+
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Plano sazonal (opcional)</Text>
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>
+  Se não preencher os campos da época, mantém-se a periodicidade e o valor gerais.
+</Text>
+
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Início do verão</Text>
+<View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={Number(form.mes_inicio_verao ?? 5)}
+    onValueChange={(v) => handleChange('mes_inicio_verao', v)}
+    enabled={isEditable}
+    style={styles.picker}
+  >
+    {mesesAno.map((mes) => <Picker.Item key={mes.numero} label={mes.nome} value={mes.numero} />)}
+  </Picker>
+</View>
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Frequência no verão</Text>
+<View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={form.periodicidade_verao ?? ''}
+    onValueChange={(v) => handleChange('periodicidade_verao', v)}
+    enabled={isEditable}
+    style={styles.picker}
+  >
+    <Picker.Item label="Usar periodicidade geral" value="" />
+    <Picker.Item label="1 vez por semana" value="1" />
+    <Picker.Item label="2 vezes por semana" value="2" />
+    <Picker.Item label="3 vezes por semana" value="3" />
+    <Picker.Item label="4 vezes por semana" value="4" />
+    <Picker.Item label="5 vezes por semana" value="5" />
+    <Picker.Item label="6 vezes por semana" value="6" />
+    <Picker.Item label="Quinzenalmente" value="quinzenal" />
+  </Picker>
+</View>
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Mensalidade de verão (€)</Text>
+<TextInput
+  style={[styles.input, !isEditable && styles.readOnly]}
+  placeholder="Usar valor mensal geral"
+  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+  keyboardType="decimal-pad"
+  value={String(form.valor_manutencao_verao ?? '')}
+  editable={isEditable}
+  onChangeText={(v) => handleChange('valor_manutencao_verao', v)}
+/>
+
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Início do inverno</Text>
+<View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={Number(form.mes_inicio_inverno ?? 11)}
+    onValueChange={(v) => handleChange('mes_inicio_inverno', v)}
+    enabled={isEditable}
+    style={styles.picker}
+  >
+    {mesesAno.map((mes) => <Picker.Item key={mes.numero} label={mes.nome} value={mes.numero} />)}
+  </Picker>
+</View>
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Frequência no inverno</Text>
+<View style={styles.pickerContainer}>
+  <Picker
+    selectedValue={form.periodicidade_inverno ?? ''}
+    onValueChange={(v) => handleChange('periodicidade_inverno', v)}
+    enabled={isEditable}
+    style={styles.picker}
+  >
+    <Picker.Item label="Usar periodicidade geral" value="" />
+    <Picker.Item label="1 vez por semana" value="1" />
+    <Picker.Item label="2 vezes por semana" value="2" />
+    <Picker.Item label="3 vezes por semana" value="3" />
+    <Picker.Item label="4 vezes por semana" value="4" />
+    <Picker.Item label="5 vezes por semana" value="5" />
+    <Picker.Item label="6 vezes por semana" value="6" />
+    <Picker.Item label="Quinzenalmente" value="quinzenal" />
+  </Picker>
+</View>
+<Text style={isDarkMode ? styles.labelDark : styles.labelLight}>Mensalidade de inverno (€)</Text>
+<TextInput
+  style={[styles.input, !isEditable && styles.readOnly]}
+  placeholder="Usar valor mensal geral"
+  placeholderTextColor={isDarkMode ? '#B0B0B0' : '#666666'}
+  keyboardType="decimal-pad"
+  value={String(form.valor_manutencao_inverno ?? '')}
+  editable={isEditable}
+  onChangeText={(v) => handleChange('valor_manutencao_inverno', v)}
+/>
 
 <TouchableOpacity
   style={styles.button}

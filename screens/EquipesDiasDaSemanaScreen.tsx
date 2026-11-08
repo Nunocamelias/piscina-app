@@ -16,6 +16,7 @@ const EquipesDiasDaSemanaScreen = ({ navigation, route }: any) => {
   const [progress, setProgress] = useState<Record<string, { verde: number; vermelho: number }>>({});
   const [userEmpresaid, setUserEmpresaid] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState('');
+  const [contadoresEmCache, setContadoresEmCache] = useState(false);
   const isFocused = useIsFocused();
 
   const diasDaSemana = useMemo(
@@ -79,6 +80,7 @@ const fetchContadores = useCallback(async () => {
     if (cached?.data && Object.keys(cached.data).length > 0) {
       console.log('[DEBUG] Contadores carregados do cache:', cached.data, 'ts=', cached.ts);
       setContadores(cached.data);
+      setContadoresEmCache(true);
     }
 
     // 2) Depois tenta online
@@ -115,6 +117,7 @@ const fetchContadores = useCallback(async () => {
 
     console.log('[DEBUG] Contadores formatados:', novosContadores);
     setContadores(novosContadores);
+    setContadoresEmCache(false);
 
     // 3) Guardar no cache já no formato que a UI usa
     await setContadoresCache(userEmpresaid, equipeId, novosContadores);
@@ -130,10 +133,12 @@ const fetchContadores = useCallback(async () => {
     if (cached?.data && Object.keys(cached.data).length > 0) {
       console.log('[DEBUG] Fallback cache (offline):', cached.data);
       setContadores(cached.data);
+      setContadoresEmCache(true);
       // opcional: não alertar para não chatear no terreno
       return;
     }
 
+    setContadoresEmCache(true);
     Alert.alert('Erro', 'Não foi possível carregar os contadores de clientes.');
   }
 }, [userEmpresaid, equipeId]);
@@ -198,6 +203,11 @@ useEffect(() => {
   <View style={styles.container}>
     {/* 🔹 Título principal */}
     <Text style={styles.title}>Dias da Semana - {equipeNome}</Text>
+    {contadoresEmCache && (
+      <Text style={styles.avisoCache}>
+        Contadores em cache. Confirma a agenda online: as visitas quinzenais podem ter mudado de semana.
+      </Text>
+    )}
 
     {/* 🔹 Lista de dias */}
     {diasDaSemana.map((dia) => (
@@ -268,6 +278,14 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 4,
+  },
+  avisoCache: {
+    color: '#733D00',
+    backgroundColor: '#FFF5CC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    fontSize: 13,
   },
   dayContainer: {
     marginBottom: 15,

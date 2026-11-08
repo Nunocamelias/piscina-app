@@ -3,7 +3,7 @@ import { View, Text, FlatList, Alert, StyleSheet, TouchableOpacity, Appearance }
 import axios from 'axios';
 import Config from 'react-native-config';
 import { initOffline } from '../services/offline/db';
-import { getClientesPorDiaCache, setClientesPorDiaCache } from '../services/offline/cache';
+import { getClientesPorDiaCache, setClientesPorDiaCache, setManutencaoAtualCache } from '../services/offline/cache';
 
 type Props = {
   navigation: any;
@@ -26,6 +26,11 @@ type Cliente = {
   ultima_substituicao: string;
   status?: string;
   motivo?: string | null;
+  status_semana?: string | null;
+  frequencia?: 'semanal' | 'quinzenal';
+  agenda_estado?: 'normal' | 'programada' | 'sem_visita' | 'concluida' | 'antecipada_em_curso';
+  visita_programada?: boolean;
+  proxima_visita?: string | null;
 };
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
@@ -47,6 +52,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
   const { equipeId, equipeNome, diaSemana, empresaid } = route.params; // Recebe o empresaid
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
+  const [agendaEmCache, setAgendaEmCache] = useState(false);
 
 
 
@@ -63,6 +69,7 @@ const fetchClientes = useCallback(async () => {
     if (cached?.data && Array.isArray(cached.data)) {
       console.log('[fetchClientes] carregou do cache. ts=', cached.ts);
       setClientes(cached.data);
+      setAgendaEmCache(true);
     }
 
     // 2) Tenta online
@@ -72,6 +79,7 @@ const fetchClientes = useCallback(async () => {
 
     console.log('📊 Dados recebidos de clientes-por-dia:', response.data);
     setClientes(response.data);
+    setAgendaEmCache(false);
 
     // 3) Guardar cache
     await setClientesPorDiaCache(empresaid, equipeId, diaSemana, response.data);
@@ -82,9 +90,11 @@ const fetchClientes = useCallback(async () => {
     const cached = await getClientesPorDiaCache<any[]>(empresaid, equipeId, diaSemana);
     if (cached?.data && Array.isArray(cached.data)) {
       setClientes(cached.data);
+      setAgendaEmCache(true);
       return;
     }
 
+    setAgendaEmCache(true);
     Alert.alert('Erro', 'Não foi possível carregar os clientes associados.');
   } finally {
     setLoading(false);
@@ -98,13 +108,95 @@ const fetchClientes = useCallback(async () => {
     return unsubscribe;
   }, [navigation, fetchClientes]); // ✅ Agora o ESLint não reclama
 
+  const navegarFolha = (item: Cliente) => {
+    navigation.navigate('FolhaManutencao', {
+      empresaid,
+      clienteId: item.id,
+      nome: item.nome,
+      morada: item.morada,
+      telefone: item.telefone,
+      info_acesso: item.info_acesso,
+      google_maps: item.google_maps,
+      volume: item.volume,
+      tanque_compensacao: item.tanque_compensacao,
+      cobertura: item.cobertura,
+      bomba_calor: item.bomba_calor,
+      equipamentos_especiais: item.equipamentos_especiais,
+      eletrolise_sal: item.eletrolise_sal,
+      ultima_substituicao: item.ultima_substituicao,
+      status: item.status,
+      equipeId,
+      diaSemana,
+      equipeNome,
+    });
+  };
+
+  const abrirPiscina = (item: Cliente) => {
+    const semVisita = item.frequencia === 'quinzenal' && item.agenda_estado === 'sem_visita';
+    const semRegistoEstaSemana = item.frequencia === 'quinzenal'
+      && item.agenda_estado === 'programada' && !item.status_semana;
+    // Consultar uma manutenção já aberta continua possível offline.
+    // Só abrir uma visita NOVA exige sincronização com a API.
+    if (agendaEmCache && (semVisita || semRegistoEstaSemana)) {
+      Alert.alert(
+        'Agenda por sincronizar',
+        'É necessário confirmar a agenda online antes de abrir uma nova manutenção quinzenal.'
+      );
+      return;
+    }
+
+    if (!semVisita && !semRegistoEstaSemana) {
+      navegarFolha(item);
+      return;
+    }
+
+    Alert.alert(
+      semVisita ? 'Antecipar manutenção quinzenal' : 'Iniciar manutenção quinzenal',
+      semVisita
+        ? `Esta piscina está sem visita prevista nesta semana. Queres antecipar a manutenção? O dia habitual (${diaSemana}) mantém-se e a próxima visita será recalculada depois da conclusão.`
+        : 'Ainda não existe uma manutenção aberta nesta semana. Queres iniciar uma nova?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: semVisita ? 'Antecipar' : 'Iniciar',
+          onPress: async () => {
+            try {
+              await axios.post(`${Config.API_URL}/manutencoes/iniciar-visita`, {
+                clienteId: item.id,
+                equipeId,
+                diaSemana,
+                empresaid,
+              });
+              // Impede que a folha leia do cache uma manutenção antiga concluída.
+              await setManutencaoAtualCache(empresaid, item.id, diaSemana, null);
+              navegarFolha({ ...item, status: 'pendente', status_semana: 'pendente' });
+            } catch (error) {
+              const mensagem = axios.isAxiosError(error)
+                ? error.response?.data?.error || 'Não foi possível iniciar a manutenção.'
+                : 'Não foi possível iniciar a manutenção.';
+              Alert.alert('Erro', mensagem);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const formatarData = (iso?: string | null) =>
+    iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+      : '';
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
         Clientes - {diaSemana} : {equipeNome}
       </Text>
-
-  
+      {agendaEmCache && (
+        <Text style={styles.avisoCache}>
+          Agenda em cache: as semanas quinzenais podem estar desatualizadas. Sincroniza antes de iniciar visitas.
+        </Text>
+      )}
 
       {clientes.length > 0 ? (
         <FlatList
@@ -114,32 +206,12 @@ const fetchClientes = useCallback(async () => {
             <TouchableOpacity
               style={[
                 styles.card,
-                item.status === 'concluida' && styles.cardConcluida,
+                item.frequencia === 'quinzenal' && styles.cardQuinzenal,
+                item.agenda_estado === 'sem_visita' && styles.cardSemVisita,
+                (item.status === 'concluida' || item.agenda_estado === 'concluida') && styles.cardConcluida,
                 item.status === 'nao_concluida' && styles.cardNaoConcluida,
               ]}
-              onPress={() =>
-  navigation.navigate('FolhaManutencao', {
-    empresaid,
-    clienteId: item.id,
-    nome: item.nome,
-    morada: item.morada,
-    telefone: item.telefone,
-    info_acesso: item.info_acesso,
-    google_maps: item.google_maps,
-    volume: item.volume,
-    tanque_compensacao: item.tanque_compensacao,
-    cobertura: item.cobertura,
-    bomba_calor: item.bomba_calor,
-    equipamentos_especiais: item.equipamentos_especiais,
-    eletrolise_sal: item.eletrolise_sal,
-    ultima_substituicao: item.ultima_substituicao,
-    status: item.status,
-    equipeId,
-    diaSemana,
-    equipeNome,
-  })
-}
-
+              onPress={() => abrirPiscina(item)}
             >
               <View style={styles.cardHeader}>
                 <Text style={styles.clientName}>{item.nome}</Text>
@@ -149,6 +221,17 @@ const fetchClientes = useCallback(async () => {
               </View>
               <Text style={styles.clientDetails}>Morada: {item.morada}</Text>
               <Text style={styles.clientDetails}>Telefone: {item.telefone}</Text>
+              {item.frequencia === 'quinzenal' && (
+                <Text style={styles.quinzenalLabel}>
+                  {item.agenda_estado === 'sem_visita'
+                    ? `Quinzenal · Sem visita esta semana · Próxima: ${formatarData(item.proxima_visita)}`
+                    : item.agenda_estado === 'concluida'
+                      ? 'Quinzenal · Concluída esta semana'
+                      : item.agenda_estado === 'antecipada_em_curso'
+                        ? 'Quinzenal · Visita antecipada em curso'
+                        : 'Quinzenal · Visita programada nesta semana'}
+                </Text>
+              )}
             </TouchableOpacity>
           )}
         />
@@ -190,6 +273,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 3.65,
     elevation: 10,
+  },
+  avisoCache: {
+    color: '#733D00',
+    backgroundColor: '#FFF5CC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    fontSize: 13,
+  },
+  cardQuinzenal: {
+    borderColor: '#8D78BC',
+  },
+  cardSemVisita: {
+    backgroundColor: '#E7E7E7',
+    borderColor: '#A0A0A0',
+  },
+  quinzenalLabel: {
+    fontSize: 13,
+    color: '#383838',
+    fontWeight: '600',
+    marginTop: 8,
   },
   cardConcluida: {
     backgroundColor: '#DFF2BF',

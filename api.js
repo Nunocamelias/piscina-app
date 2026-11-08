@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
+const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO, valorMensalidadeNaData } = require('./services/periodicidadeManutencao');
 
 // Middlewares
 app.use(cors());
@@ -52,6 +53,13 @@ const formatArrayForPostgres = (array) => {
   }
   return '{}'; // Retorna array vazio como padrão
 };
+// Valores por época são opcionais; NULL significa usar o valor base.
+const valorSazonalOuNulo = (valor) => {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+  const numero = Number(String(valor).trim().replace(',', '.'));
+  return Number.isFinite(numero) && numero >= 0 ? numero : NaN;
+};
+
 const { createClient } = require('@supabase/supabase-js');
 
 const WebSocket = require('ws');
@@ -482,11 +490,23 @@ app.post('/clientes', async (req, res) => {
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
+    periodicidade_verao,
+    periodicidade_inverno,
+    mes_inicio_verao,
+    mes_inicio_inverno,
+    valor_manutencao_verao,
+    valor_manutencao_inverno,
     condicionantes,
   } = req.body;
 
   if (!empresaid) {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  const valorVerao = valorSazonalOuNulo(valor_manutencao_verao);
+  const valorInverno = valorSazonalOuNulo(valor_manutencao_inverno);
+  if (Number.isNaN(valorVerao) || Number.isNaN(valorInverno)) {
+    return res.status(400).json({ error: 'Os valores mensais das épocas devem ser números válidos e não negativos.' });
   }
 
   try {
@@ -498,7 +518,9 @@ app.post('/clientes', async (req, res) => {
         comprimento, largura, profundidade_media, volume,
         tanque_compensacao, cobertura, bomba_calor, equipamentos_especiais,
         eletrolise_sal, tem_orp,
-        ultima_substituicao, valor_manutencao, periodicidade, condicionantes
+        ultima_substituicao, valor_manutencao, periodicidade, condicionantes,
+        periodicidade_verao, periodicidade_inverno, mes_inicio_verao, mes_inicio_inverno,
+        valor_manutencao_verao, valor_manutencao_inverno
       )
       VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -506,7 +528,7 @@ app.post('/clientes', async (req, res) => {
         $10, $11, $12, $13,
         $14, $15, $16, $17,
         $18, $19,
-        $20, $21, $22, $23
+        $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
       )
       RETURNING *;
     `;
@@ -535,6 +557,12 @@ app.post('/clientes', async (req, res) => {
       parseFloat(valor_manutencao),
       sanitizeString(periodicidade),
       formatArrayForPostgres(condicionantes),
+      periodicidade_verao || null,
+      periodicidade_inverno || null,
+      mes_inicio_verao == null ? 5 : Number(mes_inicio_verao),
+      mes_inicio_inverno == null ? 11 : Number(mes_inicio_inverno),
+      valorVerao,
+      valorInverno,
     ];
 
     const result = await pool.query(query, values);
@@ -695,12 +723,24 @@ app.put('/clientes/:id', async (req, res) => {
     ultima_substituicao,
     valor_manutencao,
     periodicidade,
+    periodicidade_verao,
+    periodicidade_inverno,
+    mes_inicio_verao,
+    mes_inicio_inverno,
+    valor_manutencao_verao,
+    valor_manutencao_inverno,
     condicionantes,
   } = req.body;
 
   // Validação básica
   if (!empresaid) {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
+  }
+
+  const valorVerao = valorSazonalOuNulo(valor_manutencao_verao);
+  const valorInverno = valorSazonalOuNulo(valor_manutencao_inverno);
+  if (Number.isNaN(valorVerao) || Number.isNaN(valorInverno)) {
+    return res.status(400).json({ error: 'Os valores mensais das épocas devem ser números válidos e não negativos.' });
   }
 
   try {
@@ -720,8 +760,12 @@ app.put('/clientes/:id', async (req, res) => {
       SET nome = $1, morada = $2, localidade = $3, codigo_postal = $4, google_maps = $5, email = $6, telefone = $7, 
           info_acesso = $8, comprimento = $9, largura = $10, profundidade_media = $11, volume = $12, 
           tanque_compensacao = $13, cobertura = $14, bomba_calor = $15, equipamentos_especiais = $16, eletrolise_sal = $17, tem_orp = $18,
-ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22, updated_at = NOW()
-WHERE id = $23 AND empresaid = $24
+ultima_substituicao = $19, valor_manutencao = $20, periodicidade = $21, condicionantes = $22,
+    periodicidade_verao = $23, periodicidade_inverno = $24,
+    mes_inicio_verao = $25, mes_inicio_inverno = $26,
+    valor_manutencao_verao = $27, valor_manutencao_inverno = $28,
+    updated_at = NOW()
+WHERE id = $29 AND empresaid = $30
       RETURNING *;
     `;
     const values = [
@@ -747,6 +791,12 @@ WHERE id = $23 AND empresaid = $24
       parseFloat(valor_manutencao),
       periodicidade,
       `{${condicionantes?.join(',')}}`,
+      periodicidade_verao === undefined ? verificarResult.rows[0].periodicidade_verao : (periodicidade_verao || null),
+      periodicidade_inverno === undefined ? verificarResult.rows[0].periodicidade_inverno : (periodicidade_inverno || null),
+      mes_inicio_verao === undefined ? verificarResult.rows[0].mes_inicio_verao : Number(mes_inicio_verao),
+      mes_inicio_inverno === undefined ? verificarResult.rows[0].mes_inicio_inverno : Number(mes_inicio_inverno),
+      valor_manutencao_verao === undefined ? verificarResult.rows[0].valor_manutencao_verao : valorVerao,
+      valor_manutencao_inverno === undefined ? verificarResult.rows[0].valor_manutencao_inverno : valorInverno,
       id,
       empresaid,
     ];
@@ -2594,23 +2644,65 @@ app.get('/clientes-por-dia', async (req, res) => {
         c.equipamentos_especiais,
         c.eletrolise_sal,
         c.ultima_substituicao,
+        c.periodicidade,
+        c.periodicidade_verao,
+        c.periodicidade_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id
+            AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao,
+        m.status AS status_semana,
         COALESCE(m.status, 'pendente') AS status,
         m.motivo
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
-      LEFT JOIN manutencoes m 
-        ON m.cliente_id = c.id
-        AND m.equipe_id = $1 
-        AND m.dia_semana = $2
-        AND m.empresaid = $3
+      LEFT JOIN LATERAL (
+        SELECT mm.status, mm.motivo
+        FROM manutencoes mm
+        WHERE mm.cliente_id = c.id
+          AND mm.equipe_id = $1
+          AND mm.dia_semana = $2
+          AND mm.empresaid = $3
+          AND (
+            mm.data_manutencao::date BETWEEN
+              date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
+            OR mm.data_conclusao::date BETWEEN
+              date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
+            -- O cron gera a visita no domingo para a semana seguinte.
+            OR (mm.status = 'pendente'
+              AND mm.data_manutencao::date = date_trunc('week', $4::date)::date - 1)
+          )
+        ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
+      ) m ON TRUE
       WHERE a.equipeId = $1 
         AND a.diaSemana = $2
         AND c.empresaid = $3
-      ORDER BY c.id, m.data_manutencao DESC;
+      ORDER BY c.id;
     `;
-    const values = [equipeId, diaSemana, empresaid];
+    const values = [equipeId, diaSemana, empresaid, dataLisboaISO()];
     const result = await pool.query(query, values);
-    res.status(200).json(result.rows);
+    const hojeLisboa = dataLisboaISO();
+    const clientesComAgenda = result.rows.map((cliente) => {
+      const agenda = avaliarAgendaManutencao(
+        cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa
+      );
+      const emCurso = agenda.agenda_estado === 'sem_visita'
+        && (cliente.status_semana === 'pendente' || cliente.status_semana === 'nao_concluida');
+      const concluida = cliente.status_semana === 'concluida';
+      return {
+        ...cliente,
+        ...agenda,
+        agenda_estado: emCurso ? 'antecipada_em_curso'
+          : concluida ? 'concluida' : agenda.agenda_estado,
+        visita_programada: agenda.visita_programada || emCurso || concluida,
+      };
+    });
+    res.status(200).json(clientesComAgenda);
   } catch (error) {
     console.error('Erro ao buscar clientes:', error);
     res.status(500).json({ error: 'Erro ao buscar clientes.' });
@@ -2804,96 +2896,107 @@ app.delete('/associados/:id', async (req, res) => {
  });
 // Endpoint para buscar clientes disponíveis
 app.get('/clientes-disponiveis', async (req, res) => {
-     const { diaSemana, empresaid } = req.query;
-
-     if (!diaSemana || !empresaid) {
-       return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
-     }
-
-     try {
-     const query = `
-      SELECT 
-        c.id, 
-        c.nome, 
-        c.morada, 
-        c.telefone, 
-        CAST(c.periodicidade AS BIGINT) AS periodicidade,
-        (CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) AS periodicidadeRestante,
-        CONCAT('P', CAST(c.periodicidade AS BIGINT), '/', 
-               CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) AS periodicidadeFormatada
+  const { diaSemana, empresaid } = req.query;
+  if (!diaSemana || !empresaid) {
+    return res.status(400).json({ error: 'Os parâmetros diaSemana e empresaid são obrigatórios.' });
+  }
+  try {
+    const query = `
+      SELECT c.id, c.nome, c.morada, c.telefone,
+        freq.limite_semana AS periodicidade,
+        (freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeRestante,
+        CONCAT('P', freq.limite_semana, '/',
+               freq.limite_semana - COALESCE(a.total_associacoes, 0)) AS periodicidadeFormatada
       FROM clientes c
       LEFT JOIN (
-        SELECT clienteId, COUNT(*) AS total_associacoes
+        SELECT clienteid, COUNT(*) AS total_associacoes
         FROM associados
-        GROUP BY clienteId
-      ) a ON c.id = a.clienteId
+        GROUP BY clienteid
+      ) a ON c.id = a.clienteid
+      CROSS JOIN LATERAL (
+        SELECT GREATEST(
+          CASE WHEN TRIM(COALESCE(c.periodicidade, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade), 1)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_verao, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade_verao), 1)::integer ELSE 1 END,
+          CASE WHEN TRIM(COALESCE(c.periodicidade_inverno, '')) ~ '^[1-6]( (vez|vezes) por semana)?$'
+            THEN LEFT(TRIM(c.periodicidade_inverno), 1)::integer ELSE 1 END
+        ) AS limite_semana
+      ) freq
       WHERE c.empresaid = $1
-        AND (CAST(c.periodicidade AS BIGINT) - COALESCE(a.total_associacoes, 0)) > 0
-        AND NOT ($2 = ANY(c.condicionantes)); -- Exclui condicionantes
+        AND (freq.limite_semana - COALESCE(a.total_associacoes, 0)) > 0
+        AND NOT ($2 = ANY(COALESCE(c.condicionantes, ARRAY[]::text[])));
     `;
-
     const result = await pool.query(query, [empresaid, diaSemana]);
-    res.status(200).json(result.rows);
+    return res.status(200).json(result.rows);
   } catch (error) {
     console.error('Erro ao buscar clientes disponíveis:', error);
-    res.status(500).send('Erro ao buscar clientes disponíveis.');
+    return res.status(500).send('Erro ao buscar clientes disponíveis.');
   }
 });
 // Rota para obter contadores de clientes por dia da semana para uma equipe específica
 app.get('/contador-clientes', async (req, res) => {
   const { equipeId, empresaid } = req.query;
-
   if (!equipeId || !empresaid) {
     return res.status(400).json({ error: 'Os parâmetros equipeId e empresaid são obrigatórios.' });
   }
-
   try {
+    const hojeLisboa = dataLisboaISO();
     const query = `
-      WITH ultima_manutencao AS (
-        SELECT DISTINCT ON (m.cliente_id, m.dia_semana, m.equipe_id)
-          m.cliente_id,
-          m.dia_semana,
-          m.equipe_id,
-          m.status,
-          m.data_manutencao
-        FROM manutencoes m
-        WHERE m.empresaid = $2
-          AND m.equipe_id = $1
-        ORDER BY m.cliente_id, m.dia_semana, m.equipe_id, m.data_manutencao DESC
-      )
-      SELECT
-        a.diasemana,
-        COUNT(DISTINCT a.clienteid) AS total,
-        COALESCE(SUM(CASE WHEN um.status = 'concluida' THEN 1 ELSE 0 END), 0) AS concluidas,
-        COALESCE(SUM(CASE WHEN um.status = 'nao_concluida' THEN 1 ELSE 0 END), 0) AS nao_concluidas
+      SELECT DISTINCT ON (a.clienteid, a.diasemana)
+        a.clienteid, a.diasemana,
+        c.periodicidade, c.periodicidade_verao, c.periodicidade_inverno,
+        c.mes_inicio_verao, c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao,
+        m.status AS status_semana
       FROM associados a
-      INNER JOIN equipes e ON a.equipeid = e.id
-      LEFT JOIN ultima_manutencao um
-        ON um.cliente_id = a.clienteid
-        AND um.equipe_id = a.equipeid
-        AND um.dia_semana = a.diasemana
-      WHERE a.equipeid = $1
-        AND e.empresaid = $2
-      GROUP BY a.diasemana
-      ORDER BY a.diasemana;
+      JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
+      JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+      LEFT JOIN LATERAL (
+        SELECT mm.status
+        FROM manutencoes mm
+        WHERE mm.cliente_id = a.clienteid AND mm.equipe_id = a.equipeid
+          AND mm.dia_semana = a.diasemana AND mm.empresaid = $2
+          AND (
+            mm.data_manutencao::date BETWEEN
+              date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
+            OR mm.data_conclusao::date BETWEEN
+              date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
+            OR (mm.status = 'pendente'
+              AND mm.data_manutencao::date = date_trunc('week', $3::date)::date - 1)
+          )
+        ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
+      ) m ON TRUE
+      WHERE a.equipeid = $1 AND a.empresaid = $2 AND c.empresaid = $2
+      ORDER BY a.clienteid, a.diasemana
     `;
-
-    const values = [equipeId, empresaid];
-    const result = await pool.query(query, values);
-
-    const contadores = result.rows.length > 0
-      ? result.rows.map(row => ({
-          diasemana: row.diasemana,
-          total: parseInt(row.total, 10),
-          concluidas: parseInt(row.concluidas, 10),
-          naoConcluidas: parseInt(row.nao_concluidas, 10),
-        }))
-      : [];
-
-    res.status(200).json(contadores);
+    const result = await pool.query(query, [equipeId, empresaid, hojeLisboa]);
+    const porDia = new Map();
+    for (const row of result.rows) {
+      const agenda = avaliarAgendaManutencao(row, row.diasemana, row.ultima_conclusao, hojeLisboa);
+      const feita = row.status_semana === 'concluida';
+      const trabalhoAberto = row.status_semana === 'pendente' || row.status_semana === 'nao_concluida';
+      const incluir = agenda.frequencia !== 'quinzenal'
+        || agenda.visita_programada || agenda.agenda_estado === 'concluida'
+        || feita || trabalhoAberto;
+      if (!incluir) continue;
+      const atual = porDia.get(row.diasemana) || {
+        diasemana: row.diasemana, total: 0, concluidas: 0, naoConcluidas: 0
+      };
+      atual.total++;
+      if (feita || agenda.agenda_estado === 'concluida') atual.concluidas++;
+      else if (row.status_semana === 'nao_concluida') atual.naoConcluidas++;
+      porDia.set(row.diasemana, atual);
+    }
+    return res.status(200).json([...porDia.values()].sort((a, b) => a.diasemana.localeCompare(b.diasemana)));
   } catch (error) {
-    console.error('❌ Erro ao buscar contadores de clientes:', error);
-    res.status(500).json({ error: 'Erro ao buscar contadores de clientes.' });
+    console.error('Erro ao buscar contadores de clientes:', error);
+    return res.status(500).json({ error: 'Erro ao buscar contadores de clientes.' });
   }
 });
 
@@ -3386,6 +3489,114 @@ app.get('/detalhes-equipe', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar detalhes da equipe:', error);
     res.status(500).json({ error: 'Erro ao buscar detalhes da equipe.' });
+  }
+});
+
+// Abre uma nova visita quinzenal (programada ou antecipada) sem alterar o histórico.
+// Um bloqueio no cliente impede a abertura simultânea de duas visitas.
+app.post('/manutencoes/iniciar-visita', async (req, res) => {
+  const { clienteId, equipeId, diaSemana, empresaid } = req.body;
+  if (!clienteId || !equipeId || !diaSemana || !empresaid) {
+    return res.status(400).json({ error: 'Cliente, equipa, dia e empresa são obrigatórios.' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cfg = await client.query(`
+      SELECT c.id, c.empresaid, c.periodicidade,
+             c.periodicidade_verao, c.periodicidade_inverno,
+             c.mes_inicio_verao, c.mes_inicio_inverno
+      FROM clientes c
+      JOIN associados a ON a.clienteid = c.id AND a.empresaid = c.empresaid
+      JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+      WHERE c.id = $1 AND c.empresaid = $2
+        AND a.equipeid = $3 AND a.diasemana = $4
+      LIMIT 1 FOR UPDATE OF c
+    `, [clienteId, empresaid, equipeId, diaSemana]);
+    if (!cfg.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Cliente não associado a esta equipa e dia.' });
+    }
+    const hoje = dataLisboaISO();
+    const semanaInicio = moment(hoje, 'YYYY-MM-DD').startOf('isoWeek').format('YYYY-MM-DD');
+    const frequencia = avaliarAgendaManutencao(cfg.rows[0], diaSemana, null, hoje).frequencia;
+    if (frequencia !== 'quinzenal') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A abertura especial só se aplica a manutenções quinzenais.' });
+    }
+
+    const existente = await client.query(`
+      SELECT m.id, m.status
+      FROM manutencoes m
+      WHERE m.cliente_id = $1 AND m.equipe_id = $2
+        AND m.dia_semana = $3 AND m.empresaid = $4
+        AND (
+          m.data_manutencao::date BETWEEN $5::date AND $5::date + 6
+          OR m.data_conclusao::date BETWEEN $5::date AND $5::date + 6
+          OR (m.status = 'pendente' AND m.data_manutencao::date = $5::date - 1)
+        )
+      ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
+    `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
+    if (existente.rowCount) {
+      await client.query('COMMIT');
+      if (existente.rows[0].status === 'concluida') {
+        return res.status(409).json({ error: 'Esta manutenção já foi concluída nesta semana.' });
+      }
+      return res.status(200).json({
+        message: 'A manutenção desta semana já estava aberta.',
+        manutencaoId: existente.rows[0].id, criada: false
+      });
+    }
+
+    const ult = await client.query(`
+      SELECT id, metodo_analise, modo_tratamento
+      FROM manutencoes
+      WHERE cliente_id = $1 AND empresaid = $2
+      ORDER BY data_manutencao DESC, id DESC LIMIT 1
+    `, [clienteId, empresaid]);
+    const anterior = ult.rows[0];
+    const nova = await client.query(`
+      INSERT INTO manutencoes (
+        cliente_id, equipe_id, dia_semana, status, data_manutencao,
+        empresaid, metodo_analise, modo_tratamento
+      ) VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+      RETURNING id
+    `, [clienteId, equipeId, diaSemana, empresaid,
+      anterior?.metodo_analise || 'fitas', anterior?.modo_tratamento || 'cloro']);
+    const novaId = nova.rows[0].id;
+
+    // Semeia os parâmetros ativos sem copiar medições como atuais.
+    await client.query(`
+      INSERT INTO manutencoes_parametros (
+        manutencao_id, parametro, valor_ultimo, valor_atual,
+        produto_usado, quantidade_usada, status, empresaid
+      )
+      SELECT $1, pq.parametro, ant.valor_atual, NULL, NULL, 0, 'pendente', $2
+      FROM parametros_quimicos pq
+      LEFT JOIN LATERAL (
+        SELECT mp.valor_atual
+        FROM manutencoes_parametros mp
+        JOIN manutencoes m ON m.id = mp.manutencao_id
+        WHERE m.cliente_id = $3 AND m.empresaid = $2
+          AND m.status = 'concluida' AND mp.parametro = pq.parametro
+        ORDER BY m.data_conclusao DESC NULLS LAST, m.data_manutencao DESC, m.id DESC
+        LIMIT 1
+      ) ant ON TRUE
+      WHERE pq.empresaid = $2 AND pq.ativo = TRUE
+      ON CONFLICT (manutencao_id, parametro) DO NOTHING
+    `, [novaId, empresaid, clienteId]);
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      message: 'Nova manutenção quinzenal iniciada.', manutencaoId: novaId, criada: true
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao iniciar visita quinzenal:', error);
+    return res.status(500).json({ error: 'Não foi possível iniciar a visita.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -3950,7 +4161,16 @@ if (modo_tratamento && !MODOS_OK.includes(modo_tratamento)) {
       ELSE motivo
     END,
     metodo_analise = COALESCE($5::varchar, metodo_analise),
-    modo_tratamento = COALESCE($6::varchar, modo_tratamento)
+    modo_tratamento = COALESCE($6::varchar, modo_tratamento),
+    -- A data só é fixada na transição para 'concluida'.
+    -- Guardar novamente a mesma manutenção não reinicia os 14 dias.
+    data_conclusao = CASE
+      WHEN $1::varchar = 'concluida' AND status IS DISTINCT FROM 'concluida'
+        THEN (NOW() AT TIME ZONE 'Europe/Lisbon')
+      WHEN $1::varchar IN ('pendente', 'nao_concluida') AND status = 'concluida'
+        THEN NULL
+      ELSE data_conclusao
+    END
   WHERE id = $2 AND empresaid = $3
   RETURNING *;
 `;
@@ -4206,7 +4426,19 @@ async function resetStatusEmpresa(empresaid) {
         a.diasemana,
         m.id AS manutencao_id,
         m.metodo_analise,
-        m.modo_tratamento
+        m.modo_tratamento,
+        c.periodicidade,
+        c.periodicidade_verao,
+        c.periodicidade_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id
+            AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao
       FROM associados a
       JOIN clientes c ON a.clienteid = c.id
       JOIN equipes e ON a.equipeid = e.id
@@ -4241,7 +4473,21 @@ async function resetStatusEmpresa(empresaid) {
 
     const mensagensDeSucesso = [];
 
+    // O cron corre ao domingo às 23h55: prepara as visitas da semana seguinte.
+    // Para um reset manual, também prepara a semana seguinte nos quinzenais.
+    const semanaAlvo = moment(dataLisboaISO(), 'YYYY-MM-DD')
+      .startOf('isoWeek')
+      .add(1, 'week')
+      .format('YYYY-MM-DD');
+
     for (const cliente of clientesAtivosResult.rows) {
+      const agenda = avaliarAgendaManutencao(
+        cliente, cliente.diasemana, cliente.ultima_conclusao, semanaAlvo
+      );
+      if (agenda.frequencia === 'quinzenal' && !agenda.visita_programada) {
+        continue; // Semana de descanso: não abrir uma manutenção pendente.
+      }
+
       // ✅ defaults de segurança, caso a manutenção antiga tenha NULL
       const metodo = cliente.metodo_analise ?? 'fitas';
       const modo = cliente.modo_tratamento ?? 'cloro';
@@ -5211,11 +5457,19 @@ app.post('/manutencoes/concluir', async (req, res) => {
 
     // 1) Criar manutenção
     const query = `
-      INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao)
-      VALUES ($1, $2, $3, $4, NOW())
+      INSERT INTO manutencoes (
+        cliente_id, equipe_id, dia_semana, status,
+        data_manutencao, data_conclusao, empresaid
+      )
+      VALUES (
+        $1, $2, $3, $4,
+        NOW(),
+        CASE WHEN $4 = 'concluida' THEN (NOW() AT TIME ZONE 'Europe/Lisbon') ELSE NULL END,
+        $5
+      )
       RETURNING *;
     `;
-    const values = [cliente_id, equipe_id, dia_semana, status];
+    const values = [cliente_id, equipe_id, dia_semana, status, empresaid];
     const result = await client.query(query, values);
     const manutencaoId = result.rows[0].id;
 
@@ -6973,18 +7227,25 @@ async function lancarMensalidadesMes(mesReferencia) {
       SELECT DISTINCT
         c.id AS cliente_id,
         c.empresaid,
-        COALESCE(c.valor_manutencao, 0) AS valor_manutencao
+        COALESCE(c.valor_manutencao, 0) AS valor_manutencao,
+        c.valor_manutencao_verao,
+        c.valor_manutencao_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno
       FROM clientes c
       INNER JOIN associados a
         ON a.clienteid = c.id
         AND a.empresaid = c.empresaid
-      WHERE COALESCE(c.valor_manutencao, 0) > 0;
+      WHERE COALESCE(c.valor_manutencao, 0) > 0
+         OR COALESCE(c.valor_manutencao_verao, 0) > 0
+         OR COALESCE(c.valor_manutencao_inverno, 0) > 0;
     `);
 
     let criados = 0;
-    let atualizados = 0;
+    let jaExistentes = 0;
 
     for (const clienteAtual of clientesAtivosResult.rows) {
+      const valorMes = valorMensalidadeNaData(clienteAtual, `${mesReferencia}-01`);
       const resultado = await client.query(
         `
           INSERT INTO pagamentos_clientes (
@@ -7011,24 +7272,23 @@ async function lancarMensalidadesMes(mesReferencia) {
             NULL,
             NOW()
           )
+          -- Se já existe um lançamento, não apagar correções manuais do mês.
           ON CONFLICT (cliente_id, empresaid, mes_referencia)
-          DO UPDATE SET
-            valor_manutencao = EXCLUDED.valor_manutencao,
-            updated_at = NOW()
-          RETURNING (xmax = 0) AS criado;
+          DO NOTHING
+          RETURNING id;
         `,
         [
           clienteAtual.cliente_id,
           clienteAtual.empresaid,
           mesReferencia,
-          Number(clienteAtual.valor_manutencao || 0),
+          valorMes,
         ]
       );
 
-      if (resultado.rows[0]?.criado) {
+      if (resultado.rowCount > 0) {
         criados += 1;
       } else {
-        atualizados += 1;
+        jaExistentes += 1;
       }
     }
 
@@ -7038,7 +7298,8 @@ async function lancarMensalidadesMes(mesReferencia) {
       mes_referencia: mesReferencia,
       clientes_processados: clientesAtivosResult.rows.length,
       registos_criados: criados,
-      registos_atualizados: atualizados,
+      registos_atualizados: 0,
+      registos_ja_existentes: jaExistentes,
     };
   } catch (error) {
     await client.query('ROLLBACK');
