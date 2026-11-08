@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
-const { avaliarAgendaManutencao, dataLisboaISO } = require('./services/periodicidadeManutencao');
+const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO } = require('./services/periodicidadeManutencao');
 
 // Middlewares
 app.use(cors());
@@ -4255,7 +4255,19 @@ async function resetStatusEmpresa(empresaid) {
         a.diasemana,
         m.id AS manutencao_id,
         m.metodo_analise,
-        m.modo_tratamento
+        m.modo_tratamento,
+        c.periodicidade,
+        c.periodicidade_verao,
+        c.periodicidade_inverno,
+        c.mes_inicio_verao,
+        c.mes_inicio_inverno,
+        (
+          SELECT TO_CHAR(MAX(mc.data_conclusao), 'YYYY-MM-DD')
+          FROM manutencoes mc
+          WHERE mc.cliente_id = c.id
+            AND mc.empresaid = c.empresaid
+            AND mc.status = 'concluida'
+        ) AS ultima_conclusao
       FROM associados a
       JOIN clientes c ON a.clienteid = c.id
       JOIN equipes e ON a.equipeid = e.id
@@ -4290,7 +4302,18 @@ async function resetStatusEmpresa(empresaid) {
 
     const mensagensDeSucesso = [];
 
+    // O cron corre ao domingo às 23h55: prepara as visitas da semana seguinte.
+    // Para um reset manual, também prepara a semana seguinte nos quinzenais.
+    const semanaAlvo = somarDiasISO(dataLisboaISO(), 7);
+
     for (const cliente of clientesAtivosResult.rows) {
+      const agenda = avaliarAgendaManutencao(
+        cliente, cliente.diasemana, cliente.ultima_conclusao, semanaAlvo
+      );
+      if (agenda.frequencia === 'quinzenal' && !agenda.visita_programada) {
+        continue; // Semana de descanso: não abrir uma manutenção pendente.
+      }
+
       // ✅ defaults de segurança, caso a manutenção antiga tenha NULL
       const metodo = cliente.metodo_analise ?? 'fitas';
       const modo = cliente.modo_tratamento ?? 'cloro';
