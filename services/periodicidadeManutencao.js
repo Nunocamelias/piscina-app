@@ -81,5 +81,5 @@ function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeI
   };
 }
 
-module.exports = { dataLisboaISO, normalizarFrequencia, frequenciaNaData, avaliarAgendaManutencao };
+module.exports = { dataLisboaISO, somarDiasISO, normalizarFrequencia, frequenciaNaData, avaliarAgendaManutencao };
 
