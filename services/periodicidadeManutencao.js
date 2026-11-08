@@ -43,18 +43,43 @@ function normalizarFrequencia(valor) {
   return null;
 }
 
-function frequenciaNaData(cliente, dataISO) {
-  const mes = Number(dataISO.slice(5,7));
-  const inicioV = Number(cliente.mes_inicio_verao) || 5;
-  const inicioI = Number(cliente.mes_inicio_inverno) || 11;
-  if (inicioV < 1 || inicioV > 12 || inicioI < 1 || inicioI > 12 || inicioV === inicioI) {
-    return normalizarFrequencia(cliente.periodicidade);
+function epocaNaData(cliente, dataISO) {
+  const mes = Number(dataISO.slice(5, 7));
+  const inicioVerao = Number(cliente.mes_inicio_verao) || 5;
+  const inicioInverno = Number(cliente.mes_inicio_inverno) || 11;
+  if (
+    mes < 1 || mes > 12 ||
+    inicioVerao < 1 || inicioVerao > 12 ||
+    inicioInverno < 1 || inicioInverno > 12 ||
+    inicioVerao === inicioInverno
+  ) {
+    return null; // Configuração inválida: usar preços e periodicidade gerais.
   }
-  const verao = inicioV < inicioI
-    ? mes >= inicioV && mes < inicioI
-    : mes >= inicioV || mes < inicioI;
-  const valor = verao ? cliente.periodicidade_verao : cliente.periodicidade_inverno;
-  return normalizarFrequencia(valor ?? cliente.periodicidade);
+  const verao = inicioVerao < inicioInverno
+    ? mes >= inicioVerao && mes < inicioInverno
+    : mes >= inicioVerao || mes < inicioInverno;
+  return verao ? 'verao' : 'inverno';
+}
+
+function valorMensalidadeNaData(cliente, dataISO) {
+  const epoca = epocaNaData(cliente, dataISO);
+  const sazonal = epoca === 'verao'
+    ? cliente.valor_manutencao_verao
+    : epoca === 'inverno' ? cliente.valor_manutencao_inverno : null;
+  // NULL = valor não configurado: manter mensalidade antiga.
+  // Zero é um valor explícito e não deve ser substituído pelo valor geral.
+  const escolhido = sazonal === null || sazonal === undefined || sazonal === ''
+    ? cliente.valor_manutencao : sazonal;
+  const numero = Number(String(escolhido ?? 0).replace(',', '.'));
+  return Number.isFinite(numero) && numero >= 0 ? Math.round(numero * 100) / 100 : 0;
+}
+
+function frequenciaNaData(cliente, dataISO) {
+  const epoca = epocaNaData(cliente, dataISO);
+  const sazonal = epoca === 'verao'
+    ? cliente.periodicidade_verao
+    : epoca === 'inverno' ? cliente.periodicidade_inverno : null;
+  return normalizarFrequencia(sazonal ?? cliente.periodicidade);
 }
 
 function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeISO = dataLisboaISO()) {
@@ -81,5 +106,5 @@ function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeI
   };
 }
 
-module.exports = { dataLisboaISO, somarDiasISO, normalizarFrequencia, frequenciaNaData, avaliarAgendaManutencao };
+module.exports = { dataLisboaISO, somarDiasISO, normalizarFrequencia, epocaNaData, frequenciaNaData, valorMensalidadeNaData, avaliarAgendaManutencao };
 
