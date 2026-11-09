@@ -11,6 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
 const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO, valorMensalidadeNaData } = require('./services/periodicidadeManutencao');
+const { consultarMensagensProdutos } = require('./services/historicoProdutosCartoes');
 
 // Middlewares
 app.use(cors());
@@ -2687,6 +2688,19 @@ app.get('/clientes-por-dia', async (req, res) => {
     const values = [equipeId, diaSemana, empresaid, dataLisboaISO()];
     const result = await pool.query(query, values);
     const hojeLisboa = dataLisboaISO();
+
+    // Consulta em lote apenas os resultados dos parâmetros químicos.
+    // A Central de Mensagens/notificações não é utilizada nestes cartões.
+    // Em caso de falha desta consulta adicional, a agenda mantém-se disponível.
+    let mensagensPorCliente = {};
+    try {
+      mensagensPorCliente = await consultarMensagensProdutos(
+        pool, Number(empresaid), result.rows.map((cliente) => cliente.id)
+      );
+    } catch (erroMensagens) {
+      console.error('Não foi possível carregar o histórico químico dos cartões:', erroMensagens);
+    }
+
     const clientesComAgenda = result.rows.map((cliente) => {
       const agenda = avaliarAgendaManutencao(
         cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa
@@ -2697,6 +2711,7 @@ app.get('/clientes-por-dia', async (req, res) => {
       return {
         ...cliente,
         ...agenda,
+        mensagens_produtos: mensagensPorCliente[cliente.id] || { pendentes: [], aplicados: [] },
         agenda_estado: emCurso ? 'antecipada_em_curso'
           : concluida ? 'concluida' : agenda.agenda_estado,
         visita_programada: agenda.visita_programada || emCurso || concluida,
