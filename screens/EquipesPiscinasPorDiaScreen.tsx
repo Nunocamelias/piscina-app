@@ -10,6 +10,12 @@ type Props = {
   route: any;
 };
 
+type MensagemProduto = {
+  parametro: string;
+  produto: string;
+  quantidade: string;
+};
+
 type Cliente = {
   id: number;
   nome: string;
@@ -31,6 +37,10 @@ type Cliente = {
   agenda_estado?: 'normal' | 'programada' | 'sem_visita' | 'concluida' | 'antecipada_em_curso';
   visita_programada?: boolean;
   proxima_visita?: string | null;
+  mensagens_produtos?: {
+    pendentes: MensagemProduto[];
+    aplicados: MensagemProduto[];
+  };
 };
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
@@ -232,6 +242,26 @@ const fetchClientes = useCallback(async () => {
                         : 'Quinzenal · Visita programada nesta semana'}
                 </Text>
               )}
+              {item.mensagens_produtos?.pendentes?.map((mensagem, index) => (
+                <View
+                  key={`pendente-${mensagem.parametro}-${index}`}
+                  style={styles.avisoProdutoPendente}
+                >
+                  <Text style={styles.mensagemProdutoTexto}>
+                    ⚠ Pendente para a próxima visita: aplicar {mensagem.quantidade} de {mensagem.produto}
+                  </Text>
+                </View>
+              ))}
+              {item.mensagens_produtos?.aplicados?.map((mensagem, index) => (
+                <View
+                  key={`aplicado-${mensagem.parametro}-${index}`}
+                  style={styles.avisoProdutoAplicado}
+                >
+                  <Text style={styles.mensagemProdutoTexto}>
+                    ✓ Aplicado na última manutenção: {mensagem.quantidade} de {mensagem.produto}
+                  </Text>
+                </View>
+              ))}
             </TouchableOpacity>
           )}
         />
@@ -273,6 +303,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 3.65,
     elevation: 10,
+  },
+  avisoProdutoPendente: {
+    marginTop: 8,
+    padding: 9,
+    borderRadius: 8,
+    backgroundColor: '#FFF5CC',
+    borderWidth: 1,
+    borderColor: '#D9B74C',
+  },
+  avisoProdutoAplicado: {
+    marginTop: 8,
+    padding: 9,
+    borderRadius: 8,
+    backgroundColor: '#CCFFCC',
+    borderWidth: 1,
+    borderColor: '#75B875',
+  },
+  mensagemProdutoTexto: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000000',
   },
   avisoCache: {
     color: '#733D00',
