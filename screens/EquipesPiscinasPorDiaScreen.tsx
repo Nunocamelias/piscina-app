@@ -11,6 +11,7 @@ type Props = {
 };
 
 type MensagemProduto = {
+  registo_id?: number;
   parametro: string;
   produto: string;
   quantidade: string;
@@ -63,6 +64,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
   const [agendaEmCache, setAgendaEmCache] = useState(false);
+  const [confirmacaoEmCurso, setConfirmacaoEmCurso] = useState<number | null>(null);
 
 
 
@@ -117,6 +119,89 @@ const fetchClientes = useCallback(async () => {
     const unsubscribe = navigation.addListener('focus', fetchClientes);
     return unsubscribe;
   }, [navigation, fetchClientes]); // ✅ Agora o ESLint não reclama
+
+  // A confirmação é independente da folha de manutenção e exige rede.
+  // Não alteramos o estado original da manutenção concluída.
+  const registarConfirmacaoProduto = async (
+    item: Cliente,
+    mensagem: MensagemProduto,
+    estado: 'aplicado' | 'sem estoque'
+  ) => {
+    const registoId = mensagem.registo_id;
+    if (!registoId || confirmacaoEmCurso !== null) return;
+
+    setConfirmacaoEmCurso(registoId);
+    try {
+      await axios.post(`${Config.API_URL}/pendencias-produtos/confirmar`, {
+        empresaid,
+        registo_id: registoId,
+        estado,
+      });
+
+      if (estado === 'aplicado') {
+        // O aviso desaparece imediatamente. Atualizar também o cache para
+        // não ressurgir quando a lista é carregada antes da resposta online.
+        const atualizados = clientes.map((cliente) =>
+          cliente.id === item.id
+            ? {
+                ...cliente,
+                mensagens_produtos: {
+                  pendentes: (cliente.mensagens_produtos?.pendentes || []).filter(
+                    (p) => p.registo_id !== registoId
+                  ),
+                  aplicados: cliente.mensagens_produtos?.aplicados || [],
+                },
+              }
+            : cliente
+        );
+        setClientes(atualizados);
+        try {
+          await setClientesPorDiaCache(empresaid, equipeId, diaSemana, atualizados);
+        } catch (erroCache) {
+          console.warn('Não foi possível atualizar o cache dos avisos:', erroCache);
+        }
+      } else {
+        Alert.alert('Sem stock', 'A pendência continua visível para a próxima visita.');
+      }
+
+      // Atualiza a lista com o estado oficial da base de dados.
+      await fetchClientes();
+    } catch (erro) {
+      const mensagemErro = axios.isAxiosError(erro)
+        ? erro.response?.data?.error || 'Não foi possível confirmar a pendência.'
+        : 'Não foi possível confirmar a pendência.';
+      Alert.alert('Erro', mensagemErro);
+    } finally {
+      setConfirmacaoEmCurso(null);
+    }
+  };
+
+  const abrirConfirmacaoProduto = (item: Cliente, mensagem: MensagemProduto) => {
+    if (agendaEmCache || !mensagem.registo_id) {
+      Alert.alert(
+        'Sincronização necessária',
+        'É necessário estar online e atualizar a agenda para confirmar este produto.'
+      );
+      return;
+    }
+    if (confirmacaoEmCurso !== null) return;
+
+    Alert.alert(
+      'Confirmar produto pendente',
+      `${mensagem.produto} — ${mensagem.quantidade}\n\nConfirma a situação do produto?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sem stock',
+          onPress: () => registarConfirmacaoProduto(item, mensagem, 'sem estoque'),
+        },
+        {
+          text: 'Produto aplicado',
+          onPress: () => registarConfirmacaoProduto(item, mensagem, 'aplicado'),
+        },
+      ]
+    );
+  };
 
   const navegarFolha = (item: Cliente) => {
     navigation.navigate('FolhaManutencao', {
@@ -243,14 +328,22 @@ const fetchClientes = useCallback(async () => {
                 </Text>
               )}
               {item.mensagens_produtos?.pendentes?.map((mensagem, index) => (
-                <View
-                  key={`pendente-${mensagem.parametro}-${index}`}
+                <TouchableOpacity
+                  key={`pendente-${mensagem.registo_id || mensagem.parametro}-${index}`}
                   style={styles.avisoProdutoPendente}
+                  activeOpacity={0.75}
+                  disabled={confirmacaoEmCurso !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Confirmar pendência: ${mensagem.produto}`}
+                  onPress={(evento) => {
+                    evento.stopPropagation();
+                    abrirConfirmacaoProduto(item, mensagem);
+                  }}
                 >
                   <Text style={styles.mensagemProdutoTexto}>
                     ⚠ Pendente para a próxima visita: aplicar {mensagem.quantidade} de {mensagem.produto}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
               {item.mensagens_produtos?.aplicados?.map((mensagem, index) => (
                 <View
