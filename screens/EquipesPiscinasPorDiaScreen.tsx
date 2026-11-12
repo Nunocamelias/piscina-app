@@ -332,7 +332,6 @@ const fetchClientes = useCallback(async () => {
                   key={`pendente-${mensagem.registo_id || mensagem.parametro}-${index}`}
                   style={styles.avisoProdutoPendente}
                   activeOpacity={0.75}
-                  disabled={confirmacaoEmCurso !== null}
                   accessibilityRole="button"
                   accessibilityLabel={`Confirmar pendência: ${mensagem.produto}`}
                   onPress={(evento) => {
