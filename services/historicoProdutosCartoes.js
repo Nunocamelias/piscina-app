@@ -2,7 +2,8 @@
 
 // O histórico químico usa os registos de manutenções concluídas e nunca as notificações
 // da Central de Mensagens. Uma falta de stock só é resolvida por uma validação posterior
-// do mesmo parâmetro como "aplicado" ou "nao necessario".
+// do mesmo parâmetro como "aplicado" ou "nao necessario", ou por uma
+// confirmação explícita de "Produto aplicado" diretamente no cartão.
 const SQL_HISTORICO_PRODUTOS = `
   WITH ultimas_visitas AS (
     SELECT DISTINCT ON (m.cliente_id)
