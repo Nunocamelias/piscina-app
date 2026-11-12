@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 5000;
 const cron = require('node-cron');
 const { avaliarAgendaManutencao, dataLisboaISO, somarDiasISO, valorMensalidadeNaData } = require('./services/periodicidadeManutencao');
 const { consultarMensagensProdutos } = require('./services/historicoProdutosCartoes');
+const { confirmarPendenciaProduto } = require('./services/confirmarPendenciaProduto');
 
 // Middlewares
 app.use(cors());
@@ -2619,6 +2620,33 @@ app.delete('/equipes/:id', async (req, res) => {
       console.error('Erro ao excluir equipe:', error);
       res.status(500).send('Erro ao excluir equipe.');
     }
+});
+
+// Valida uma pendência do cartão sem reescrever a manutenção anterior.
+// A confirmação é feita apenas online e fica associada ao registo de origem.
+app.post('/pendencias-produtos/confirmar', async (req, res) => {
+  const { empresaid, registo_id, estado } = req.body || {};
+  try {
+    const confirmacao = await confirmarPendenciaProduto(pool, {
+      empresaid,
+      registoId: registo_id,
+      estado,
+    });
+    return res.status(200).json({
+      mensagem: estado === 'aplicado'
+        ? 'Produto aplicado. Aviso resolvido.'
+        : 'Sem stock. Aviso mantém-se pendente.',
+      confirmacao,
+    });
+  } catch (erro) {
+    const codigo = Number(erro.statusHttp) || 500;
+    if (codigo >= 500) console.error('Erro ao confirmar pendência de produto:', erro);
+    return res.status(codigo).json({
+      error: codigo >= 500
+        ? 'Não foi possível confirmar este produto.'
+        : erro.message,
+    });
+  }
 });
 
 // Rota para buscar clientes associados a um dia específico da equipe
