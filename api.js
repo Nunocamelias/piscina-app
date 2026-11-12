@@ -2675,7 +2675,7 @@ app.get('/clientes-por-dia', async (req, res) => {
             OR mm.data_conclusao::date BETWEEN
               date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
             -- O cron gera a visita no domingo para a semana seguinte.
-            OR (mm.status = 'pendente'
+            OR (mm.status IN ('pendente', 'nao_concluida')
               AND mm.data_manutencao::date = date_trunc('week', $4::date)::date - 1)
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
@@ -2982,7 +2982,7 @@ app.get('/contador-clientes', async (req, res) => {
               date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
             OR mm.data_conclusao::date BETWEEN
               date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
-            OR (mm.status = 'pendente'
+            OR (mm.status IN ('pendente', 'nao_concluida')
               AND mm.data_manutencao::date = date_trunc('week', $3::date)::date - 1)
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
@@ -3549,7 +3549,7 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
         AND (
           m.data_manutencao::date BETWEEN $5::date AND $5::date + 6
           OR m.data_conclusao::date BETWEEN $5::date AND $5::date + 6
-          OR (m.status = 'pendente' AND m.data_manutencao::date = $5::date - 1)
+          OR (m.status IN ('pendente', 'nao_concluida') AND m.data_manutencao::date = $5::date - 1)
         )
       ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
     `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
