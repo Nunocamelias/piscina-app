@@ -3627,20 +3627,33 @@ app.get('/manutencao-atual', async (req, res) => {
   }
 
   try {
-    // ✅ 1) Buscar a manutenção MAIS RECENTE deste cliente/dia, mas DA EMPRESA CERTA
+    // Usar apenas a visita da semana atual. O cron abre a visita no
+    // domingo anterior; não reutilizar registos de semanas antigas.
+    // Não usamos data_conclusao aqui: concluir hoje um registo antigo
+    // não o transforma na visita efetivamente aberta para esta semana.
     const manutencaoQuery = `
       SELECT *
       FROM manutencoes
       WHERE cliente_id = $1
         AND dia_semana = $2
         AND empresaid = $3
-      ORDER BY data_manutencao DESC
+        AND (
+          data_manutencao::date BETWEEN
+            date_trunc('week', $4::date)::date
+            AND date_trunc('week', $4::date)::date + 6
+          OR (
+            status IN ('pendente', 'nao_concluida')
+            AND data_manutencao::date = date_trunc('week', $4::date)::date - 1
+          )
+        )
+      ORDER BY data_manutencao DESC, id DESC
       LIMIT 1;
     `;
     const manutencaoResult = await pool.query(manutencaoQuery, [
       clienteId,
       diaSemana,
       empresaid,
+      dataLisboaISO(),
     ]);
 
     let manutencao;
