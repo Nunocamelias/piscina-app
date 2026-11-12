@@ -2675,7 +2675,7 @@ app.get('/clientes-por-dia', async (req, res) => {
             OR mm.data_conclusao::date BETWEEN
               date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
             -- O cron gera a visita no domingo para a semana seguinte.
-            OR (mm.status = 'pendente'
+            OR (mm.status IN ('pendente', 'nao_concluida')
               AND mm.data_manutencao::date = date_trunc('week', $4::date)::date - 1)
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
@@ -2982,7 +2982,7 @@ app.get('/contador-clientes', async (req, res) => {
               date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
             OR mm.data_conclusao::date BETWEEN
               date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
-            OR (mm.status = 'pendente'
+            OR (mm.status IN ('pendente', 'nao_concluida')
               AND mm.data_manutencao::date = date_trunc('week', $3::date)::date - 1)
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
@@ -3549,7 +3549,7 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
         AND (
           m.data_manutencao::date BETWEEN $5::date AND $5::date + 6
           OR m.data_conclusao::date BETWEEN $5::date AND $5::date + 6
-          OR (m.status = 'pendente' AND m.data_manutencao::date = $5::date - 1)
+          OR (m.status IN ('pendente', 'nao_concluida') AND m.data_manutencao::date = $5::date - 1)
         )
       ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
     `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
@@ -3627,20 +3627,33 @@ app.get('/manutencao-atual', async (req, res) => {
   }
 
   try {
-    // ✅ 1) Buscar a manutenção MAIS RECENTE deste cliente/dia, mas DA EMPRESA CERTA
+    // Usar apenas a visita da semana atual. O cron abre a visita no
+    // domingo anterior; não reutilizar registos de semanas antigas.
+    // Não usamos data_conclusao aqui: concluir hoje um registo antigo
+    // não o transforma na visita efetivamente aberta para esta semana.
     const manutencaoQuery = `
       SELECT *
       FROM manutencoes
       WHERE cliente_id = $1
         AND dia_semana = $2
         AND empresaid = $3
-      ORDER BY data_manutencao DESC
+        AND (
+          data_manutencao::date BETWEEN
+            date_trunc('week', $4::date)::date
+            AND date_trunc('week', $4::date)::date + 6
+          OR (
+            status IN ('pendente', 'nao_concluida')
+            AND data_manutencao::date = date_trunc('week', $4::date)::date - 1
+          )
+        )
+      ORDER BY data_manutencao DESC, id DESC
       LIMIT 1;
     `;
     const manutencaoResult = await pool.query(manutencaoQuery, [
       clienteId,
       diaSemana,
       empresaid,
+      dataLisboaISO(),
     ]);
 
     let manutencao;
