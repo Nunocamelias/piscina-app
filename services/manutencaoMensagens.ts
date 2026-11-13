@@ -6,6 +6,8 @@
 
 export type MetodoAnalise = 'fotometro' | 'gotas' | 'fitas';
 export type ModoTratamento = 'sal' | 'cloro';
+// Limiar de aviso operacional; independente do intervalo e do doseamento configurado.
+export const LIMIAR_AVISO_CLORO_PPM = 5;
 
 // ✅ Ajusta aqui se mais tarde adicionares outro status
 export type StatusParametro =
@@ -13,7 +15,8 @@ export type StatusParametro =
   | 'aplicado'
   | 'sem estoque'
   | 'nao necessario'
-  | 'nao ajustavel';
+  | 'nao ajustavel'
+  | 'decisao_tecnica';
 
 export type Cliente = {
   nome: string;
@@ -221,7 +224,7 @@ function clamp(n: number, a: number, b: number): number {
 
 function isIgnoravel(status?: StatusParametro) {
   // "nao necessario" não entra nem no resumo nem no procedimento
-  return status === 'nao necessario';
+  return status === 'nao necessario' || status === 'decisao_tecnica';
 }
 
 function isProblema(status?: StatusParametro) {
@@ -766,7 +769,13 @@ if (choque) {
   // ✅ se não foi medido e não tem resultado, não aparece no procedimento
   if (!temValor && !temResultado) return false;
 
-  if (st === 'pendente') return precisaCorrecao(p); // só se precisa correção
+  if (st === 'pendente') {
+    const nome = normParametroNome(p.parametro);
+    const cloroRelevante = nome === 'cloro_livre' || nome === 'cloro_total';
+    const cl = toNum(p.valor_atual);
+    return precisaCorrecao(p) ||
+      (cloroRelevante && Number.isFinite(cl) && cl >= LIMIAR_AVISO_CLORO_PPM);
+  }
   if (st === 'aplicado') return true;
   if (st === 'sem estoque') return true;
   if (st === 'nao ajustavel') return true;
@@ -1411,13 +1420,18 @@ function procedimentoDesinfeccao(
     return (isProblema(st) || isAplicado(st) || st === 'sem estoque');
   };
 
-  const cloroAtivo = isAtivo(pCloroRef);
+  // Mesmo quando o máximo configurado é mais alto, cloro >= 5 ppm
+  // exige orientação de operação. Isto NÃO altera doses nem cria aplicação.
+  const cloroMedido = toNum(pCloroRef?.valor_atual);
+  const avisoCloroElevado = !!pCloroRef && !isIgnoravel(pCloroRef.status) &&
+    Number.isFinite(cloroMedido) && cloroMedido >= LIMIAR_AVISO_CLORO_PPM;
+  const cloroAtivo = isAtivo(pCloroRef) || avisoCloroElevado;
   const salAtivo = isAtivo(pSal);
   if (!cloroAtivo && !salAtivo) return [];
 
   // ---------- thresholds (ajusta se quiseres) ----------
   const IDEAL_MAX_CLORO = 3;   // acima disto: "não adicionar"
-  const EXCESSO_CLORO = 5;     // popup de excesso (já tinhas)
+  const EXCESSO_CLORO = LIMIAR_AVISO_CLORO_PPM; // atenção operacional, não dosagem
   const INTERDITO_CLORO = 10;  // interdição (já tinhas)
 
   const getNum = (v: any) => {
