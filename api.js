@@ -4826,7 +4826,7 @@ app.post('/manutencoes_parametros', async (req, res) => {
       SELECT 1 
       FROM manutencoes m
       JOIN parametros_quimicos pq ON pq.parametro = $2
-      WHERE m.id = $1 AND pq.empresaid = $3 AND m.equipe_id IN (
+      WHERE m.id = $1 AND m.empresaid = $3 AND pq.empresaid = $3 AND m.equipe_id IN (
         SELECT id FROM equipes WHERE empresaid = $3
       );
     `;
