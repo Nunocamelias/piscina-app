@@ -3704,6 +3704,30 @@ const corParametro = (() => {
             </Text>
           )}
 
+          {/* Aviso operacional: mantém-se visível com ou sem cálculo.
+              Não altera a dose nem pressupõe aplicação de neutralizador. */}
+          {cloroEmAlertaTecnico(item) && (
+            <View style={styles.avisoCloroAlto}>
+              <Text style={styles.mensagemCloroAlto}>
+                ⚠ Cloro elevado ({item.valor_atual} ppm). Confirmar a medição e
+                {modoTratamento === 'sal'
+                  ? ' verificar a produção ou o ORP do eletrólisador.'
+                  : ' suspender novas adições de cloro e reavaliar.'}
+              </Text>
+              {!isSomenteLeitura &&
+                !item.bloqueado &&
+                !(item.resultado?.produto &&
+                  item.resultado?.resultado !== 'Dentro do intervalo ideal') && (
+                  <TouchableOpacity
+                    style={styles.buttonDecisaoTecnica}
+                    onPress={() => abrirDecisaoTecnica(item)}
+                  >
+                    <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
+                  </TouchableOpacity>
+                )}
+            </View>
+          )}
+
           {/* ✅ Mensagem do Resultado (mantida) */}
           {item.resultado && (
             <Text
@@ -3730,6 +3754,11 @@ const corParametro = (() => {
                     : '✓ Validado — sem aplicação necessária')
                 : item.status === 'sem estoque'
                 ? `Na próxima semana adicionar ${item.resultado.quantidade}kg de ${item.resultado.produto}`
+                : cloroEmAlertaTecnico(item) &&
+                  modoTratamento === 'sal' &&
+                  /neutralizador/i.test(item.resultado.produto || '') &&
+                  /^Adicionar\b/i.test(item.resultado.resultado)
+                ? `Alternativa (se necessária): ${item.resultado.resultado}`
                 : item.resultado.resultado}
             </Text>
           )}
@@ -3886,27 +3915,6 @@ const corParametro = (() => {
               </View>
             )}
 
-          {/* Cloro >= 5 ppm: permitir decisão técnica, mesmo quando o
-              máximo de doseamento configurado é superior a 5 ppm. */}
-{!isSomenteLeitura &&
-  !item.bloqueado &&
-  cloroEmAlertaTecnico(item) &&
-  item.resultado?.resultado === 'Dentro do intervalo ideal' && (
-    <View style={styles.avisoCloroAlto}>
-      <Text style={styles.mensagemCloroAlto}>
-        ⚠ Cloro a partir de {LIMIAR_AVISO_CLORO_PPM} ppm: confirmar leitura e verificar
-        {modoTratamento === 'sal'
-          ? ' a regulação do eletrólisador.'
-          : ' a dosagem de cloro. Não adicionar mais cloro.'}
-      </Text>
-      <TouchableOpacity
-        style={styles.buttonDecisaoTecnica}
-        onPress={() => abrirDecisaoTecnica(item)}
-      >
-        <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
-      </TouchableOpacity>
-    </View>
-)}
           {/* ✅ Botão Validar Dentro do Intervalo Ideal */}
 {!isSomenteLeitura &&
   item.resultado?.resultado === 'Dentro do intervalo ideal' &&
@@ -3927,6 +3935,7 @@ const corParametro = (() => {
           {!isSomenteLeitura &&
             !item.bloqueado &&
             item.parametro === 'Cloro Livre em ppm' &&
+            !cloroEmAlertaTecnico(item) &&
             typeof item.resultado?.resultado === 'string' &&
             item.resultado.resultado.includes('Não adicionar cloro') && (
               <TouchableOpacity
@@ -4413,7 +4422,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#adcfae',
     flex: 1,
     minHeight: 56,
-    borderRadius: 5,
+    borderRadius: 8,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
@@ -4428,7 +4437,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFB3B3',
     flex: 1,
     minHeight: 56,
-    borderRadius: 5,
+    borderRadius: 8,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
@@ -4443,7 +4452,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D3D3D3',
     flex: 1,
     minHeight: 56,
-    borderRadius: 5,
+    borderRadius: 8,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
