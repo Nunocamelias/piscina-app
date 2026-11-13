@@ -4,6 +4,8 @@
 // da Central de Mensagens. Uma falta de stock só é resolvida por uma validação posterior
 // do mesmo parâmetro como "aplicado" ou "nao necessario", ou por uma
 // confirmação explícita de "Produto aplicado" diretamente no cartão.
+// Uma decisão técnica posterior também encerra a pendência do mesmo parâmetro,
+// sem registar falsamente uma aplicação nem uma falta de stock.
 const SQL_HISTORICO_PRODUTOS = `
   WITH ultimas_visitas AS (
     SELECT DISTINCT ON (m.cliente_id)
@@ -33,7 +35,7 @@ const SQL_HISTORICO_PRODUTOS = `
     WHERE m.empresaid = $1
       AND m.cliente_id = ANY($2::integer[])
       AND m.status = 'concluida'
-      AND mp.status IN ('sem estoque', 'aplicado', 'nao necessario')
+      AND mp.status IN ('sem estoque', 'aplicado', 'nao necessario', 'decisao_tecnica')
     ORDER BY m.cliente_id, mp.parametro,
       COALESCE(m.data_conclusao, m.data_manutencao) DESC,
       m.id DESC, mp.id DESC
