@@ -1268,7 +1268,7 @@ const motivosDisponiveisDecisaoTecnica = (item: Parametro | null): string[] => {
     Number.isFinite(toNum(item.valor_atual)) &&
     Number.isFinite(toNum(item.valor_maximo)) &&
     toNum(item.valor_atual) > toNum(item.valor_maximo);
-  const piscinaSal = modoTratamento === 'sal' || !!cliente?.eletrolise_sal;
+  const piscinaSal = modoTratamento === 'sal';
 
   if (cloroAlto && piscinaSal) {
     const opcoes = ['Produção do eletrólisador reduzida'];
@@ -3711,7 +3711,9 @@ const corParametro = (() => {
                 : item.status === 'decisao_tecnica'
                 ? `✓ Decisão técnica: ${item.motivo || 'Produto não aplicado'}`
                 : item.status === 'nao necessario'
-                ? '✓ Validado — dentro do intervalo ideal'
+                ? (item.resultado.resultado.includes('Dentro do intervalo ideal')
+                    ? '✓ Validado — dentro do intervalo ideal'
+                    : '✓ Validado — sem aplicação necessária')
                 : item.status === 'sem estoque'
                 ? `Na próxima semana adicionar ${item.resultado.quantidade}kg de ${item.resultado.produto}`
                 : item.resultado.resultado}
