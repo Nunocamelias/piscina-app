@@ -105,12 +105,12 @@ test('aviso de cloro permanece visivel independentemente do resultado calculado'
   const botoes = folha.indexOf('{/* ✅ Botões de Ação (mantidos) */}');
   assert.ok(aviso > 0 && aviso < resultado && resultado < botoes);
   const conteudoAviso = folha.slice(aviso, resultado);
-  assert.doesNotMatch(conteudoAviso, /item\\.resultado\\?\\.resultado === 'Dentro do intervalo ideal'/);
-  assert.match(conteudoAviso, /modoTratamento === 'sal'/);
-  assert.match(conteudoAviso, /!item\\.bloqueado/);
-  assert.match(conteudoAviso, /buttonDecisaoTecnica/);
-  assert.match(folha, /Alternativa \\(se necessária\\):/);
-  assert.match(folha, /\\/neutralizador\\/i\\.test\\(item\\.resultado\\.produto/);
-  // Não permitir que cloro elevado seja validado sem motivo por um segundo botão.
-  assert.match(folha, /item\\.parametro === 'Cloro Livre em ppm' &&\\s*!cloroEmAlertaTecnico\\(item\\)/);
+  assert.ok(!conteudoAviso.includes("item.resultado?.resultado === 'Dentro do intervalo ideal'"));
+  assert.ok(conteudoAviso.includes("modoTratamento === 'sal'"));
+  assert.ok(conteudoAviso.includes('!item.bloqueado'));
+  assert.ok(conteudoAviso.includes('buttonDecisaoTecnica'));
+  assert.ok(folha.includes('Alternativa (se necessária):'));
+  assert.ok(folha.includes('/neutralizador/i.test(item.resultado.produto'));
+  // Cloro elevado não pode ser validado sem registar a decisão.
+  assert.ok(folha.includes("item.parametro === 'Cloro Livre em ppm' &&\n            !cloroEmAlertaTecnico(item)"));
 });
