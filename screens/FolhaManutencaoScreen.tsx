@@ -1259,6 +1259,80 @@ const registrarStatusParametro = async (
   }
 };
 
+// A decisão técnica é válida para qualquer parâmetro, mas a sugestão
+// de motivo depende do tratamento e do parâmetro medido.
+const motivosDisponiveisDecisaoTecnica = (item: Parametro | null): string[] => {
+  if (!item) return [];
+  const nome = norm(item.parametro);
+  const cloroAlto = nome.includes('cloro') &&
+    Number.isFinite(toNum(item.valor_atual)) &&
+    Number.isFinite(toNum(item.valor_maximo)) &&
+    toNum(item.valor_atual) > toNum(item.valor_maximo);
+  const piscinaSal = modoTratamento === 'sal' || !!cliente?.eletrolise_sal;
+
+  if (cloroAlto && piscinaSal) {
+    const opcoes = ['Produção do eletrólisador reduzida'];
+    if (cliente?.tem_orp || tem_orp) {
+      opcoes.push('Setpoint ORP ajustado');
+    }
+    return [...opcoes,
+      'Horário de funcionamento do eletrólisador reduzido',
+      'Eletrólisador desligado temporariamente',
+      'Outro motivo'];
+  }
+
+  if (nome === 'ph') {
+    return [
+      'Aguardar estabilização após correção da alcalinidade',
+      'Aguardar e reavaliar',
+      'Tratamento não recomendado',
+      'Outro motivo',
+    ];
+  }
+
+  if (cloroAlto) {
+    return [
+      'Sem nova adição de cloro; aguardar e reavaliar',
+      'Tratamento não recomendado',
+      'Outro motivo',
+    ];
+  }
+
+  return ['Aguardar e reavaliar', 'Tratamento não recomendado', 'Outro motivo'];
+};
+
+const abrirDecisaoTecnica = (item: Parametro) => {
+  setMotivoDecisao('');
+  setOutroMotivoDecisao('');
+  setItemDecisaoTecnica(item);
+};
+
+const confirmarDecisaoTecnica = () => {
+  if (!itemDecisaoTecnica) return;
+  const motivo = (motivoDecisao === 'Outro motivo'
+    ? outroMotivoDecisao
+    : motivoDecisao).trim();
+  if (motivo.length < 5 || motivo.length > 500) {
+    Alert.alert('Motivo obrigatório', 'Seleciona um motivo ou escreve uma justificação (5 a 500 caracteres).');
+    return;
+  }
+  const item = itemDecisaoTecnica;
+  Alert.alert(
+    'Confirmar decisão técnica',
+    `Não aplicar o produto recomendado para ${item.parametro}?\n\nMotivo: ${motivo}\n\nA leitura atual mantém-se registada e não será criada uma pendência de produto.`,
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Confirmar',
+        onPress: async () => {
+          const guardado = await registrarStatusParametro(item, 'decisao_tecnica', motivo);
+          if (guardado) setItemDecisaoTecnica(null);
+        },
+      },
+    ]
+  );
+};
+
 type ResultadoCalculo = {
     resultado: string;
     quantidade: number;
