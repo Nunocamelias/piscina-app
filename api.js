@@ -3879,7 +3879,9 @@ app.get('/manutencao-atual', async (req, res) => {
         parametro.status === 'pendente'
           ? null
           : {
-              resultado: parametro.produto_usado
+              resultado: parametro.status === 'decisao_tecnica'
+                ? `Decisão técnica — ${parametro.motivo || 'Motivo não indicado'}`
+                : parametro.produto_usado
                 ? `Foi adicionado ${parametro.quantidade_usada}kg de ${parametro.produto_usado}`
                 : parametro.status === 'sem estoque'
                 ? `Na próxima semana adicionar ${parametro.quantidade_usada}kg de ${parametro.produto_usado}`
@@ -4788,6 +4790,15 @@ app.post('/manutencoes_parametros', async (req, res) => {
     return res.status(400).json({ error: 'Dados incompletos: manutenção, parâmetro ou empresaid ausente.' });
   }
 
+  const estadosPermitidos = ['pendente', 'aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel', 'decisao_tecnica'];
+  if (!estadosPermitidos.includes(status)) {
+    return res.status(400).json({ error: 'Estado do parâmetro inválido.' });
+  }
+  if (status === 'decisao_tecnica' &&
+      (typeof motivo !== 'string' || motivo.trim().length < 5 || motivo.trim().length > 500)) {
+    return res.status(400).json({ error: 'Indica um motivo para a decisão técnica (5 a 500 caracteres).' });
+  }
+
   // ✅ Normaliza nome e valor (para validações e regras)
   const nome = String(parametro || '').trim();
   const valorNum =
@@ -4850,8 +4861,14 @@ app.post('/manutencoes_parametros', async (req, res) => {
         WHEN EXCLUDED.status = 'nao ajustavel' THEN COALESCE(manutencoes_parametros.valor_atual, EXCLUDED.valor_atual) 
         ELSE COALESCE(EXCLUDED.valor_atual, manutencoes_parametros.valor_atual) 
       END,
-      produto_usado = EXCLUDED.produto_usado,
-      quantidade_usada = EXCLUDED.quantidade_usada,
+      produto_usado = CASE
+        WHEN EXCLUDED.status = 'decisao_tecnica' THEN NULL
+        ELSE EXCLUDED.produto_usado
+      END,
+      quantidade_usada = CASE
+        WHEN EXCLUDED.status = 'decisao_tecnica' THEN 0
+        ELSE EXCLUDED.quantidade_usada
+      END,
       status = CASE 
         WHEN EXCLUDED.status = 'nao ajustavel' THEN 'nao ajustavel'
         ELSE EXCLUDED.status
@@ -4868,8 +4885,8 @@ app.post('/manutencoes_parametros', async (req, res) => {
       manutencao_id,
       parametro,
       (valor_atual === '' || valor_atual === undefined) ? null : valor_atual, // mantém como tinhas
-      produto_usado || null,
-      quantidade_usada || 0,
+      status === 'decisao_tecnica' ? null : (produto_usado || null),
+      status === 'decisao_tecnica' ? 0 : (quantidade_usada || 0),
       status,
       motivo || '',
       empresaid,
