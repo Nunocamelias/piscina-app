@@ -45,7 +45,7 @@ const SQL_HISTORICO_PRODUTOS = `
     uv.produto_usado,
     uv.quantidade_usada,
     'pendente'::text AS tipo,
-    uv.data_visita
+    TO_CHAR(uv.data_visita, 'DD/MM/YYYY') AS data_visita
   FROM ultimas_validacoes uv
   WHERE uv.status = 'sem estoque'
     AND NOT EXISTS (
@@ -61,7 +61,7 @@ const SQL_HISTORICO_PRODUTOS = `
     mp.produto_usado,
     mp.quantidade_usada,
     'aplicado'::text AS tipo,
-    u.data_visita
+    TO_CHAR(u.data_visita, 'DD/MM/YYYY') AS data_visita
   FROM ultimas_visitas u
   JOIN manutencoes_parametros mp
     ON mp.manutencao_id = u.manutencao_id AND mp.empresaid = $1
@@ -103,6 +103,12 @@ function organizarMensagensProdutos(registos) {
       }
       porCliente[id].pendentes.push(mensagem);
     } else {
+      // Data da última manutenção concluída, não da semana do calendário.
+      // É formatada pelo PostgreSQL para evitar diferenças de fuso horário.
+      if (typeof registo.data_visita === 'string' &&
+          /^\d{2}\/\d{2}\/\d{4}$/.test(registo.data_visita)) {
+        mensagem.data_visita = registo.data_visita;
+      }
       porCliente[id].aplicados.push(mensagem);
     }
   }
