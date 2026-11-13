@@ -80,6 +80,9 @@ test('alerta de cloro aos 5 ppm independe do maximo de doseamento configurado', 
   // Não reduzir o alerta mais grave, nem antecipar a dose de neutralizador.
   assert.match(mensagens, /const INTERDITO_CLORO = 10/);
   assert.match(mensagens, /appendNeutralizador\('alternativa'\)/);
+  assert.match(mensagens, /\/\^Adicionar\\s\+\/i\.test\(texto\)/);
+  assert.match(mensagens, /quantidade > 0 \? texto : null/);
+  assert.match(mensagens, /const txt = textoDoseNeutralizador\(\)/);
   assert.match(folha, /valor >= LIMIAR_AVISO_CLORO_PPM/);
   assert.match(folha, /cloroEmAlertaTecnico\(item\)/);
 });
