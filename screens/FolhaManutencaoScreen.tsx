@@ -1317,7 +1317,9 @@ const confirmarDecisaoTecnica = () => {
     return;
   }
   const item = itemDecisaoTecnica;
-  Alert.alert(
+  // No Android, primeiro fechamos o modal para o Alert ficar visível.
+  setItemDecisaoTecnica(null);
+  setTimeout(() => Alert.alert(
     'Confirmar decisão técnica',
     `Não aplicar o produto recomendado para ${item.parametro}?\n\nMotivo: ${motivo}\n\nA leitura atual mantém-se registada e não será criada uma pendência de produto.`,
     [
@@ -1326,11 +1328,11 @@ const confirmarDecisaoTecnica = () => {
         text: 'Confirmar',
         onPress: async () => {
           const guardado = await registrarStatusParametro(item, 'decisao_tecnica', motivo);
-          if (guardado) setItemDecisaoTecnica(null);
+          if (!guardado) setItemDecisaoTecnica(item);
         },
       },
     ]
-  );
+  ), 350);
 };
 
 type ResultadoCalculo = {
@@ -3812,7 +3814,7 @@ const corParametro = (() => {
                     Alert.alert(
                       'Confirmação',
                       `Confirma aplicação de ${item.resultado?.produto}?${norm(item.parametro) === 'alcalinidade'
-                        ? '\n\n⚠ Se existir controlador automático de pH, desligar antes de aplicar. Reativar após pelo menos 48 h e nova verificação do pH e da alcalinidade.'
+                        ? '\n\n⚠ Se existir controlador automático de pH, desligar imediatamente. Reativar após pelo menos 48 h e nova verificação do pH e da alcalinidade.'
                         : ''}`,
                       [
                         { text: 'Cancelar', style: 'cancel' },
