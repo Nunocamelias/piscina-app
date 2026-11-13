@@ -3696,6 +3696,8 @@ const corParametro = (() => {
                 styles.resultado,
                 item.status === 'aplicado'
                   ? styles.resultadoVerde
+                  : item.status === 'decisao_tecnica'
+                  ? styles.resultadoTecnico
                   : item.status === 'sem estoque'
                   ? styles.resultadoAmarelo
                   : item.resultado.resultado.includes('Dentro do intervalo ideal')
@@ -3705,6 +3707,10 @@ const corParametro = (() => {
             >
               {item.status === 'aplicado'
                 ? `Foi adicionado ${item.resultado.quantidade}kg de ${item.resultado.produto}`
+                : item.status === 'decisao_tecnica'
+                ? `✓ Decisão técnica: ${item.motivo || 'Produto não aplicado'}`
+                : item.status === 'nao necessario'
+                ? '✓ Validado — dentro do intervalo ideal'
                 : item.status === 'sem estoque'
                 ? `Na próxima semana adicionar ${item.resultado.quantidade}kg de ${item.resultado.produto}`
                 : item.resultado.resultado}
@@ -3802,20 +3808,21 @@ const corParametro = (() => {
                   onPress={() => {
                     Alert.alert(
                       'Confirmação',
-                      `Confirma aplicação de ${item.resultado?.produto}?`,
+                      `Confirma aplicação de ${item.resultado?.produto}?${norm(item.parametro) === 'alcalinidade'
+                        ? '\n\n⚠ Se existir controlador automático de pH, desligar antes de aplicar. Reativar após pelo menos 48 h e nova verificação do pH e da alcalinidade.'
+                        : ''}`,
                       [
                         { text: 'Cancelar', style: 'cancel' },
                         {
                           text: 'Confirmar',
-                          onPress: () => {
-                            registrarStatusParametro(item, 'aplicado');
-
-                            const updated = (parametrosQuimicos ?? []).map((p) =>
-                              p.parametro === item.parametro ? { ...p, bloqueado: true } : p
-                            );
-
-                            setParametrosQuimicos(updated);
-                            mostrarProximoPasso(updated);
+                          onPress: async () => {
+                            const guardado = await registrarStatusParametro(item, 'aplicado');
+                            if (guardado) {
+                              const updated = (parametrosQuimicos ?? []).map((p) =>
+                                p.parametro === item.parametro ? { ...p, bloqueado: true } : p
+                              );
+                              mostrarProximoPasso(updated);
+                            }
                           },
                         },
                       ]
@@ -3836,15 +3843,14 @@ const corParametro = (() => {
                         { text: 'Cancelar', style: 'cancel' },
                         {
                           text: 'Confirmar',
-                          onPress: () => {
-                            registrarStatusParametro(item, 'sem estoque');
-
-                            const updated = (parametrosQuimicos ?? []).map((p) =>
-                              p.parametro === item.parametro ? { ...p, bloqueado: true } : p
-                            );
-
-                            setParametrosQuimicos(updated);
-                            mostrarProximoPasso(updated);
+                          onPress: async () => {
+                            const guardado = await registrarStatusParametro(item, 'sem estoque');
+                            if (guardado) {
+                              const updated = (parametrosQuimicos ?? []).map((p) =>
+                                p.parametro === item.parametro ? { ...p, bloqueado: true } : p
+                              );
+                              mostrarProximoPasso(updated);
+                            }
                           },
                         },
                       ]
@@ -3852,6 +3858,13 @@ const corParametro = (() => {
                   }}
                 >
                   <Text style={styles.buttonText}>Sem Stock</Text>
+                </TouchableOpacity>
+                {/* Produto não aplicado: decisão técnica, com justificação */}
+                <TouchableOpacity
+                  style={styles.buttonDecisaoTecnica}
+                  onPress={() => abrirDecisaoTecnica(item)}
+                >
+                  <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -3864,7 +3877,6 @@ const corParametro = (() => {
       style={styles.buttonValidar}
       onPress={async () => {
         await registrarStatusParametro(item, 'nao necessario');
-        Alert.alert('Sucesso', 'Parâmetro validado com sucesso.');
       }}
     >
       <Text style={styles.buttonText}>Validar</Text>
