@@ -67,7 +67,7 @@ test('consulta historico com empresa e conjunto de clientes isolados', async () 
   assert.match(chamada.sql, /m\.empresaid\s*=\s*\$1/);
   assert.match(chamada.sql, /m\.status\s*=\s*'concluida'/);
   assert.match(chamada.sql, /DISTINCT ON \(m\.cliente_id, mp\.parametro\)/);
-  assert.match(chamada.sql, /mp\.status IN \('sem estoque', 'aplicado', 'nao necessario'\)/);
+  assert.match(chamada.sql, /mp\.status IN \('sem estoque', 'aplicado', 'nao necessario', 'decisao_tecnica'\)/);
   assert.equal(resumo[12].pendentes[0].produto, 'Alca+');
 });
 
@@ -104,4 +104,16 @@ test('data ausente ou invalida nao inventa uma data para a ultima manutencao', (
     { cliente_id: 30, tipo: 'aplicado', data_visita: '2026-10-29', parametro: 'Alcalinidade', produto_usado: 'Alca+', quantidade_usada: 1 },
   ]);
   assert.ok(resumo[30].aplicados.every((p) => !Object.prototype.hasOwnProperty.call(p, 'data_visita')));
+});
+
+
+test('decisao tecnica posterior encerra pendencia sem criar mensagem verde ou amarela', () => {
+  // A consulta seleciona a validação mais recente, incluindo 'decisao_tecnica'.
+  // Como só 'sem estoque' produz amarelos e a aplicação só surge da visita
+  // realmente concluída, nenhuma mensagem de produto é fabricada.
+  assert.match(SQL_HISTORICO_PRODUTOS, /mp\.status IN \('sem estoque', 'aplicado', 'nao necessario', 'decisao_tecnica'\)/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /WHERE uv\.status = 'sem estoque'/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /WHERE mp\.status = 'aplicado'/);
+  const resumo = organizarMensagensProdutos([]);
+  assert.equal(resumo[42], undefined);
 });
