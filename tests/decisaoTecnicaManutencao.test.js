@@ -8,6 +8,7 @@ const path = require('node:path');
 const api = fs.readFileSync(path.join(__dirname, '..', 'api.js'), 'utf8');
 const folha = fs.readFileSync(path.join(__dirname, '..', 'screens', 'FolhaManutencaoScreen.tsx'), 'utf8');
 const historico = require('../services/historicoProdutosCartoes');
+const mensagens = fs.readFileSync(path.join(__dirname, '..', 'services', 'manutencaoMensagens.ts'), 'utf8');
 
 test('decisao tecnica usa estado proprio e motivo obrigatorio sem nova tabela', () => {
   const rota = api.split("app.post('/manutencoes_parametros'")[1].split("app.get('/manutencoes_parametros'")[0];
@@ -69,4 +70,28 @@ test('Calcular Todos permanece intacto e terceira opcao usa UI Android', () => {
   assert.match(folha, /<Modal/);
   assert.match(folha, /<TextInput[\s\S]*?outroMotivoDecisao/);
   assert.match(folha, /Decisão técnica<\/Text>/);
+});
+
+test('alerta de cloro aos 5 ppm independe do maximo de doseamento configurado', () => {
+  assert.match(mensagens, /export const LIMIAR_AVISO_CLORO_PPM = 5/);
+  assert.match(mensagens, /const cloroAtivo = isAtivo\(pCloroRef\) \|\| avisoCloroElevado/);
+  assert.match(mensagens, /cl >= LIMIAR_AVISO_CLORO_PPM/);
+  assert.match(mensagens, /const EXCESSO_CLORO = LIMIAR_AVISO_CLORO_PPM/);
+  // Não reduzir o alerta mais grave, nem antecipar a dose de neutralizador.
+  assert.match(mensagens, /const INTERDITO_CLORO = 10/);
+  assert.match(mensagens, /appendNeutralizador\('alternativa'\)/);
+  assert.match(folha, /valor >= LIMIAR_AVISO_CLORO_PPM/);
+  assert.match(folha, /cloroEmAlertaTecnico\(item\)/);
+});
+
+test('os tres botoes voltam a ter formato retangular arredondado', () => {
+  for (const nome of ['buttonAplicado', 'buttonSemEstoque', 'buttonDecisaoTecnica']) {
+    const inicio = folha.indexOf(`  ${nome}: {`);
+    assert.ok(inicio >= 0, `Falta o estilo ${nome}`);
+    const fim = folha.indexOf('  },', inicio);
+    assert.ok(fim > inicio);
+    const estilo = folha.slice(inicio, fim);
+    assert.match(estilo, /borderRadius: 5,/);
+    assert.doesNotMatch(estilo, /borderRadius: 25,/);
+  }
 });
