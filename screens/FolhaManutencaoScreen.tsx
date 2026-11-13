@@ -11,7 +11,7 @@ import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import moment from 'moment';
 import { calcularISL, sugerirAlvosPorISL } from '../utils/isl';
-import { gerarMensagensManutencao } from '../services/manutencaoMensagens';
+import { gerarMensagensManutencao, LIMIAR_AVISO_CLORO_PPM } from '../services/manutencaoMensagens';
 import TaylorChart from '../components/TaylorChart';
 import { sugerirAlvosPorTaylorRefinandoISL, calcTaylorAngleDeg } from '../utils/taylor'; // ajusta o path se necessário
 import { initOffline } from '../services/offline/db';
@@ -1261,13 +1261,25 @@ const registrarStatusParametro = async (
 
 // A decisão técnica é válida para qualquer parâmetro, mas a sugestão
 // de motivo depende do tratamento e do parâmetro medido.
+const cloroEmAlertaTecnico = (item: Parametro | null): boolean => {
+  if (!item) return false;
+  const nome = norm(item.parametro);
+  const eCloroMedido = nome === 'cloro livre em ppm' ||
+    (metodoAnalise === 'gotas' && nome === 'cloro total em ppm');
+  const valor = toNum(item.valor_atual);
+  return eCloroMedido && Number.isFinite(valor) &&
+    valor >= LIMIAR_AVISO_CLORO_PPM;
+};
+
 const motivosDisponiveisDecisaoTecnica = (item: Parametro | null): string[] => {
   if (!item) return [];
   const nome = norm(item.parametro);
-  const cloroAlto = nome.includes('cloro') &&
-    Number.isFinite(toNum(item.valor_atual)) &&
-    Number.isFinite(toNum(item.valor_maximo)) &&
-    toNum(item.valor_atual) > toNum(item.valor_maximo);
+  const cloroAlto = cloroEmAlertaTecnico(item) ||
+    ((nome === 'cloro livre em ppm' ||
+      (metodoAnalise === 'gotas' && nome === 'cloro total em ppm')) &&
+      Number.isFinite(toNum(item.valor_atual)) &&
+      Number.isFinite(toNum(item.valor_maximo)) &&
+      toNum(item.valor_atual) > toNum(item.valor_maximo));
   const piscinaSal = modoTratamento === 'sal';
 
   if (cloroAlto && piscinaSal) {
@@ -3874,9 +3886,31 @@ const corParametro = (() => {
               </View>
             )}
 
+          {/* Cloro >= 5 ppm: permitir decisão técnica, mesmo quando o
+              máximo de doseamento configurado é superior a 5 ppm. */}
+{!isSomenteLeitura &&
+  !item.bloqueado &&
+  cloroEmAlertaTecnico(item) &&
+  item.resultado?.resultado === 'Dentro do intervalo ideal' && (
+    <View style={styles.avisoCloroAlto}>
+      <Text style={styles.mensagemCloroAlto}>
+        ⚠ Cloro a partir de {LIMIAR_AVISO_CLORO_PPM} ppm: confirmar leitura e verificar
+        {modoTratamento === 'sal'
+          ? ' a regulação do eletrólisador.'
+          : ' a dosagem de cloro. Não adicionar mais cloro.'}
+      </Text>
+      <TouchableOpacity
+        style={styles.buttonDecisaoTecnica}
+        onPress={() => abrirDecisaoTecnica(item)}
+      >
+        <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
+      </TouchableOpacity>
+    </View>
+)}
           {/* ✅ Botão Validar Dentro do Intervalo Ideal */}
 {!isSomenteLeitura &&
   item.resultado?.resultado === 'Dentro do intervalo ideal' &&
+  !cloroEmAlertaTecnico(item) &&
   !item.bloqueado && (
     <TouchableOpacity
       style={styles.buttonValidar}
@@ -4379,7 +4413,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#adcfae',
     flex: 1,
     minHeight: 56,
-    borderRadius: 25,
+    borderRadius: 5,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
@@ -4394,7 +4428,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFB3B3',
     flex: 1,
     minHeight: 56,
-    borderRadius: 25,
+    borderRadius: 5,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
@@ -4409,7 +4443,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D3D3D3',
     flex: 1,
     minHeight: 56,
-    borderRadius: 25,
+    borderRadius: 5,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     alignItems: 'center',
@@ -4459,6 +4493,19 @@ const styles = StyleSheet.create({
   decisaoCancelar: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#D3D3D3', borderRadius: 25 },
   decisaoConfirmar: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#CCFFCC', borderRadius: 25 },
   decisaoBotaoTexto: { color: '#000000', fontWeight: '600' },
+  avisoCloroAlto: {
+    marginTop: 8,
+    backgroundColor: '#FFF5CC',
+    borderRadius: 8,
+    padding: 10,
+    borderColor: '#D9B74C',
+    borderWidth: 1,
+  },
+  mensagemCloroAlto: {
+    color: '#000000',
+    fontSize: 13,
+    marginBottom: 8,
+  },
   buttonValidar: {
     backgroundColor: '#adcfae', // Verde claro
     padding: 10,
