@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal, ScrollView } from 'react-native';
 import Config from 'react-native-config';
 import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -2802,6 +2802,7 @@ useEffect(() => {
 }, [manutencaoAtual?.id]);
 
 return (
+  <>
   <FlatList
     data={isItensExpanded ? itensManutencaoPeriodica : []} // Apenas carrega os itens quando expandido
     keyExtractor={(item) => item.id.toString()}
@@ -3829,7 +3830,7 @@ const corParametro = (() => {
                     );
                   }}
                 >
-                  <Text style={styles.buttonText}>Produto Aplicado</Text>
+                  <Text style={styles.buttonAcaoPequeno}>Produto aplicado</Text>
                 </TouchableOpacity>
 
                 {/* Sem Stock */}
@@ -3857,7 +3858,7 @@ const corParametro = (() => {
                     );
                   }}
                 >
-                  <Text style={styles.buttonText}>Sem Stock</Text>
+                  <Text style={styles.buttonAcaoPequeno}>Sem stock</Text>
                 </TouchableOpacity>
                 {/* Produto não aplicado: decisão técnica, com justificação */}
                 <TouchableOpacity
@@ -4239,6 +4240,63 @@ const corParametro = (() => {
 
     }
   />
+  <Modal
+    visible={!!itemDecisaoTecnica}
+    transparent
+    animationType="fade"
+    onRequestClose={() => setItemDecisaoTecnica(null)}
+  >
+    <View style={styles.decisaoOverlay}>
+      <View style={styles.decisaoModal}>
+        <Text style={styles.decisaoTitulo}>Não aplicar — decisão técnica</Text>
+        <Text style={styles.decisaoSubtitulo}>
+          {itemDecisaoTecnica?.parametro} · Seleciona a justificação:
+        </Text>
+        <ScrollView style={styles.decisaoOpcoes} keyboardShouldPersistTaps="handled">
+          {motivosDisponiveisDecisaoTecnica(itemDecisaoTecnica).map((motivo) => (
+            <TouchableOpacity
+              key={motivo}
+              style={[
+                styles.decisaoOpcao,
+                motivoDecisao === motivo && styles.decisaoOpcaoSelecionada,
+              ]}
+              onPress={() => setMotivoDecisao(motivo)}
+            >
+              <Text style={styles.decisaoOpcaoTexto}>
+                {motivoDecisao === motivo ? '◉ ' : '○ '}{motivo}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {motivoDecisao === 'Outro motivo' && (
+            <TextInput
+              style={styles.decisaoTextoLivre}
+              multiline
+              maxLength={500}
+              placeholder="Descreve a decisão técnica..."
+              placeholderTextColor="#777"
+              value={outroMotivoDecisao}
+              onChangeText={setOutroMotivoDecisao}
+            />
+          )}
+        </ScrollView>
+        <View style={styles.decisaoRodape}>
+          <TouchableOpacity
+            style={styles.decisaoCancelar}
+            onPress={() => setItemDecisaoTecnica(null)}
+          >
+            <Text style={styles.decisaoBotaoTexto}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.decisaoConfirmar}
+            onPress={confirmarDecisaoTecnica}
+          >
+            <Text style={styles.decisaoBotaoTexto}>Registar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+  </>
 );
 
 
@@ -4316,9 +4374,10 @@ const styles = StyleSheet.create({
   buttonAplicado: {
     backgroundColor: '#adcfae',
     flex: 1,
-    height: 45,             // 🔹 altura fixa igual nos dois
-    borderRadius: 5,
-    marginHorizontal: 5,
+    minHeight: 56,
+    borderRadius: 25,
+    marginHorizontal: 2,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center', // 🔹 garante texto centralizado verticalmente
     shadowColor: '#000',
@@ -4330,9 +4389,10 @@ const styles = StyleSheet.create({
   buttonSemEstoque: {
     backgroundColor: '#FFB3B3',
     flex: 1,
-    height: 45,             // 🔹 mesma altura
-    borderRadius: 5,
-    marginHorizontal: 4,
+    minHeight: 56,
+    borderRadius: 25,
+    marginHorizontal: 2,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -4341,6 +4401,60 @@ const styles = StyleSheet.create({
     shadowRadius: 3.5,
     elevation: 5,
   },
+  buttonDecisaoTecnica: {
+    backgroundColor: '#D3D3D3',
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 25,
+    marginHorizontal: 2,
+    paddingHorizontal: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+  },
+  buttonAcaoPequeno: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+  },
+  resultadoTecnico: { color: '#555555' },
+  decisaoOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  decisaoModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    maxHeight: '85%',
+  },
+  decisaoTitulo: { fontSize: 18, fontWeight: '700', color: '#000000' },
+  decisaoSubtitulo: { fontSize: 14, marginTop: 6, marginBottom: 10, color: '#333333' },
+  decisaoOpcoes: { flexGrow: 0 },
+  decisaoOpcao: {
+    padding: 12,
+    marginBottom: 7,
+    borderRadius: 10,
+    backgroundColor: '#F1F1F1',
+  },
+  decisaoOpcaoSelecionada: { backgroundColor: '#CCFFCC', borderColor: '#66AA66', borderWidth: 1 },
+  decisaoOpcaoTexto: { color: '#000000', fontSize: 14 },
+  decisaoTextoLivre: {
+    borderColor: '#999999',
+    borderWidth: 1,
+    borderRadius: 8,
+    color: '#000000',
+    padding: 10,
+    minHeight: 75,
+    textAlignVertical: 'top',
+  },
+  decisaoRodape: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  decisaoCancelar: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#D3D3D3', borderRadius: 25 },
+  decisaoConfirmar: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#CCFFCC', borderRadius: 25 },
+  decisaoBotaoTexto: { color: '#000000', fontWeight: '600' },
   buttonValidar: {
     backgroundColor: '#adcfae', // Verde claro
     padding: 10,
