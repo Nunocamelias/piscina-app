@@ -1458,8 +1458,18 @@ function procedimentoDesinfeccao(
   // Detecta "piscina a sal"
   const piscinaSal = (modoTratamento === 'sal') || !!cliente?.eletrolise_sal;
 
+  // Só apresentar dose de neutralizador se houve realmente cálculo de adição.
+  // Um aviso aos 5 ppm pode existir mesmo quando o máximo configurado é maior.
+  const textoDoseNeutralizador = () => {
+    const resultado = pCloroRef?.resultado;
+    const texto = resultado?.resultado;
+    const quantidade = Number(resultado?.quantidade);
+    return typeof texto === 'string' && /^Adicionar\s+/i.test(texto) &&
+      Number.isFinite(quantidade) && quantidade > 0 ? texto : null;
+  };
+
   const appendNeutralizador = (modo: 'direto' | 'alternativa' | 'alternativa_sem_dose') => {
-  const txt = pCloroRef?.resultado?.resultado;
+  const txt = textoDoseNeutralizador();
 
   // ✅ caso especial: queremos SEM dose, mesmo que exista cálculo
   if (modo === 'alternativa_sem_dose') {
@@ -1576,7 +1586,7 @@ if (produtoPlanoB) {
     if (temCloro && cloro >= INTERDITO_CLORO) {
   linhas.push(`   - ${cloroLabel}: excesso (${cloro} ppm). Piscina interditada a banhistas.`);
   linhas.push('   - Confirmar valor.');
-  const txt = pCloroRef?.resultado?.resultado;
+  const txt = textoDoseNeutralizador();
   if (txt) {
     linhas.push(`   - ${txt}`); // ✅ direto com dose
   } else {
@@ -1590,7 +1600,7 @@ if (produtoPlanoB) {
     if (temCloro && cloro >= EXCESSO_CLORO && cloro < INTERDITO_CLORO) {
   linhas.push(`   - ${cloroLabel}: muito alto (${cloro} ppm).`);
   linhas.push('   - Confirmar valor e não adicionar cloro.');
-  const txt = pCloroRef?.resultado?.resultado;
+  const txt = textoDoseNeutralizador();
   if (txt) {
     linhas.push(`   - Alternativa (se necessário): ${txt}`); // ✅ com dose
   } else {
