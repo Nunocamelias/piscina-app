@@ -12,6 +12,7 @@ type Props = {
 
 type MensagemProduto = {
   registo_id?: number;
+  data_visita?: string;
   parametro: string;
   produto: string;
   quantidade: string;
@@ -350,7 +351,7 @@ const fetchClientes = useCallback(async () => {
                   style={styles.avisoProdutoAplicado}
                 >
                   <Text style={styles.mensagemProdutoTexto}>
-                    ✓ Aplicado na última manutenção: {mensagem.quantidade} de {mensagem.produto}
+                    ✓ Aplicado na última manutenção{mensagem.data_visita ? ` (${mensagem.data_visita})` : ''}: {mensagem.quantidade} de {mensagem.produto}
                   </Text>
                 </View>
               ))}
