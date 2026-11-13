@@ -85,3 +85,23 @@ test('o estado validado posteriormente determina se a falta de stock continua', 
   assert.equal(resolvido[4].pendentes.length, 0);
   assert.equal(resolvido[4].aplicados.length, 1);
 });
+
+
+test('mensagem verde inclui data da ultima manutencao concluida e amarelo nao muda', () => {
+  const resumo = organizarMensagensProdutos([
+    { cliente_id: 22, tipo: 'aplicado', data_visita: '29/10/2026', parametro: 'pH', produto_usado: 'pH-', quantidade_usada: '0.5' },
+    { cliente_id: 22, tipo: 'pendente', data_visita: '22/10/2026', registo_id: 101, parametro: 'Alcalinidade', produto_usado: 'Alca+', quantidade_usada: 2 },
+  ]);
+  assert.equal(resumo[22].aplicados[0].data_visita, '29/10/2026');
+  assert.equal(resumo[22].pendentes[0].data_visita, undefined);
+  assert.match(SQL_HISTORICO_PRODUTOS, /TO_CHAR\(u\.data_visita, 'DD\/MM\/YYYY'\) AS data_visita/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /m\.status = 'concluida'/);
+});
+
+test('data ausente ou invalida nao inventa uma data para a ultima manutencao', () => {
+  const resumo = organizarMensagensProdutos([
+    { cliente_id: 30, tipo: 'aplicado', parametro: 'pH', produto_usado: 'pH-', quantidade_usada: 1 },
+    { cliente_id: 30, tipo: 'aplicado', data_visita: '2026-10-29', parametro: 'Alcalinidade', produto_usado: 'Alca+', quantidade_usada: 1 },
+  ]);
+  assert.ok(resumo[30].aplicados.every((p) => !Object.prototype.hasOwnProperty.call(p, 'data_visita')));
+});
