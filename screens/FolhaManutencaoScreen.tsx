@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal } from 'react-native';
 import Config from 'react-native-config';
 import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -76,7 +76,8 @@ type Parametro = {
   volume_calculo: number;
   resultado?: { resultado: string; quantidade?: number; produto?: string };
   bloqueado?: boolean;
-  status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel';
+  status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel' | 'decisao_tecnica';
+  motivo?: string | null;
   notificacaoEnviada?: boolean;
   requeridoHoje?: boolean;
 };
@@ -199,6 +200,9 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [parametrosQuimicos, setParametrosQuimicos] = useState<Parametro[]>([]);
+  const [itemDecisaoTecnica, setItemDecisaoTecnica] = useState<Parametro | null>(null);
+  const [motivoDecisao, setMotivoDecisao] = useState('');
+  const [outroMotivoDecisao, setOutroMotivoDecisao] = useState('');
   const [metodoAnalise, setMetodoAnalise] = useState<MetodoAnalise>('fitas');
   const [modoTratamento, setModoTratamento] = useState<ModoTratamento>('cloro');
   const [expandTratamento, setExpandTratamento] = useState(false);
@@ -272,7 +276,7 @@ const collapseAllParams = useCallback(() => {
 
   // ✅ Bloquear Teste Rápido se já houver pelo menos 1 parâmetro validado/bloqueado
   // Só estes status contam como “validação real” que bloqueia ações automáticas
-const STATUS_BLOQUEIA_ACOES = ['aplicado', 'sem estoque', 'nao necessario'] as const;
+const STATUS_BLOQUEIA_ACOES = ['aplicado', 'sem estoque', 'nao necessario', 'decisao_tecnica'] as const;
 
 const houveValidacaoReal = (parametrosQuimicos ?? []).some((p: any) =>
   STATUS_BLOQUEIA_ACOES.includes(p?.status)
@@ -740,7 +744,7 @@ if (modo === 'sal' || modo === 'cloro') {
       return {
         ...parametro,
         requeridoHoje,
-        bloqueado: ['aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel'].includes(parametro.status),
+        bloqueado: ['aplicado', 'sem estoque', 'nao necessario', 'nao ajustavel', 'decisao_tecnica'].includes(parametro.status),
         resultado:
           parametro.status === 'nao ajustavel'
             ? { resultado: 'Foi solicitada assistência à administração com sucesso', quantidade: 0, produto: null }
@@ -1186,12 +1190,12 @@ useFocusEffect(
 
 const registrarStatusParametro = async (
   parametro: Parametro,
-  status: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel',
+  status: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel' | 'decisao_tecnica',
   motivo: string = ''
-): Promise<void> => {
+): Promise<boolean> => {
   if (!manutencaoAtual?.id || !empresaid) {
     Alert.alert('Erro', 'ID da manutenção atual ou Empresaid não encontrado.');
-    return;
+    return false;
   }
 
   // 🔍 Verifica se o status está correto antes de enviar
@@ -1214,8 +1218,8 @@ const registrarStatusParametro = async (
         manutencao_id: manutencaoAtual.id,
         parametro: parametro.parametro,
         valor_atual: parametro.valor_atual,
-        produto_usado: parametro.resultado?.produto || null,
-        quantidade_usada: parametro.resultado?.quantidade || 0,
+        produto_usado: status === 'decisao_tecnica' ? null : (parametro.resultado?.produto || null),
+        quantidade_usada: status === 'decisao_tecnica' ? 0 : (parametro.resultado?.quantidade || 0),
         status, // ✅ Garante que "nao ajustavel" será enviado corretamente
         motivo,
         empresaid,
@@ -1227,8 +1231,7 @@ const registrarStatusParametro = async (
       throw new Error(errorData?.error || 'Erro ao registrar status do parâmetro.');
     }
 
-    // ✅ Se deu certo, exibir sucesso e bloquear o parâmetro
-    Alert.alert('Sucesso', 'Status registrado com sucesso.');
+    // ✅ Confirmação visual apenas após a API guardar; sem popup de sucesso.
 
     setParametrosQuimicos((prev) =>
       prev.map((p) =>
@@ -1236,6 +1239,10 @@ const registrarStatusParametro = async (
           ? {
               ...p,
               status,
+              motivo: status === 'decisao_tecnica' ? motivo : p.motivo,
+              resultado: status === 'decisao_tecnica'
+                ? { resultado: `Decisão técnica — ${motivo}`, quantidade: 0 }
+                : p.resultado,
               bloqueado: true, // ✅ Agora bloqueia corretamente
               valor_atual: p.valor_atual, // ✅ Mantém o valor_atual ao voltar à tela
             }
@@ -1244,9 +1251,11 @@ const registrarStatusParametro = async (
     );
 
     console.log(`✅ Status "${status}" registrado com sucesso para o parâmetro ${parametro.parametro}`);
+    return true;
   } catch (error) {
     console.error('Erro de conexão ao registrar status:', error);
     Alert.alert('Erro', error instanceof Error ? error.message : 'Erro de conexão com o servidor.');
+    return false;
   }
 };
 
@@ -1254,7 +1263,7 @@ type ResultadoCalculo = {
     resultado: string;
     quantidade: number;
     produto?: string;
-    status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel' | 'pendente';
+    status?: 'aplicado' | 'sem estoque' | 'nao necessario' | 'nao ajustavel' | 'decisao_tecnica' | 'pendente';
 };
 
 const calcularProduto = (
@@ -2225,6 +2234,7 @@ const atualizarPrefsManutencao = useCallback(
       p.status === 'aplicado' ||
       p.status === 'sem estoque' ||
       p.status === 'nao necessario' ||
+      p.status === 'decisao_tecnica' ||
       p.status === 'nao ajustavel';
 
     return valorVazio || !statusOk;
@@ -2253,6 +2263,7 @@ const atualizarPrefsManutencao = useCallback(
         p.status === 'aplicado' ||
         p.status === 'sem estoque' ||
         p.status === 'nao necessario' ||
+        p.status === 'decisao_tecnica' ||
         p.status === 'nao ajustavel'
     )
     .map((p: any) => ({
