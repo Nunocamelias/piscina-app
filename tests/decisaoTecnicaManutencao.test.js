@@ -94,7 +94,23 @@ test('os tres botoes voltam a ter formato retangular arredondado', () => {
     const fim = folha.indexOf('  },', inicio);
     assert.ok(fim > inicio);
     const estilo = folha.slice(inicio, fim);
-    assert.match(estilo, /borderRadius: 5,/);
+    assert.match(estilo, /borderRadius: 8,/);
     assert.doesNotMatch(estilo, /borderRadius: 25,/);
   }
+});
+
+test('aviso de cloro permanece visivel independentemente do resultado calculado', () => {
+  const aviso = folha.indexOf('{cloroEmAlertaTecnico(item) && (');
+  const resultado = folha.indexOf('{/* ✅ Mensagem do Resultado (mantida) */}');
+  const botoes = folha.indexOf('{/* ✅ Botões de Ação (mantidos) */}');
+  assert.ok(aviso > 0 && aviso < resultado && resultado < botoes);
+  const conteudoAviso = folha.slice(aviso, resultado);
+  assert.doesNotMatch(conteudoAviso, /item\\.resultado\\?\\.resultado === 'Dentro do intervalo ideal'/);
+  assert.match(conteudoAviso, /modoTratamento === 'sal'/);
+  assert.match(conteudoAviso, /!item\\.bloqueado/);
+  assert.match(conteudoAviso, /buttonDecisaoTecnica/);
+  assert.match(folha, /Alternativa \\(se necessária\\):/);
+  assert.match(folha, /\\/neutralizador\\/i\\.test\\(item\\.resultado\\.produto/);
+  // Não permitir que cloro elevado seja validado sem motivo por um segundo botão.
+  assert.match(folha, /item\\.parametro === 'Cloro Livre em ppm' &&\\s*!cloroEmAlertaTecnico\\(item\\)/);
 });
