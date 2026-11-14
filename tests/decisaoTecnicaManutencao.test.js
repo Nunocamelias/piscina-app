@@ -100,7 +100,7 @@ test('os tres botoes voltam a ter formato retangular arredondado', () => {
 });
 
 test('aviso de cloro permanece visivel independentemente do resultado calculado', () => {
-  const aviso = folha.indexOf('{cloroEmAlertaTecnico(item) && (');
+  const aviso = folha.indexOf('{cloroEmAlertaTecnico(item) &&');
   const resultado = folha.indexOf('{/* ✅ Mensagem do Resultado (mantida) */}');
   const botoes = folha.indexOf('{/* ✅ Botões de Ação (mantidos) */}');
   assert.ok(aviso > 0 && aviso < resultado && resultado < botoes);
