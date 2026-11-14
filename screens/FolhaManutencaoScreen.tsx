@@ -1680,7 +1680,7 @@ const calcularTodos = useCallback(() => {
 
   if (lista.length === 0) {
     Alert.alert('Nada para calcular', 'Não há parâmetros pendentes com valor preenchido.');
-    return;
+    return false;
   }
 
   // ✅ Ranking final: Dureza → TAC → pH → Cloro → resto
@@ -1873,7 +1873,7 @@ const executar = () => {
   if (tacForaIdeal && phForaIdeal) {
   // ✅ sem popup antigo — a central de mensagens trata da ordem TAC → pH
   executar();
-  return;
+  return true;
 }
 
   // (opcional) se quiseres também um aviso quando Dureza está fora do ideal e TAC/pH também,
@@ -1918,6 +1918,7 @@ const executar = () => {
       })
     );
   }
+  return true;
 }, [
   parametrosQuimicos,
   calcularUmParametro,
@@ -1937,10 +1938,10 @@ const handleCalcularTodos = useCallback(() => {
   // Não confundir um resultado antigo com o resultado deste toque.
   resultadoDoCalculoAtualRef.current = false;
   // 1) faz o cálculo (vai atualizar state de parâmetros)
-  calcularTodos();
+  const iniciou = calcularTodos();
 
-  // 2) sinaliza que queremos auto-popup assim que os parâmetros estiverem atualizados
-  setAbrirProcedimentoAposCalcular(true);
+  // 2) só aguarda procedimento se houver parâmetros para calcular
+  if (iniciou) setAbrirProcedimentoAposCalcular(true);
 }, [calcularTodos]);
 
 // ✅ Garantir que o gerador recebe os parâmetros com (resultado + status)
