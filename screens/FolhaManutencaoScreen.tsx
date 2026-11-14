@@ -253,6 +253,9 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   const [abrirProcedimentoAposCalcular, setAbrirProcedimentoAposCalcular] = useState(false);
   const [taylorOpen, setTaylorOpen] = useState(false);
   const skipNextFocusReloadRef = useRef(false);
+  // Identifica edições efetuadas enquanto a leitura assíncrona ainda está em curso.
+  const versaoEdicaoLocalRef = useRef(0);
+  const resultadoDoCalculoAtualRef = useRef(false);
 
   // ✅ ler estado do card (por parâmetro)
   const isExpanded = useCallback(
@@ -626,7 +629,8 @@ useEffect(() => {
   console.log('🟩 [Folha] a aplicar testeRapidoPendente AGORA:', testeRapidoPendente);
 
   skipNextFocusReloadRef.current = true; // ✅
-  
+  versaoEdicaoLocalRef.current += 1;
+
   aplicarTesteRapidoNosParametros(testeRapidoPendente);
 
   // ✅ Após receber valores do Teste Rápido, abrir apenas os parâmetros que vieram com valor
@@ -659,6 +663,7 @@ const fetchDadosManutencao = useCallback(async () => {
     return;
   }
 
+  const versaoInicial = versaoEdicaoLocalRef.current;
   await initOffline();
 
 // 1) CACHE PRIMEIRO — permite abrir offline
@@ -755,6 +760,8 @@ if (modo === 'sal' || modo === 'cloro') {
 
 
     setParametrosQuimicos((prev) => {
+      // Um carregamento antigo não pode apagar medições ou cálculos entretanto feitos.
+      if (versaoEdicaoLocalRef.current !== versaoInicial) return prev;
       const byKey = new Map<string, any>();
       for (const p of prev) byKey.set(norm(p.parametro), p);
       for (const p of parametrosAtivos) {
@@ -1011,6 +1018,7 @@ if (Array.isArray(manutencaoData?.parametros)) {
 
 
       setParametrosQuimicos((prev) => {
+  if (versaoEdicaoLocalRef.current !== versaoInicial) return prev;
   const byKey = new Map<string, any>();
 
   // 1) começa com o que já existe (a tua lista base / semeada)
@@ -1080,14 +1088,9 @@ byKey.set(k, {
     } else {
   console.warn('⚠️ Nenhum parâmetro químico encontrado para esta manutenção.');
 
-  // ✅ Ao carregar a Folha sem parâmetros: tudo fechado
-  // ✅ Ao carregar a Folha sem parâmetros (exceto se vier do Teste Rápido)
-  if (!skipNextFocusReloadRef.current) {
-  collapseAllParams();
-}
-
   // NÃO apagues a lista base; garante pelo menos os 2 novos
   setParametrosQuimicos((prev) => {
+  if (versaoEdicaoLocalRef.current !== versaoInicial) return prev;
   const byKey = new Map<string, any>();
 
   // 1️⃣ Começa com o que já existe
@@ -1603,6 +1606,8 @@ const alertaPHTecnico =
         : resultadoFinal;
 
 
+      versaoEdicaoLocalRef.current += 1;
+      resultadoDoCalculoAtualRef.current = true;
       setParametrosQuimicos((prev) =>
         prev.map((p) =>
           p.parametro === item.parametro ? { ...p, resultado: resultadoFinalComMeta } : p
@@ -1929,6 +1934,8 @@ const executar = () => {
 ]);
 
 const handleCalcularTodos = useCallback(() => {
+  // Não confundir um resultado antigo com o resultado deste toque.
+  resultadoDoCalculoAtualRef.current = false;
   // 1) faz o cálculo (vai atualizar state de parâmetros)
   calcularTodos();
 
@@ -1996,6 +2003,7 @@ const abrirProcedimento = useCallback(() => {
 
 useEffect(() => {
   if (!abrirProcedimentoAposCalcular) return;
+  if (!resultadoDoCalculoAtualRef.current) return;
 
   // ✅ só abre quando já houver pelo menos 1 resultado calculado (quantidade/mensagem)
   const jaTemResultados = (parametrosParaMensagens ?? []).some((p: any) => !!p?.resultado?.resultado);
@@ -2003,6 +2011,7 @@ useEffect(() => {
   if (!jaTemResultados) return;
 
   abrirProcedimento();              // ✅ agora já apanha o state atualizado
+  resultadoDoCalculoAtualRef.current = false;
   setAbrirProcedimentoAposCalcular(false);
 }, [abrirProcedimentoAposCalcular, parametrosParaMensagens, abrirProcedimento]);
 
@@ -3641,6 +3650,7 @@ const corParametro = (() => {
                     .replace(/[^0-9.]/g, '')
                     .replace(/(\..*?)\..*/g, '$1');
 
+                  versaoEdicaoLocalRef.current += 1;
                   setParametrosQuimicos((prev) =>
                     prev.map((p) =>
                       p.parametro === item.parametro ? { ...p, valor_atual: formattedText } : p
