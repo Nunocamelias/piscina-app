@@ -752,10 +752,7 @@ if (modo === 'sal' || modo === 'cloro') {
       };
     });
 
-    // ✅ Ao carregar a Folha: tudo fechado (exceto se vier do Teste Rápido)
-     if (!skipNextFocusReloadRef.current) {
-       collapseAllParams();
-     }
+
 
     setParametrosQuimicos((prev) => {
       const byKey = new Map<string, any>();
@@ -1011,10 +1008,7 @@ if (Array.isArray(manutencaoData?.parametros)) {
         };
       });
 
-      // ✅ Ao carregar a Folha: tudo fechado
-      if (!skipNextFocusReloadRef.current) {
-  collapseAllParams();
-}
+
 
       setParametrosQuimicos((prev) => {
   const byKey = new Map<string, any>();
@@ -1184,8 +1178,10 @@ useFocusEffect(
       return;
     }
 
+    // Fechar os cartões ao entrar na folha, não durante respostas assíncronas.
+    collapseAllParams();
     fetchDadosManutencao();
-  }, [clienteId, diaSemana, empresaid, fetchDadosManutencao])
+  }, [clienteId, diaSemana, empresaid, fetchDadosManutencao, collapseAllParams])
 );
 
 const registrarStatusParametro = async (
