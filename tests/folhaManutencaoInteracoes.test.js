@@ -38,7 +38,7 @@ test('as três respostas assíncronas não substituem edições feitas entretant
     /versaoEdicaoLocalRef\.current \+= 1;\s*resultadoDoCalculoAtualRef\.current = true;\s*setParametrosQuimicos/
   );
   assert.match(
-    entre('const mostrarConteudo = isExpanded', 'const getCorData'),
+    entre('const mostrarConteudo = isExpanded', '{/* ✅ Cloro Combinado (dentro do Cloro Total) */}'),
     /versaoEdicaoLocalRef\.current \+= 1;\s*setParametrosQuimicos\(\(prev\) =>/
   );
 });
