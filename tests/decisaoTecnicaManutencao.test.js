@@ -114,3 +114,17 @@ test('aviso de cloro permanece visivel independentemente do resultado calculado'
   // Cloro elevado não pode ser validado sem registar a decisão.
   assert.ok(folha.includes("item.parametro === 'Cloro Livre em ppm' &&\n            !cloroEmAlertaTecnico(item)"));
 });
+
+test('aviso de cloro desaparece apos produto aplicado ou decisao tecnica, mas permanece sem stock', () => {
+  const inicio = folha.indexOf('{/* Aviso operacional:');
+  const fim = folha.indexOf('{/* ✅ Mensagem do Resultado (mantida) */}', inicio);
+  assert.ok(inicio >= 0 && fim > inicio, 'Bloco do aviso amarelo não encontrado');
+  const trecho = folha.slice(inicio, fim);
+  assert.ok(trecho.includes("item.status !== 'aplicado'"));
+  assert.ok(trecho.includes("item.status !== 'decisao_tecnica'"));
+  assert.ok(!trecho.includes("item.status !== 'sem estoque'"));
+  assert.ok(trecho.includes('cloroEmAlertaTecnico(item)'));
+  // A remoção do aviso depende do estado guardado, não apenas do clique.
+  assert.ok(folha.includes('if (guardado)'));
+  assert.ok(folha.includes('if (!guardado) setItemDecisaoTecnica(item)'));
+});
