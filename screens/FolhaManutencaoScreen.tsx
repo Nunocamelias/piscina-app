@@ -3706,7 +3706,9 @@ const corParametro = (() => {
 
           {/* Aviso operacional: mantém-se visível com ou sem cálculo.
               Não altera a dose nem pressupõe aplicação de neutralizador. */}
-          {cloroEmAlertaTecnico(item) && (
+          {cloroEmAlertaTecnico(item) &&
+            item.status !== 'aplicado' &&
+            item.status !== 'decisao_tecnica' && (
             <View style={styles.avisoCloroAlto}>
               <Text style={styles.mensagemCloroAlto}>
                 ⚠ Cloro elevado ({item.valor_atual} ppm). Confirmar a medição e
