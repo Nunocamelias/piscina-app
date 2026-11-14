@@ -112,7 +112,7 @@ test('aviso de cloro permanece visivel independentemente do resultado calculado'
   assert.ok(folha.includes('Alternativa (se necessária):'));
   assert.ok(folha.includes('/neutralizador/i.test(item.resultado.produto'));
   // Cloro elevado não pode ser validado sem registar a decisão.
-  assert.ok(folha.includes("item.parametro === 'Cloro Livre em ppm' &&\n            !cloroEmAlertaTecnico(item)"));
+  assert.match(folha, /item\.parametro === 'Cloro Livre em ppm' &&\s*!cloroEmAlertaTecnico\(item\)/);
 });
 
 test('aviso de cloro desaparece apos produto aplicado ou decisao tecnica, mas permanece sem stock', () => {
