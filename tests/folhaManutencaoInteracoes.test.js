@@ -8,7 +8,7 @@ const path = require('node:path');
 const folha = fs.readFileSync(
   path.join(__dirname, '..', 'screens', 'FolhaManutencaoScreen.tsx'),
   'utf8'
-);
+).replace(/\r\n/g, '\n');
 
 const entre = (inicio, fim) => {
   const a = folha.indexOf(inicio);
