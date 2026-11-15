@@ -155,3 +155,18 @@ test('cinzentos aparecem apenas na semana civil imediatamente seguinte', () => {
   assert.match(SQL_HISTORICO_PRODUTOS, /uv\.motivo/);
   assert.match(SQL_HISTORICO_PRODUTOS, /mp\.empresaid = m\.empresaid/);
 });
+
+test('API passa a data de Lisboa e agenda apresenta cinzentos sem confirmação de produto', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const api = fs.readFileSync(path.join(__dirname, '..', 'api.js'), 'utf8');
+  const ecrã = fs.readFileSync(
+    path.join(__dirname, '..', 'screens', 'EquipesPiscinasPorDiaScreen.tsx'), 'utf8'
+  );
+
+  assert.match(api, /result\.rows\.map\(\(cliente\) => cliente\.id\), hojeLisboa/);
+  assert.match(ecrã, /item\.mensagens_produtos\?\.decisoes_tecnicas\?\.map/);
+  assert.match(ecrã, /Decisão técnica da semana anterior/);
+  assert.match(ecrã, /decisoes_tecnicas: cliente\.mensagens_produtos\?\.decisoes_tecnicas \|\| \[\]/);
+  assert.match(ecrã, /avisoDecisaoTecnica: \{[\s\S]*?backgroundColor: '#D3D3D3'/);
+});
