@@ -4482,7 +4482,8 @@ const styles = StyleSheet.create({
   botaoInfoFlutuante: {
     position: 'absolute',
     top: 8,
-    right: 16,
+    // Igual ao botão original: 16 de margem do contentor + 12 da secção.
+    right: 28,
     zIndex: 20,
     elevation: 20,
   },
