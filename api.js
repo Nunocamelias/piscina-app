@@ -689,7 +689,6 @@ app.put('/empresas/:id/update', async (req, res) => {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    console.log('🏢 Empresa atualizada:', result.rows[0]);
     res.status(200).json({
       message: 'Empresa atualizada com sucesso!',
       empresa: result.rows[0],
@@ -2395,7 +2394,6 @@ app.post('/equipes', async (req, res) => {
         validade_seguro,
       } = req.body;
 
-      console.debug('📩 Recebendo dados para criação de equipe:', req.body);
 
       // ✅ Validação de campos obrigatórios
       if (!empresaid || !nomeequipe || !nome1 || !nome2 || !matricula || !telefone) {
@@ -2406,18 +2404,18 @@ app.post('/equipes', async (req, res) => {
       // ✅ Verifica se `empresaid` é um número válido
       const empresaidNum = Number(empresaid);
       if (isNaN(empresaidNum)) {
-        console.warn('⚠️ Empresaid inválido:', empresaid);
+        console.warn('⚠️ Empresaid inválido na criação de equipa.');
         return res.status(400).json({ error: 'Empresaid deve ser um número válido.' });
       }
 
       // ✅ Validações de formato de data
       if (proxima_inspecao && isNaN(Date.parse(proxima_inspecao))) {
-        console.warn('⚠️ Data inválida para próxima inspeção:', proxima_inspecao);
+        console.warn('⚠️ Data inválida para próxima inspeção.');
         return res.status(400).json({ error: 'A data de próxima inspeção é inválida.' });
       }
 
       if (validade_seguro && isNaN(Date.parse(validade_seguro))) {
-        console.warn('⚠️ Data inválida para validade do seguro:', validade_seguro);
+        console.warn('⚠️ Data inválida para validade do seguro.');
         return res.status(400).json({ error: 'A validade do seguro é inválida.' });
       }
 
@@ -2429,10 +2427,8 @@ app.post('/equipes', async (req, res) => {
       `;
       const values = [empresaidNum, nomeequipe, nome1, nome2, matricula, telefone, proxima_inspecao || null, validade_seguro || null];
 
-      console.debug('🛠️ Executando query de inserção de equipe...');
       const result = await pool.query(query, values);
 
-      console.debug('✅ Equipe criada com sucesso:', result.rows[0]);
 
       res.status(201).json({
         message: 'Equipe criada com sucesso!',
@@ -2467,7 +2463,6 @@ app.get('/equipes', async (req, res) => {
       const result = await pool.query(query, [empresaid]);
 
       if (result.rows.length === 0) {
-        console.warn('[DEBUG] Nenhuma equipe encontrada para empresa:', empresaid);
         return res.status(200).json([]); // ✅ Retorna um array vazio, sem erro 404
       }
 
@@ -2756,10 +2751,8 @@ app.get('/clientes-por-dia', async (req, res) => {
 app.post('/associar-cliente', async (req, res) => {
     const { clienteId, equipeId, diaSemana, empresaid } = req.body;
 
-    console.log('[DEBUG] Dados recebidos:', { clienteId, equipeId, diaSemana, empresaid });
 
     if (!clienteId || !equipeId || !diaSemana || !empresaid) {
-      console.log('[DEBUG] Dados ausentes na requisição.');
       return res.status(400).json({ error: 'ClienteId, equipeId, diaSemana e empresaid são obrigatórios.' });
     }
 
@@ -2770,11 +2763,9 @@ app.post('/associar-cliente', async (req, res) => {
         JOIN equipes e ON e.id = $2
         WHERE c.id = $1 AND c.empresaid = $3 AND e.empresaid = $3;
       `;
-      console.log('[DEBUG] Executando query de verificação...');
       const verificarResult = await pool.query(verificarQuery, [clienteId, equipeId, empresaid]);
 
       if (verificarResult.rowCount === 0) {
-        console.log('[DEBUG] Cliente ou equipe não pertencem à empresa.');
         return res.status(400).json({ error: 'Cliente ou equipe não pertencem à empresa especificada.' });
       }
 
@@ -2784,12 +2775,10 @@ app.post('/associar-cliente', async (req, res) => {
         ON CONFLICT (clienteId, diaSemana) DO NOTHING
         RETURNING *;
       `;
-      console.log('[DEBUG] Executando query de inserção...');
       const values = [clienteId, equipeId, diaSemana, empresaid];
       const result = await pool.query(query, values);
 
       if (result.rowCount === 0) {
-        console.log('[DEBUG] Associação já existente.');
         return res.status(400).json({ error: 'Cliente já associado a este dia.' });
       }
 
@@ -2862,10 +2851,8 @@ app.get('/associados/:equipeId/:diaSemana', async (req, res) => {
 app.post('/associados', async (req, res) => {
       const { equipeId, clienteId, diaSemana, empresaid } = req.body;
 
-      console.log('[DEBUG] Dados recebidos:', { equipeId, clienteId, diaSemana, empresaid });
 
       if (!empresaid) {
-        console.log('[DEBUG] Campo empresaid ausente.');
         return res.status(400).json({ error: 'O campo empresaid é obrigatório.' });
       }
 
@@ -2875,10 +2862,8 @@ app.post('/associados', async (req, res) => {
           SELECT 1 FROM equipes
           WHERE id = $1 AND empresaid = $2
         `;
-        console.log('[DEBUG] Verificando equipe...');
         const equipeResult = await pool.query(equipeQuery, [equipeId, empresaid]);
         if (equipeResult.rows.length === 0) {
-          console.log('[DEBUG] Equipe não encontrada ou não pertence à empresa.');
           return res.status(400).json({ error: 'Equipe não encontrada ou não pertence à empresa.' });
         }
 
@@ -2887,10 +2872,8 @@ app.post('/associados', async (req, res) => {
           SELECT 1 FROM clientes
           WHERE id = $1 AND empresaid = $2
         `;
-        console.log('[DEBUG] Verificando cliente...');
         const clienteResult = await pool.query(clienteQuery, [clienteId, empresaid]);
         if (clienteResult.rows.length === 0) {
-          console.log('[DEBUG] Cliente não encontrado ou não pertence à empresa.');
           return res.status(400).json({ error: 'Cliente não encontrado ou não pertence à empresa.' });
         }
 
@@ -2899,10 +2882,8 @@ app.post('/associados', async (req, res) => {
           SELECT * FROM associados
           WHERE clienteId = $1 AND diaSemana = $2
         `;
-        console.log('[DEBUG] Verificando associação prévia...');
         const checkResult = await pool.query(checkQuery, [clienteId, diaSemana]);
         if (checkResult.rows.length > 0) {
-          console.log('[DEBUG] Cliente já associado a este dia.');
           return res.status(400).json({ error: 'Cliente já associado a este dia.' });
         }
 
@@ -2912,10 +2893,8 @@ app.post('/associados', async (req, res) => {
           VALUES ($1, $2, $3, $4)
           RETURNING *;
         `;
-        console.log('[DEBUG] Inserindo associação...');
         const result = await pool.query(insertQuery, [equipeId, clienteId, diaSemana, empresaid]);
 
-        console.log('[DEBUG] Associação realizada com sucesso:', result.rows[0]);
         res.status(201).json(result.rows[0]);
       } catch (error) {
         console.error('[DEBUG] Erro ao associar cliente:', error);
@@ -3050,30 +3029,19 @@ app.get('/contador-clientes', async (req, res) => {
 app.post('/register', async (req, res) => {
   const { nome_empresa, email, senha, telefone, endereco, logo, nif } = req.body;
 
-  console.log('📩 Iniciando registro de empresa...');
-  console.log('📦 Dados recebidos:', {
-    nome_empresa,
-    email,
-    telefone,
-    endereco,
-    nif,
-    logo: logo ? '✅ Logo recebido' : '❌ Sem logo',
-  });
 
   // 🧩 Validação dos campos obrigatórios
   if (!nome_empresa || !email || !senha || !telefone || !endereco) {
-    console.error('❌ Erro: Campos obrigatórios ausentes.');
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   }
 
   try {
     // 🔍 Verifica se o email já existe na tabela empresas
-    console.log('🔎 Verificando email duplicado...');
     const emailCheckQuery = 'SELECT id FROM empresas WHERE email = $1';
     const emailCheckResult = await pool.query(emailCheckQuery, [email]);
 
     if (emailCheckResult.rows.length > 0) {
-      console.warn('⚠️ Email já registrado:', email);
+      console.warn('⚠️ Tentativa de registo com email já existente.');
 
       // Verifica se há um registro incompleto (sem utilizadores associados)
       const empresaId = emailCheckResult.rows[0].id;
@@ -3096,7 +3064,6 @@ app.post('/register', async (req, res) => {
     `;
     const empresaValues = [nome_empresa, email, telefone, endereco, logo || null, nif || null];
 
-    console.log('💾 Inserindo empresa no banco de dados...');
     const empresaResult = await pool.query(empresaQuery, empresaValues);
     const createdEmpresaId = empresaResult.rows[0].id;
     console.log('✅ Empresa criada com ID:', createdEmpresaId);
@@ -3120,11 +3087,8 @@ app.post('/register', async (req, res) => {
       false, // Confirmado inicialmente como falso
     ];
 
-    console.log('👤 Criando utilizador administrador...');
     const usuarioResult = await pool.query(usuarioQuery, usuarioValues);
-    console.log('✅ Utilizador criado com sucesso:', usuarioResult.rows[0]);
 
-    console.log('🎉 Registro concluído com sucesso.');
     res.status(201).json({ message: 'Registo realizado com sucesso!' });
   } catch (error) {
     console.error('❌ Erro ao registrar empresa e utilizador:', error);
@@ -3501,7 +3465,6 @@ app.get('/clientes-por-equipe', async (req, res) => {
 app.get('/detalhes-equipe', async (req, res) => {
   const { equipeId, empresaid } = req.query;
 
-  console.log('Recebido equipeId:', equipeId); // Log para debug
 
   if (!equipeId || !empresaid) {
     return res.status(400).json({ error: 'equipeId e empresaid são obrigatórios.' });
@@ -3646,7 +3609,6 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
 app.get('/manutencao-atual', async (req, res) => {
   const { clienteId, diaSemana, empresaid } = req.query;
 
-  console.log('Recebendo os parâmetros:', { clienteId, diaSemana, empresaid });
 
   if (!clienteId || !diaSemana || !empresaid) {
     return res.status(400).json({
@@ -3687,7 +3649,6 @@ app.get('/manutencao-atual', async (req, res) => {
     let manutencao;
 
     if (manutencaoResult.rows.length === 0) {
-      console.log('Nenhuma manutenção encontrada. Criando uma nova...');
 
       // ✅ 2) Buscar a equipa associada (ok como tens)
       const equipeQuery = `
@@ -3786,7 +3747,6 @@ app.get('/manutencao-atual', async (req, res) => {
       `;
       await pool.query(criarParametrosQuery, [manutencao.id, empresaid]);
 
-      console.log('Nova manutenção criada com parâmetros padrão.');
     } else {
   manutencao = manutencaoResult.rows[0];
 
@@ -4151,7 +4111,6 @@ app.put('/manutencoes/:id', async (req, res) => {
   const { status, parametros, empresaid, motivo, metodo_analise, modo_tratamento } = req.body;
 
 
-  console.log('📥 Dados recebidos no PUT /manutencoes/:id:', req.body);
 
   if (!empresaid) {
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
@@ -4248,13 +4207,8 @@ if (manutencaoResult.rowCount === 0) {
   return res.status(400).json({ error: 'Erro ao atualizar status da manutenção.' });
 }
 
-console.log(
-  `🔄 Manutenção ${id} atualizada para status: ${status} (motivo=${motivo ?? 'null'})`
-);
-
 // ✅ Só atualiza parâmetros quando "concluida"
 if (status === 'concluida') {
-  console.log('📊 Atualizando parâmetros para manutenção:', id);
 
   for (const parametro of parametros || []) {
     const updateParametroQuery = `
@@ -4279,7 +4233,6 @@ if (status === 'concluida') {
       empresaid,
     ];
 
-    console.log('🛠 Atualizando parâmetro:', parametroValues);
     await pool.query(updateParametroQuery, parametroValues);
   }
 
@@ -4294,7 +4247,6 @@ if (status === 'concluida') {
         manutencao_id: Number(id),
       });
 
-      console.log('🧪 ISL snapshot semanal:', snap);
     } else {
       console.warn('⚠️ Sem cliente_id no RETURNING da manutenção. Snapshot ISL ignorado.');
     }
@@ -4345,7 +4297,6 @@ app.get('/manutencoes/:cliente_id', async (req, res) => {
     const result = await pool.query(query, [cliente_id, diaSemana]);
 
     if (result.rows.length === 0) {
-      console.warn('Nenhuma manutenção encontrada. Criando nova...');
       const insertQuery = `
         INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao)
         VALUES ($1, $2, $3, 'pendente', NOW())
@@ -4672,10 +4623,8 @@ app.post('/reset-status', async (req, res) => {
 app.get('/ultima-manutencao', async (req, res) => {
   const { clienteId, diaSemana, empresaid } = req.query;
 
-  console.log('Recebendo os parâmetros:', { clienteId, diaSemana, empresaid });
 
   if (!clienteId || !diaSemana || !empresaid) {
-    console.error('Parâmetros incompletos:', { clienteId, diaSemana, empresaid });
     return res.status(400).json({ error: 'Cliente ID, Dia da Semana e Empresaid são obrigatórios.' });
   }
 
@@ -4692,7 +4641,6 @@ app.get('/ultima-manutencao', async (req, res) => {
 
     if (manutencaoExistenteResult.rows.length > 0) {
       const manutencaoExistente = manutencaoExistenteResult.rows[0];
-      console.log('Manutenção existente encontrada:', manutencaoExistente);
 
       // Se a manutenção existente está pendente, retorna os parâmetros
       if (manutencaoExistente.status === 'pendente') {
@@ -4704,7 +4652,6 @@ app.get('/ultima-manutencao', async (req, res) => {
         `;
         const parametrosResult = await pool.query(parametrosQuery, [manutencaoExistente.id, empresaid]);
 
-        console.log('Parâmetros retornados:', parametrosResult.rows);
         return res.status(200).json(parametrosResult.rows);
       }
 
@@ -4717,14 +4664,12 @@ app.get('/ultima-manutencao', async (req, res) => {
       `;
       const parametrosConcluidosResult = await pool.query(parametrosConcluidosQuery, [manutencaoExistente.id, empresaid]);
 
-      console.log('Parâmetros de manutenção concluída:', parametrosConcluidosResult.rows);
       return res.status(200).json({
         parametros: parametrosConcluidosResult.rows,
         manutencaoStatus: manutencaoExistente.status,
       });
     }
 
-    console.log('Nenhuma manutenção pendente encontrada. Criando nova...');
 
     // Criar nova manutenção
     const equipeQuery = `
@@ -4749,7 +4694,6 @@ app.get('/ultima-manutencao', async (req, res) => {
     const novaManutencaoResult = await pool.query(novaManutencaoQuery, [clienteId, equipeId, diaSemana]);
     const novaManutencaoId = novaManutencaoResult.rows[0].id;
 
-    console.log('Nova manutenção criada com ID:', novaManutencaoId);
 
     // Adicionar parâmetros padrão ativos para a empresa
     const parametrosPadraoQuery = `
@@ -4760,7 +4704,6 @@ app.get('/ultima-manutencao', async (req, res) => {
     `;
     await pool.query(parametrosPadraoQuery, [novaManutencaoId, empresaid]);
 
-    console.log('Parâmetros padrão adicionados à nova manutenção.');
 
     return res.status(200).json({
       mensagem: 'Nova manutenção criada com parâmetros padrão.',
@@ -4836,17 +4779,6 @@ app.post('/manutencoes_parametros', async (req, res) => {
       return res.status(403).json({ error: 'Parâmetro ou manutenção não pertencem à empresa especificada.' });
     }
 
-    // 🧾 Log informativo
-    console.log('🔄 Registrando status no banco de dados:', {
-      manutencao_id,
-      parametro,
-      valor_atual,
-      produto_usado,
-      quantidade_usada,
-      status,
-      motivo,
-      empresaid,
-    });
 
     // 🧩 Regista ou atualiza o parâmetro
     const query = `
@@ -4961,9 +4893,6 @@ app.post('/manutencoes_parametros', async (req, res) => {
             [clienteId, 'Parâmetro químico fora do intervalo', descricao, empresaid]
           );
 
-          console.log(`📢 Notificação criada automaticamente (${chave}) para o cliente ${clienteId}`);
-        } else {
-          console.log(`⚠️ Notificação já existente (${chave}) para o cliente ${clienteId}, não duplicada.`);
         }
       }
     }
@@ -5007,7 +4936,6 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
     const values = [manutencao_id, empresaid];
 
     const result = await pool.query(query, values);
-    //console.log('🚀 Parâmetros carregados do banco:', result.rows);
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -5017,12 +4945,6 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
 });
 
 async function criarSnapshotISLSemanalSeNecessario({ empresaid, cliente_id, manutencao_id }) {
-  console.log('🟦 [ISL SNAPSHOT] Verificar snapshot semanal', {
-    empresaid,
-    cliente_id,
-    manutencao_id,
-  });
-
   // 1) buscar estado atual (fonte de verdade)
   const st = await pool.query(
     `SELECT * FROM isl_estado_atual WHERE empresaid=$1 AND cliente_id=$2 LIMIT 1`,
@@ -5032,25 +4954,12 @@ async function criarSnapshotISLSemanalSeNecessario({ empresaid, cliente_id, manu
   const estado = st.rows[0];
 
   if (!estado) {
-    console.log('🟨 [ISL SNAPSHOT] Sem estado atual ISL → nada a fazer');
     return { ok: false, reason: 'Sem estado ISL.' };
   }
 
   if (estado.isl == null) {
-    console.log('🟨 [ISL SNAPSHOT] Estado ISL existe mas sem valor calculado → skip', {
-      estado,
-    });
     return { ok: false, reason: 'Sem estado ISL calculado.' };
   }
-
-  console.log('🟩 [ISL SNAPSHOT] Estado ISL válido encontrado', {
-    isl: estado.isl,
-    ph: estado.ph,
-    alcalinidade: estado.alcalinidade,
-    dureza: estado.dureza,
-    temperatura: estado.temperatura,
-    tds: estado.tds,
-  });
 
   // 2) verificar se já existe snapshot nesta semana
   const qCheck = `
@@ -5063,12 +4972,10 @@ async function criarSnapshotISLSemanalSeNecessario({ empresaid, cliente_id, manu
   const ck = await pool.query(qCheck, [empresaid, cliente_id]);
 
   if (ck.rowCount > 0) {
-    console.log('🟦 [ISL SNAPSHOT] Já existe snapshot ISL nesta semana → ignorado');
     return { ok: true, skipped: true };
   }
 
   // 3) inserir snapshot (histórico)
-  console.log('🟩 [ISL SNAPSHOT] A criar novo snapshot semanal ISL');
 
   const qIns = `
     INSERT INTO isl_registos (
@@ -5095,18 +5002,11 @@ async function criarSnapshotISLSemanalSeNecessario({ empresaid, cliente_id, manu
 
   const ins = await pool.query(qIns, vals);
 
-  console.log('✅ [ISL SNAPSHOT] Snapshot semanal criado com sucesso', {
-    id: ins.rows[0]?.id,
-    created_at: ins.rows[0]?.created_at,
-    isl: ins.rows[0]?.isl,
-  });
-
   return { ok: true, created: true, registo: ins.rows[0] };
 }
 
 // Criar registo ISL - ISL (Langelier) 
 app.post('/isl', async (req, res) => {
-  console.log('📥 Dados recebidos no POST /isl:', req.body);
 
   const {
     empresaid,
@@ -5324,7 +5224,6 @@ app.get('/isl/estado-atual', async (req, res) => {
 
 // Atualiza estado atual do ISL (persistente) — NÃO grava histórico aqui
 app.post('/isl/estado', async (req, res) => {
-  console.log('📥 Dados recebidos no POST /isl/estado:', req.body);
 
   const {
     empresaid,
@@ -5647,7 +5546,6 @@ app.post('/manutencoes/concluir', async (req, res) => {
         cliente_id,
         manutencao_id: manutencaoId,
       });
-      console.log('📌 Snapshot ISL semanal:', snap);
     } catch (e) {
       console.warn('⚠️ Snapshot ISL falhou (não bloqueia conclusão):', e?.message || e);
     }
@@ -5802,7 +5700,6 @@ app.get('/notificacoes', async (req, res) => {
       atribuido_a: n.responsavel_nome || null,
     }));
 
-    console.log('📥 Notificações carregadas (únicas):', resposta);
 
     res.status(200).json(resposta);
   } catch (error) {
@@ -5846,20 +5743,9 @@ app.post('/notificacoes', async (req, res) => {
   const tecnicoIdFinal = toIntOrNull(tecnico_id);
   const responsavelBody = toIntOrNull(responsavel_id);
 
-  console.log('📨 Nova notificação recebida (payload simplificado):', {
-    cliente_id: clienteFinal,
-    assuntoOriginal,
-    parametro,
-    empresaid: empresaFinal,
-    criador_id,
-    usuario_id,
-    criadorIdFinal: criadorId,
-  });
 
   if (!clienteFinal || !mensagem || !empresaFinal) {
-    console.warn('⚠️ Campos obrigatórios ausentes:', {
-      cliente_id, clienteId, mensagem, empresaid
-    });
+    console.warn('⚠️ Campos obrigatórios ausentes na criação de notificação.');
     return res.status(400).json({ error: 'cliente_id (ou clienteId), mensagem e empresaid são obrigatórios.' });
   }
 
@@ -5928,7 +5814,6 @@ app.post('/notificacoes', async (req, res) => {
       orcAprov,              // $12
     ];
 
-    console.log('🔹 Valores enviados:', values);
 
     const result = await pool.query(query, values);
 
@@ -6103,7 +5988,6 @@ app.put('/notificacoes/:id/update', async (req, res) => {
 
     values.push(Number(id), Number(empresaid));
 
-    console.log('🛠️ SQL /notificacoes/:id/update:', query, 'Valores:', values);
 
     const result = await pool.query(query, values);
 
@@ -6160,8 +6044,6 @@ async function atualizarWorkflowNotificacao(id, empresaid, camposExtras = {}) {
     throw new Error('atualizarWorkflowNotificacao: nenhum campo para atualizar.');
   }
 
-  // (opcional) log limpo, uma vez só
-  console.log('🧩 camposExtras keys:', entries.map(([k]) => k));
 
   const sets = [];
   const values = [];
@@ -6188,7 +6070,6 @@ async function atualizarWorkflowNotificacao(id, empresaid, camposExtras = {}) {
 
   values.push(Number(id), Number(empresaid));
 
-  console.log('🛠️ SQL workflow:', query, 'Valores:', values);
 
   return pool.query(query, values);
 }
@@ -6232,7 +6113,6 @@ async function registarPassoFluxo({
 
 // 🟡 ADMIN → Enviar técnico para diagnóstico (Modelo B: atribui responsavel_id)
 app.post('/notificacoes/:id/enviar-tecnico-diagnostico', async (req, res) => {
-  console.log('📨 BODY:', req.body);
 
   const { id } = req.params;
   const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
@@ -6403,7 +6283,6 @@ app.post('/notificacoes/:id/diagnostico-orcamento', async (req, res) => {
 
 // 🚐 ADMIN → Enviar para TÉCNICO (garantia) (Modelo B: atribui responsavel_id + histórico)
 app.post('/notificacoes/:id/enviar-tecnico-garantia', async (req, res) => {
-  console.log('📨 BODY:', req.body);
 
   const { id } = req.params;
   const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
@@ -6477,7 +6356,6 @@ app.post('/notificacoes/:id/enviar-tecnico-garantia', async (req, res) => {
 
 // 🔵 Admin envia para Orçamentação (Modelo B: atribui responsavel_id)
 app.post('/notificacoes/:id/enviar-orcamento', async (req, res) => {
-  console.log('📨 BODY:', req.body);
   const { id } = req.params;
   const { empresaid, responsavel_id, detalhes_fluxo, de_user_id, de_tipo } = req.body;
 
@@ -6664,14 +6542,6 @@ app.post('/notificacoes/:id/orcamento-aguardar-fornecedor', async (req, res) => 
 app.post('/notificacoes/:id/orcamento-aprovado', async (req, res) => {
   const { id } = req.params;
 
-  console.log('🟠 /orcamento-aprovado body:', {
-    id,
-    empresaid: req.body.empresaid,
-    responsavel_id: req.body.responsavel_id,
-    detalhes_fluxo: req.body.detalhes_fluxo,
-    de_user_id: req.body.de_user_id,
-    de_tipo: req.body.de_tipo,
-  });
 
   const {
     empresaid,
@@ -6684,12 +6554,12 @@ app.post('/notificacoes/:id/orcamento-aprovado', async (req, res) => {
   } = req.body;
 
   if (!empresaid) {
-    console.warn('400: empresaid em falta', req.body);
+    console.warn('400: empresaid em falta');
     return res.status(400).json({ error: 'Empresaid é obrigatório.' });
   }
 
   if (!responsavel_id) {
-    console.warn('400: responsavel_id em falta', req.body);
+    console.warn('400: responsavel_id em falta');
     return res.status(400).json({
       error: 'responsavel_id (técnico) é obrigatório ao aprovar orçamento.',
     });
@@ -6767,7 +6637,6 @@ app.post('/notificacoes/:id/orcamento-aprovado', async (req, res) => {
     });
   } catch (error) {
     console.error('🔥 ERRO /orcamento-aprovado:', error);
-    console.error('🔥 STACK:', error?.stack);
     return res.status(500).json({
       error: 'Erro ao marcar orçamento aprovado.',
       detalhe: String(error?.message || error),
