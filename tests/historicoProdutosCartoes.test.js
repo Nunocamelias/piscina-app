@@ -60,8 +60,8 @@ test('consulta historico com empresa e conjunto de clientes isolados', async () 
     chamada = { sql, params };
     return { rows: [{ cliente_id: 12, tipo: 'pendente', parametro: 'Alcalinidade', produto_usado: 'Alca+', quantidade_usada: 3 }] };
   } };
-  const resumo = await consultarMensagensProdutos(pool, 2, [12, 13]);
-  assert.deepEqual(chamada.params, [2, [12, 13]]);
+  const resumo = await consultarMensagensProdutos(pool, 2, [12, 13], '2026-11-16');
+  assert.deepEqual(chamada.params, [2, [12, 13], '2026-11-16']);
   assert.equal(chamada.sql, SQL_HISTORICO_PRODUTOS);
   assert.match(chamada.sql, /mp\.empresaid\s*=\s*m\.empresaid/);
   assert.match(chamada.sql, /m\.empresaid\s*=\s*\$1/);
@@ -116,4 +116,42 @@ test('decisao tecnica posterior encerra pendencia sem criar mensagem verde ou am
   assert.match(SQL_HISTORICO_PRODUTOS, /WHERE mp\.status = 'aplicado'/);
   const resumo = organizarMensagensProdutos([]);
   assert.equal(resumo[42], undefined);
+});
+
+test('decisão técnica é aviso cinzento informativo, sem produto nem quantidade', () => {
+  const resumo = organizarMensagensProdutos([
+    { cliente_id: 12, tipo: 'decisao_tecnica', parametro: 'Alcalinidade', motivo: 'Aguardar estabilização da água', data_visita: '11/11/2026', produto_usado: null, quantidade_usada: 0 },
+    { cliente_id: 12, tipo: 'pendente', parametro: 'pH', produto_usado: 'pH-', quantidade_usada: 1 },
+    { cliente_id: 18, tipo: 'aplicado', parametro: 'Cloro', produto_usado: 'Cloro Rápido', quantidade_usada: 0.25 },
+  ]);
+
+  assert.deepEqual(resumo[12].decisoes_tecnicas, [
+    { parametro: 'Alcalinidade', motivo: 'Aguardar estabilização da água', data_visita: '11/11/2026' },
+  ]);
+  assert.equal(resumo[12].pendentes.length, 1);
+  assert.equal(resumo[12].aplicados.length, 0);
+  assert.equal(resumo[18].decisoes_tecnicas, undefined);
+  assert.equal(resumo[18].aplicados[0].quantidade, '250 g');
+});
+
+test('decisão sem motivo não origina cartão cinzento', () => {
+  const resumo = organizarMensagensProdutos([
+    { cliente_id: 30, tipo: 'decisao_tecnica', parametro: 'pH', motivo: '  ' },
+    { cliente_id: 31, tipo: 'decisao_tecnica', parametro: 'Cloro', motivo: 'Não aplicar produto', data_visita: '2026-11-10' },
+  ]);
+
+  assert.equal(resumo[30], undefined);
+  assert.deepEqual(resumo[31].decisoes_tecnicas, [
+    { parametro: 'Cloro', motivo: 'Não aplicar produto' },
+  ]);
+});
+
+test('cinzentos aparecem apenas na semana civil imediatamente seguinte', () => {
+  // A API fornece uma data local de Lisboa; o PostgreSQL aplica o filtro
+  // entre segunda-feira anterior (incluída) e segunda-feira atual (excluída).
+  assert.match(SQL_HISTORICO_PRODUTOS, /WHERE uv\.status = 'decisao_tecnica'/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /uv\.data_visita::date >= date_trunc\('week', \$3::date\)::date - 7/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /uv\.data_visita::date < date_trunc\('week', \$3::date\)::date/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /uv\.motivo/);
+  assert.match(SQL_HISTORICO_PRODUTOS, /mp\.empresaid = m\.empresaid/);
 });
