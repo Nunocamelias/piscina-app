@@ -1990,16 +1990,22 @@ const ultimaAssinaturaInfoRef = useRef<string | null>(null);
 const ultimaVersaoCalculoInfoRef = useRef(0);
 
 useEffect(() => {
-  const anterior = ultimaAssinaturaInfoRef.current;
-  const houveCalculo = versaoCalculoInfo !== ultimaVersaoCalculoInfoRef.current;
-  ultimaAssinaturaInfoRef.current = assinaturaInfo;
-  ultimaVersaoCalculoInfoRef.current = versaoCalculoInfo;
+  // Memoriza o histórico já carregado, mas não considera digitação um novo cálculo.
+  if (versaoCalculoInfo === 0 && ultimaAssinaturaInfoRef.current === null) {
+    const jaExistiaCalculo = parametrosParaMensagens.some((p: any) => !!p.resultado?.resultado);
+    if (jaExistiaCalculo) ultimaAssinaturaInfoRef.current = assinaturaInfo;
+  }
+  if (versaoCalculoInfo === ultimaVersaoCalculoInfoRef.current) return;
 
-  if (houveCalculo && anterior !== null && assinaturaInfo && assinaturaInfo !== anterior) {
+  const anterior = ultimaAssinaturaInfoRef.current ?? '';
+  ultimaVersaoCalculoInfoRef.current = versaoCalculoInfo;
+  ultimaAssinaturaInfoRef.current = assinaturaInfo;
+
+  if (assinaturaInfo && assinaturaInfo !== anterior) {
     setInfoNaoLida(true);
     setPulsoInfo((valor) => valor + 1);
   }
-}, [assinaturaInfo, versaoCalculoInfo]);
+}, [assinaturaInfo, versaoCalculoInfo, parametrosParaMensagens]);
 
 useEffect(() => {
   if (pulsoInfo === 0) return;
@@ -2050,6 +2056,8 @@ const abrirProcedimento = useCallback(() => {
     ? msg.procedimento.join('\n')
     : String(msg.procedimento ?? '');
 
+  // A consulta passa a ser a referência da última mensagem que o técnico leu.
+  ultimaAssinaturaInfoRef.current = JSON.stringify([msg.titulo, msg.resumo, msg.procedimento]);
   setInfoNaoLida(false);
   animacaoPulsoInfoRef.current?.stop();
   valorPulsoInfo.setValue(0);
