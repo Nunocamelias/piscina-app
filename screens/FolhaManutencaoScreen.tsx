@@ -4610,7 +4610,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   buttonDecisaoTecnica: {
-    backgroundColor: '#D3D3D3',
+    backgroundColor: '#ADD8E6',
     flex: 1,
     minHeight: 56,
     borderRadius: 8,
