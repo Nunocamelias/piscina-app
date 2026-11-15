@@ -2916,7 +2916,7 @@ const renderBotaoInfo = (flutuante: boolean) => (
   <TouchableOpacity
     ref={flutuante ? undefined : botaoInfoOriginalRef}
     onPress={abrirProcedimento}
-    pointerEvents={!flutuante && infoFlutuante ? 'none' : 'auto'}
+    disabled={!flutuante && infoFlutuante}
     accessibilityLabel="Info dos procedimentos químicos"
     style={[
       styles.botaoProcedimento,
