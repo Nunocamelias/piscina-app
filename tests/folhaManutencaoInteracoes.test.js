@@ -105,5 +105,5 @@ test('Info original mantém as dimensões e flutuante tem fundo opaco', () => {
   assert.match(botao, /borderRadius: 12/);
   assert.match(folha, /botaoInfoSemMargem: \{ marginBottom: 0, backgroundColor: '#ECECEC' \}/);
   assert.match(folha, /!flutuante && infoFlutuante && styles\.botaoInfoOculto/);
-  assert.match(folha, /pointerEvents=\{!flutuante && infoFlutuante \? 'none' : 'auto'\}/);
+  assert.match(folha, /disabled=\{!flutuante && infoFlutuante\}/);
 });
