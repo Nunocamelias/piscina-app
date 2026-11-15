@@ -113,7 +113,7 @@ function organizarMensagensProdutos(registos) {
       if (!porCliente[id].decisoes_tecnicas) porCliente[id].decisoes_tecnicas = [];
       const mensagem = { parametro, motivo };
       if (typeof registo.data_visita === 'string' &&
-          /^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(registo.data_visita)) {
+          /^\d{2}\/\d{2}\/\d{4}$/.test(registo.data_visita)) {
         mensagem.data_visita = registo.data_visita;
       }
       porCliente[id].decisoes_tecnicas.push(mensagem);
