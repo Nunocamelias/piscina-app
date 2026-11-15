@@ -4486,7 +4486,8 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
-  botaoInfoSemMargem: { marginBottom: 0 },
+  // Fundo opaco para o texto não se confundir com os campos que passam por trás.
+  botaoInfoSemMargem: { marginBottom: 0, backgroundColor: '#ECECEC' },
   botaoInfoOculto: { opacity: 0 },
   infoPontoNovo: {
     position: 'absolute',
