@@ -95,7 +95,7 @@ test('Info flutua no canto superior direito sem deslocar os outros dois botões'
   assert.match(botoes, /styles\.calcularTodosBtn/);
   assert.match(botoes, /\{renderBotaoInfo\(false\)\}/);
   assert.doesNotMatch(botoes, /setInfoFlutuante/);
-  assert.match(folha, /botaoInfoFlutuante:\s*\{[\s\S]*?position: 'absolute',[\s\S]*?top: 8,[\s\S]*?right: 16/);
+  assert.match(folha, /botaoInfoFlutuante:\s*\{[\s\S]*?position: 'absolute',[\s\S]*?top: 8,[\s\S]*?right: 28/);
 });
 
 test('Info original mantém as dimensões e flutuante tem fundo opaco', () => {
