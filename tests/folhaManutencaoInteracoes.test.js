@@ -107,3 +107,23 @@ test('Info original mantém as dimensões e flutuante tem fundo opaco', () => {
   assert.match(folha, /!flutuante && infoFlutuante && styles\.botaoInfoOculto/);
   assert.match(folha, /disabled=\{!flutuante && infoFlutuante\}/);
 });
+
+test('botões de ação alinham com Último, Atual e Calcular, mantendo botão isolado', () => {
+  const campos = entre('rowInputs: {', 'colorRow: {');
+  const calcular = entre('buttonCalcular: {', '// ✅ Linha 2 (o bloco do slider)');
+  const botoes = entre('actionButtons: {', 'button: {');
+  const botoesJSX = entre('{/* ✅ Botões de Ação (mantidos) */}', '{/* ✅ Botão Validar Dentro do Intervalo Ideal */}');
+  const avisoCloro = entre('{/* Aviso operacional: mantém-se visível', '{/* ✅ Mensagem do Resultado (mantida) */}');
+
+  assert.match(campos, /gap: 10/);
+  assert.match(calcular, /height: 44/);
+  assert.match(calcular, /minWidth: 92/);
+  assert.match(botoes, /gap: 10/);
+  assert.match(botoes, /botaoAcaoAlturaAlinhada: \{[\s\S]*?height: 44,[\s\S]*?minHeight: 44,[\s\S]*?marginHorizontal: 0/);
+  assert.match(botoes, /botaoDecisaoAlinhado: \{[\s\S]*?flex: 0,[\s\S]*?width: 92,[\s\S]*?height: 44/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonAplicado, styles\.botaoAcaoAlturaAlinhada\]\}/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonSemEstoque, styles\.botaoAcaoAlturaAlinhada\]\}/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonDecisaoTecnica, styles\.botaoDecisaoAlinhado\]\}/);
+  assert.match(botoesJSX, /\{'Decisão\\ntécnica'\}/);
+  assert.match(avisoCloro, /style=\{styles\.buttonDecisaoTecnica\}/);
+});
