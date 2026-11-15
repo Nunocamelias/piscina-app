@@ -3972,7 +3972,7 @@ const corParametro = (() => {
               <View style={styles.actionButtons}>
                 {/* Produto Aplicado */}
                 <TouchableOpacity
-                  style={styles.buttonAplicado}
+                  style={[styles.buttonAplicado, styles.botaoAcaoAlturaAlinhada]}
                   onPress={() => {
                     Alert.alert(
                       'Confirmação',
@@ -4002,7 +4002,7 @@ const corParametro = (() => {
 
                 {/* Sem Stock */}
                 <TouchableOpacity
-                  style={styles.buttonSemEstoque}
+                  style={[styles.buttonSemEstoque, styles.botaoAcaoAlturaAlinhada]}
                   onPress={() => {
                     Alert.alert(
                       'Confirmação',
@@ -4029,10 +4029,10 @@ const corParametro = (() => {
                 </TouchableOpacity>
                 {/* Produto não aplicado: decisão técnica, com justificação */}
                 <TouchableOpacity
-                  style={styles.buttonDecisaoTecnica}
+                  style={[styles.buttonDecisaoTecnica, styles.botaoDecisaoAlinhado]}
                   onPress={() => abrirDecisaoTecnica(item)}
                 >
-                  <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
+                  <Text style={styles.buttonAcaoPequeno}>{'Decisão\ntécnica'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -4688,13 +4688,29 @@ const styles = StyleSheet.create({
     shadowRadius: 3.5,
     elevation: 5,
   },
+  // Mesma distribuição horizontal da linha Último / Atual / Calcular.
   actionButtons: {
    flexDirection: 'row',
    justifyContent: 'space-between',
    alignItems: 'center',
    width: '100%',
+   gap: 10,
    alignSelf: 'center',
    marginVertical: 10,
+  },
+  // Preserva as cores e o comportamento originais, alterando só a geometria.
+  botaoAcaoAlturaAlinhada: {
+   height: 44,
+   minHeight: 44,
+   marginHorizontal: 0,
+  },
+  botaoDecisaoAlinhado: {
+   flex: 0,
+   width: 92,
+   minWidth: 92,
+   height: 44,
+   minHeight: 44,
+   marginHorizontal: 0,
   },
   button: {
     backgroundColor: '#ADD8E6', // Azul claro
