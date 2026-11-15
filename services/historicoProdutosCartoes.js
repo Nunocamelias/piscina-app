@@ -28,6 +28,7 @@ const SQL_HISTORICO_PRODUTOS = `
       mp.produto_usado,
       mp.quantidade_usada,
       mp.status,
+      mp.motivo,
       COALESCE(m.data_conclusao, m.data_manutencao) AS data_visita
     FROM manutencoes m
     JOIN manutencoes_parametros mp
@@ -47,7 +48,8 @@ const SQL_HISTORICO_PRODUTOS = `
     uv.produto_usado,
     uv.quantidade_usada,
     'pendente'::text AS tipo,
-    TO_CHAR(uv.data_visita, 'DD/MM/YYYY') AS data_visita
+    TO_CHAR(uv.data_visita, 'DD/MM/YYYY') AS data_visita,
+    NULL::text AS motivo
   FROM ultimas_validacoes uv
   WHERE uv.status = 'sem estoque'
     AND NOT EXISTS (
@@ -63,11 +65,27 @@ const SQL_HISTORICO_PRODUTOS = `
     mp.produto_usado,
     mp.quantidade_usada,
     'aplicado'::text AS tipo,
-    TO_CHAR(u.data_visita, 'DD/MM/YYYY') AS data_visita
+    TO_CHAR(u.data_visita, 'DD/MM/YYYY') AS data_visita,
+    NULL::text AS motivo
   FROM ultimas_visitas u
   JOIN manutencoes_parametros mp
     ON mp.manutencao_id = u.manutencao_id AND mp.empresaid = $1
   WHERE mp.status = 'aplicado'
+  UNION ALL
+  SELECT
+    uv.cliente_id,
+    NULL::integer AS registo_id,
+    uv.parametro,
+    NULL::varchar AS produto_usado,
+    NULL::numeric AS quantidade_usada,
+    'decisao_tecnica'::text AS tipo,
+    TO_CHAR(uv.data_visita, 'DD/MM/YYYY') AS data_visita,
+    uv.motivo
+  FROM ultimas_validacoes uv
+  WHERE uv.status = 'decisao_tecnica'
+    -- Mostrar apenas na semana civil imediatamente posterior à decisão.
+    AND uv.data_visita::date >= date_trunc('week', $3::date)::date - 7
+    AND uv.data_visita::date < date_trunc('week', $3::date)::date
   ORDER BY cliente_id, tipo, parametro
 `;
 
@@ -84,11 +102,27 @@ function organizarMensagensProdutos(registos) {
   for (const registo of registos || []) {
     const id = Number(registo.cliente_id);
     const tipo = registo.tipo;
+
+    if (!Number.isInteger(id) || id <= 0) continue;
+
+    if (tipo === 'decisao_tecnica') {
+      const parametro = String(registo.parametro ?? '').trim();
+      const motivo = String(registo.motivo ?? '').trim();
+      if (!parametro || !motivo) continue;
+      if (!porCliente[id]) porCliente[id] = { pendentes: [], aplicados: [] };
+      if (!porCliente[id].decisoes_tecnicas) porCliente[id].decisoes_tecnicas = [];
+      const mensagem = { parametro, motivo };
+      if (typeof registo.data_visita === 'string' &&
+          /^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(registo.data_visita)) {
+        mensagem.data_visita = registo.data_visita;
+      }
+      porCliente[id].decisoes_tecnicas.push(mensagem);
+      continue;
+    }
+
     const produto = String(registo.produto_usado ?? '').trim();
     const quantidade = formatarQuantidadeProduto(registo.quantidade_usada);
-
-    if (!Number.isInteger(id) || id <= 0 || !['pendente', 'aplicado'].includes(tipo)
-      || !produto || !quantidade) continue;
+    if (!['pendente', 'aplicado'].includes(tipo) || !produto || !quantidade) continue;
 
     if (!porCliente[id]) porCliente[id] = { pendentes: [], aplicados: [] };
 
@@ -118,12 +152,12 @@ function organizarMensagensProdutos(registos) {
   return porCliente;
 }
 
-async function consultarMensagensProdutos(pool, empresaid, clienteIds) {
+async function consultarMensagensProdutos(pool, empresaid, clienteIds, dataConsultaLisboa) {
   if (!Array.isArray(clienteIds) || clienteIds.length === 0) {
     return Object.create(null);
   }
 
-  const resultado = await pool.query(SQL_HISTORICO_PRODUTOS, [empresaid, clienteIds]);
+  const resultado = await pool.query(SQL_HISTORICO_PRODUTOS, [empresaid, clienteIds, dataConsultaLisboa]);
   return organizarMensagensProdutos(resultado.rows);
 }
 
