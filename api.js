@@ -2723,7 +2723,7 @@ app.get('/clientes-por-dia', async (req, res) => {
     let mensagensPorCliente = {};
     try {
       mensagensPorCliente = await consultarMensagensProdutos(
-        pool, Number(empresaid), result.rows.map((cliente) => cliente.id)
+        pool, Number(empresaid), result.rows.map((cliente) => cliente.id), hojeLisboa
       );
     } catch (erroMensagens) {
       console.error('Não foi possível carregar o histórico químico dos cartões:', erroMensagens);
