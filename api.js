@@ -2404,18 +2404,18 @@ app.post('/equipes', async (req, res) => {
       // ✅ Verifica se `empresaid` é um número válido
       const empresaidNum = Number(empresaid);
       if (isNaN(empresaidNum)) {
-        console.warn('⚠️ Empresaid inválido:', empresaid);
+        console.warn('⚠️ Empresaid inválido na criação de equipa.');
         return res.status(400).json({ error: 'Empresaid deve ser um número válido.' });
       }
 
       // ✅ Validações de formato de data
       if (proxima_inspecao && isNaN(Date.parse(proxima_inspecao))) {
-        console.warn('⚠️ Data inválida para próxima inspeção:', proxima_inspecao);
+        console.warn('⚠️ Data inválida para próxima inspeção.');
         return res.status(400).json({ error: 'A data de próxima inspeção é inválida.' });
       }
 
       if (validade_seguro && isNaN(Date.parse(validade_seguro))) {
-        console.warn('⚠️ Data inválida para validade do seguro:', validade_seguro);
+        console.warn('⚠️ Data inválida para validade do seguro.');
         return res.status(400).json({ error: 'A validade do seguro é inválida.' });
       }
 
@@ -2463,7 +2463,6 @@ app.get('/equipes', async (req, res) => {
       const result = await pool.query(query, [empresaid]);
 
       if (result.rows.length === 0) {
-        console.warn('[DEBUG] Nenhuma equipe encontrada para empresa:', empresaid);
         return res.status(200).json([]); // ✅ Retorna um array vazio, sem erro 404
       }
 
@@ -3033,7 +3032,6 @@ app.post('/register', async (req, res) => {
 
   // 🧩 Validação dos campos obrigatórios
   if (!nome_empresa || !email || !senha || !telefone || !endereco) {
-    console.error('❌ Erro: Campos obrigatórios ausentes.');
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   }
 
@@ -4299,7 +4297,6 @@ app.get('/manutencoes/:cliente_id', async (req, res) => {
     const result = await pool.query(query, [cliente_id, diaSemana]);
 
     if (result.rows.length === 0) {
-      console.warn('Nenhuma manutenção encontrada. Criando nova...');
       const insertQuery = `
         INSERT INTO manutencoes (cliente_id, equipe_id, dia_semana, status, data_manutencao)
         VALUES ($1, $2, $3, 'pendente', NOW())
@@ -4628,7 +4625,6 @@ app.get('/ultima-manutencao', async (req, res) => {
 
 
   if (!clienteId || !diaSemana || !empresaid) {
-    console.error('Parâmetros incompletos:', { clienteId, diaSemana, empresaid });
     return res.status(400).json({ error: 'Cliente ID, Dia da Semana e Empresaid são obrigatórios.' });
   }
 
@@ -4940,7 +4936,6 @@ WHERE mp.manutencao_id = $1 AND mp.empresaid = $2;
     const values = [manutencao_id, empresaid];
 
     const result = await pool.query(query, values);
-    //console.log('🚀 Parâmetros carregados do banco:', result.rows);
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -6642,7 +6637,6 @@ app.post('/notificacoes/:id/orcamento-aprovado', async (req, res) => {
     });
   } catch (error) {
     console.error('🔥 ERRO /orcamento-aprovado:', error);
-    console.error('🔥 STACK:', error?.stack);
     return res.status(500).json({
       error: 'Erro ao marcar orçamento aprovado.',
       detalhe: String(error?.message || error),
