@@ -53,3 +53,77 @@ test('Calcular Todos só abre procedimento com cálculo novo e não com resultad
   assert.match(procedimento, /if \(!resultadoDoCalculoAtualRef\.current\) return;/);
   assert.match(procedimento, /abrirProcedimento\(\);[\s\S]*?resultadoDoCalculoAtualRef\.current = false;/);
 });
+
+test('Info só sinaliza texto novo após cálculo, nunca apenas por digitação', () => {
+  const calcularUm = entre('const calcularUmParametro = useCallback', 'const mostrarProximoPasso');
+  const aviso = entre('const assinaturaInfo = useMemo', 'const abrirProcedimento = useCallback');
+  const edicao = entre("placeholder=\"Ex: 1.5\"", '{/* ✅ Cloro Combinado (dentro do Cloro Total) */}');
+
+  assert.match(calcularUm, /setVersaoCalculoInfo\(\(versao\) => versao \+ 1\)/);
+  assert.match(aviso, /JSON\.stringify\(\[msg\.titulo, msg\.resumo, msg\.procedimento\]\)/);
+  assert.match(aviso, /versaoCalculoInfo === ultimaVersaoCalculoInfoRef\.current\) return;/);
+  assert.match(aviso, /jaExistiaCalculo/);
+  assert.match(aviso, /if \(assinaturaInfo && assinaturaInfo !== anterior\)/);
+  assert.match(aviso, /setInfoNaoLida\(true\)/);
+  assert.doesNotMatch(edicao, /setVersaoCalculoInfo/);
+});
+
+test('Info assinala por três pulsos e mantém indicação até consultar', () => {
+  const animacao = entre('useEffect(() => {\n  if (pulsoInfo === 0)', 'const abrirProcedimento = useCallback');
+  const abrir = entre('const abrirProcedimento = useCallback', 'useEffect(() => {\n  if (!abrirProcedimentoAposCalcular)');
+  const botao = entre('const renderBotaoInfo = (flutuante:', 'return (\n  <>\n  <View ref={areaInfoRef}');
+
+  assert.match(animacao, /Animated\.loop\(/);
+  assert.match(animacao, /iterations: 3/);
+  assert.match(animacao, /useNativeDriver: true/);
+  assert.match(abrir, /ultimaAssinaturaInfoRef\.current = JSON\.stringify/);
+  assert.match(abrir, /setInfoNaoLida\(false\)/);
+  assert.match(abrir, /animacaoPulsoInfoRef\.current\?\.stop\(\)/);
+  assert.match(botao, /infoNaoLida && <View pointerEvents="none" style=\{styles\.infoPontoNovo\}/);
+  assert.match(botao, /styles\.infoMolduraVerde/);
+});
+
+test('Info flutua no canto superior direito sem deslocar os outros dois botões', () => {
+  const posicao = entre('const atualizarPosicaoInfo = useCallback', 'const renderBotaoInfo = (flutuante:');
+  const botoes = entre('<View style={styles.acoesRow}>', '{isParametrosExpanded && parametrosOrdenados.length > 0 ? (');
+  assert.match(posicao, /measureInWindow/);
+  assert.match(posicao, /topoAreaInfoRef\.current \+ 8/);
+  assert.match(posicao, /setInfoFlutuante/);
+  assert.match(folha, /<FlatList\s+onScroll=\{atualizarPosicaoInfo\}/);
+  assert.match(folha, /\{infoFlutuante && \(\s*<View style=\{styles\.botaoInfoFlutuante\}>/);
+  assert.match(botoes, /styles\.testeRapidoBtn/);
+  assert.match(botoes, /styles\.calcularTodosBtn/);
+  assert.match(botoes, /\{renderBotaoInfo\(false\)\}/);
+  assert.doesNotMatch(botoes, /setInfoFlutuante/);
+  assert.match(folha, /botaoInfoFlutuante:\s*\{[\s\S]*?position: 'absolute',[\s\S]*?top: 8,[\s\S]*?right: 28/);
+});
+
+test('Info original mantém as dimensões e flutuante tem fundo opaco', () => {
+  const botao = entre('botaoProcedimento: {', 'botaoProcedimentoTxt: {');
+  assert.match(botao, /width: 65/);
+  assert.match(botao, /height: 42/);
+  assert.match(botao, /borderRadius: 12/);
+  assert.match(folha, /botaoInfoSemMargem: \{ marginBottom: 0, backgroundColor: '#ECECEC' \}/);
+  assert.match(folha, /!flutuante && infoFlutuante && styles\.botaoInfoOculto/);
+  assert.match(folha, /disabled=\{!flutuante && infoFlutuante\}/);
+});
+
+test('botões de ação alinham com Último, Atual e Calcular, mantendo botão isolado', () => {
+  const campos = entre('rowInputs: {', 'colorRow: {');
+  const calcular = entre('buttonCalcular: {', '// ✅ Linha 2 (o bloco do slider)');
+  const botoes = entre('actionButtons: {', 'button: {');
+  const botoesJSX = entre('{/* ✅ Botões de Ação (mantidos) */}', '{/* ✅ Botão Validar Dentro do Intervalo Ideal */}');
+  const avisoCloro = entre('{/* Aviso operacional: mantém-se visível', '{/* ✅ Mensagem do Resultado (mantida) */}');
+
+  assert.match(campos, /gap: 10/);
+  assert.match(calcular, /height: 44/);
+  assert.match(calcular, /minWidth: 92/);
+  assert.match(botoes, /gap: 10/);
+  assert.match(botoes, /botaoAcaoAlturaAlinhada: \{[\s\S]*?height: 44,[\s\S]*?minHeight: 44,[\s\S]*?marginHorizontal: 0/);
+  assert.match(botoes, /botaoDecisaoAlinhado: \{[\s\S]*?flex: 0,[\s\S]*?width: 92,[\s\S]*?height: 44/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonAplicado, styles\.botaoAcaoAlturaAlinhada\]\}/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonSemEstoque, styles\.botaoAcaoAlturaAlinhada\]\}/);
+  assert.match(botoesJSX, /style=\{\[styles\.buttonDecisaoTecnica, styles\.botaoDecisaoAlinhado\]\}/);
+  assert.match(botoesJSX, /\{'Decisão\\ntécnica'\}/);
+  assert.match(avisoCloro, /style=\{styles\.buttonDecisaoTecnica\}/);
+});

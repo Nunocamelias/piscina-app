@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal, ScrollView, Animated } from 'react-native';
 import Config from 'react-native-config';
 import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -256,6 +256,18 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   // Identifica edições efetuadas enquanto a leitura assíncrona ainda está em curso.
   const versaoEdicaoLocalRef = useRef(0);
   const resultadoDoCalculoAtualRef = useRef(false);
+  // O aviso Info só é ativado por alterações reais às instruções após um cálculo.
+  const [versaoCalculoInfo, setVersaoCalculoInfo] = useState(0);
+  const [infoNaoLida, setInfoNaoLida] = useState(false);
+  const [pulsoInfo, setPulsoInfo] = useState(0);
+  const valorPulsoInfo = useRef(new Animated.Value(0)).current;
+  const animacaoPulsoInfoRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Mantém o Info na posição original até atingir o topo da área de scroll.
+  const [infoFlutuante, setInfoFlutuante] = useState(false);
+  const botaoInfoOriginalRef = useRef<any>(null);
+  const areaInfoRef = useRef<View>(null);
+  const topoAreaInfoRef = useRef<number | null>(null);
 
   // ✅ ler estado do card (por parâmetro)
   const isExpanded = useCallback(
@@ -1613,6 +1625,7 @@ const alertaPHTecnico =
           p.parametro === item.parametro ? { ...p, resultado: resultadoFinalComMeta } : p
         )
       );
+      setVersaoCalculoInfo((versao) => versao + 1);
     };
 
     // warn: pede confirmação mas deixa calcular
@@ -1957,6 +1970,60 @@ const parametrosParaMensagens = useMemo(() => {
   }));
 }, [parametrosQuimicos]);
 
+// Assinatura do texto realmente mostrado no Info, não dos campos em edição.
+const assinaturaInfo = useMemo(() => {
+  const msg = gerarMensagensManutencao({
+    empresaid,
+    clienteId,
+    clienteNome: cliente?.nome,
+    cliente,
+    parametros: parametrosParaMensagens,
+    metodoAnalise,
+    modoTratamento,
+  });
+  return msg.temMensagem
+    ? JSON.stringify([msg.titulo, msg.resumo, msg.procedimento])
+    : '';
+}, [empresaid, clienteId, cliente, parametrosParaMensagens, metodoAnalise, modoTratamento]);
+
+const ultimaAssinaturaInfoRef = useRef<string | null>(null);
+const ultimaVersaoCalculoInfoRef = useRef(0);
+
+useEffect(() => {
+  // Memoriza o histórico já carregado, mas não considera digitação um novo cálculo.
+  if (versaoCalculoInfo === 0 && ultimaAssinaturaInfoRef.current === null) {
+    const jaExistiaCalculo = parametrosParaMensagens.some((p: any) => !!p.resultado?.resultado);
+    if (jaExistiaCalculo) ultimaAssinaturaInfoRef.current = assinaturaInfo;
+  }
+  if (versaoCalculoInfo === ultimaVersaoCalculoInfoRef.current) return;
+
+  const anterior = ultimaAssinaturaInfoRef.current ?? '';
+  ultimaVersaoCalculoInfoRef.current = versaoCalculoInfo;
+  ultimaAssinaturaInfoRef.current = assinaturaInfo;
+
+  if (assinaturaInfo && assinaturaInfo !== anterior) {
+    setInfoNaoLida(true);
+    setPulsoInfo((valor) => valor + 1);
+  }
+}, [assinaturaInfo, versaoCalculoInfo, parametrosParaMensagens]);
+
+useEffect(() => {
+  if (pulsoInfo === 0) return;
+  animacaoPulsoInfoRef.current?.stop();
+  valorPulsoInfo.setValue(0);
+
+  const animacao = Animated.loop(
+    Animated.sequence([
+      Animated.timing(valorPulsoInfo, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.timing(valorPulsoInfo, { toValue: 0, duration: 260, useNativeDriver: true }),
+    ]),
+    { iterations: 3 }
+  );
+  animacaoPulsoInfoRef.current = animacao;
+  animacao.start();
+  return () => animacao.stop();
+}, [pulsoInfo, valorPulsoInfo]);
+
 const abrirProcedimento = useCallback(() => {
   const msg =
     gerarMensagensManutencao({
@@ -1988,6 +2055,12 @@ const abrirProcedimento = useCallback(() => {
   const procStr = Array.isArray(msg.procedimento)
     ? msg.procedimento.join('\n')
     : String(msg.procedimento ?? '');
+
+  // A consulta passa a ser a referência da última mensagem que o técnico leu.
+  ultimaAssinaturaInfoRef.current = JSON.stringify([msg.titulo, msg.resumo, msg.procedimento]);
+  setInfoNaoLida(false);
+  animacaoPulsoInfoRef.current?.stop();
+  valorPulsoInfo.setValue(0);
 
   Alert.alert(
     msg.titulo,
@@ -2821,9 +2894,51 @@ useEffect(() => {
   }
 }, [manutencaoAtual?.id]);
 
+// Mede o botão original no scroll, sem mover a linha dos três botões.
+const atualizarPosicaoInfo = useCallback(() => {
+  if (!botaoInfoOriginalRef.current || topoAreaInfoRef.current === null) return;
+  botaoInfoOriginalRef.current.measureInWindow((_x: number, y: number) => {
+    if (!Number.isFinite(y) || topoAreaInfoRef.current === null) return;
+    const deveFlutuar = y <= topoAreaInfoRef.current + 8;
+    setInfoFlutuante((atual) => atual === deveFlutuar ? atual : deveFlutuar);
+  });
+}, []);
+
+const medirAreaInfo = useCallback(() => {
+  areaInfoRef.current?.measureInWindow((_x: number, y: number) => {
+    if (!Number.isFinite(y)) return;
+    topoAreaInfoRef.current = y;
+    atualizarPosicaoInfo();
+  });
+}, [atualizarPosicaoInfo]);
+
+const renderBotaoInfo = (flutuante: boolean) => (
+  <TouchableOpacity
+    ref={flutuante ? undefined : botaoInfoOriginalRef}
+    onPress={abrirProcedimento}
+    disabled={!flutuante && infoFlutuante}
+    accessibilityLabel="Info dos procedimentos químicos"
+    style={[
+      styles.botaoProcedimento,
+      flutuante && styles.botaoInfoSemMargem,
+      !flutuante && infoFlutuante && styles.botaoInfoOculto,
+    ]}
+  >
+    <Text style={styles.botaoProcedimentoTxt}>Info</Text>
+    {infoNaoLida && <View pointerEvents="none" style={styles.infoPontoNovo} />}
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.infoMolduraVerde, { opacity: valorPulsoInfo }]}
+    />
+  </TouchableOpacity>
+);
+
 return (
   <>
+  <View ref={areaInfoRef} style={styles.areaInfo} onLayout={medirAreaInfo}>
   <FlatList
+    onScroll={atualizarPosicaoInfo}
+    scrollEventThrottle={32}
     data={isItensExpanded ? itensManutencaoPeriodica : []} // Apenas carrega os itens quando expandido
     keyExtractor={(item) => item.id.toString()}
     ListHeaderComponent={
@@ -3466,9 +3581,7 @@ if (islLigeiro && phOk && tacOk && thOk) {
   <Text style={styles.acaoBtnText}>Calcular todos</Text>
 </TouchableOpacity>
 
-<TouchableOpacity onPress={abrirProcedimento} style={styles.botaoProcedimento}>
-  <Text style={styles.botaoProcedimentoTxt}>Info</Text>
-</TouchableOpacity>
+{renderBotaoInfo(false)}
 
 </View>
 
@@ -3859,7 +3972,7 @@ const corParametro = (() => {
               <View style={styles.actionButtons}>
                 {/* Produto Aplicado */}
                 <TouchableOpacity
-                  style={styles.buttonAplicado}
+                  style={[styles.buttonAplicado, styles.botaoAcaoAlturaAlinhada]}
                   onPress={() => {
                     Alert.alert(
                       'Confirmação',
@@ -3889,7 +4002,7 @@ const corParametro = (() => {
 
                 {/* Sem Stock */}
                 <TouchableOpacity
-                  style={styles.buttonSemEstoque}
+                  style={[styles.buttonSemEstoque, styles.botaoAcaoAlturaAlinhada]}
                   onPress={() => {
                     Alert.alert(
                       'Confirmação',
@@ -3916,10 +4029,10 @@ const corParametro = (() => {
                 </TouchableOpacity>
                 {/* Produto não aplicado: decisão técnica, com justificação */}
                 <TouchableOpacity
-                  style={styles.buttonDecisaoTecnica}
+                  style={[styles.buttonDecisaoTecnica, styles.botaoDecisaoAlinhado]}
                   onPress={() => abrirDecisaoTecnica(item)}
                 >
-                  <Text style={styles.buttonAcaoPequeno}>Decisão técnica</Text>
+                  <Text style={styles.buttonAcaoPequeno}>{'Decisão\ntécnica'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -4296,6 +4409,12 @@ const corParametro = (() => {
 
     }
   />
+  {infoFlutuante && (
+    <View style={styles.botaoInfoFlutuante}>
+      {renderBotaoInfo(true)}
+    </View>
+  )}
+  </View>
   <Modal
     visible={!!itemDecisaoTecnica}
     transparent
@@ -4359,6 +4478,39 @@ const corParametro = (() => {
 };
 
 const styles = StyleSheet.create({
+  areaInfo: { flex: 1 },
+  botaoInfoFlutuante: {
+    position: 'absolute',
+    top: 8,
+    // Igual ao botão original: 16 de margem do contentor + 12 da secção.
+    right: 28,
+    zIndex: 20,
+    elevation: 20,
+  },
+  // Fundo opaco para o texto não se confundir com os campos que passam por trás.
+  botaoInfoSemMargem: { marginBottom: 0, backgroundColor: '#ECECEC' },
+  botaoInfoOculto: { opacity: 0 },
+  infoPontoNovo: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    backgroundColor: '#269447',
+  },
+  infoMolduraVerde: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    bottom: -3,
+    left: -3,
+    borderRadius: 15,
+    borderWidth: 3,
+    borderColor: '#269447',
+  },
   container: {
     flex: 1,
     padding: 16,
@@ -4458,7 +4610,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   buttonDecisaoTecnica: {
-    backgroundColor: '#D3D3D3',
+    backgroundColor: '#ADD8E6',
     flex: 1,
     minHeight: 56,
     borderRadius: 8,
@@ -4536,13 +4688,29 @@ const styles = StyleSheet.create({
     shadowRadius: 3.5,
     elevation: 5,
   },
+  // Mesma distribuição horizontal da linha Último / Atual / Calcular.
   actionButtons: {
    flexDirection: 'row',
    justifyContent: 'space-between',
    alignItems: 'center',
    width: '100%',
+   gap: 10,
    alignSelf: 'center',
    marginVertical: 10,
+  },
+  // Preserva as cores e o comportamento originais, alterando só a geometria.
+  botaoAcaoAlturaAlinhada: {
+   height: 44,
+   minHeight: 44,
+   marginHorizontal: 0,
+  },
+  botaoDecisaoAlinhado: {
+   flex: 0,
+   width: 92,
+   minWidth: 92,
+   height: 44,
+   minHeight: 44,
+   marginHorizontal: 0,
   },
   button: {
     backgroundColor: '#ADD8E6', // Azul claro
