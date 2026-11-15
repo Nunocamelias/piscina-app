@@ -127,3 +127,20 @@ test('botões de ação alinham com Último, Atual e Calcular, mantendo botão i
   assert.match(botoesJSX, /\{'Decisão\\ntécnica'\}/);
   assert.match(avisoCloro, /style=\{styles\.buttonDecisaoTecnica\}/);
 });
+
+test('linha de ações distribui os dois botões no espaço disponível e mantém Info no cartão', () => {
+  const row = entre('acoesRow: {', 'acaoBtnBase: {');
+  const base = entre('acaoBtnBase: {', 'acaoBtnText: {');
+  const info = entre('botaoProcedimento: {', 'botaoProcedimentoTxt: {');
+  const flutuante = entre('botaoInfoFlutuante: {', 'botaoInfoSemMargem: {');
+
+  assert.match(row, /flexDirection: 'row'/);
+  assert.match(row, /gap: 8/);
+  assert.match(base, /flex: 1/);
+  assert.match(base, /minWidth: 0/);
+  assert.doesNotMatch(base, /width: 125/);
+  assert.match(info, /flexShrink: 0/);
+  assert.match(info, /width: 65/);
+  assert.match(info, /height: 42/);
+  assert.match(flutuante, /right: 28/);
+});

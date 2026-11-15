@@ -5138,13 +5138,14 @@ acaoBtnSpacer: { width: 10 },
 acoesRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
-  gap: 12, // se o teu RN não suportar, digo alternativa abaixo
+  gap: 8, // Os botões têm de caber também em ecrãs estreitos.
   marginTop: 10,
 },
 
 acaoBtnBase: {
-  //flex: .5,
-  width: 125,
+  // Dividem o espaço disponível, sem empurrar o Info para fora do cartão.
+  flex: 1,
+  minWidth: 0,
   height: 42,          // 👈 ligeiramente maior (fica mais premium)
   borderRadius: 12,    // 👈 acompanha o novo tamanho
   alignItems: 'center',
@@ -5170,7 +5171,7 @@ acaoBtnDisabled: {
   opacity: 0.45,
 },
 botaoProcedimento: {
-  //flex: .5,
+  flexShrink: 0,
   width: 65,
   height: 42,          // 👈 ligeiramente maior (fica mais premium)
   borderRadius: 12,    // 👈 acompanha o novo tamanho
