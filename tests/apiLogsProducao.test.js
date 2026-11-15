@@ -40,3 +40,21 @@ test('logs de arranque, reset, mensalidades e erros continuam disponíveis', () 
   assert.match(api, /console\.error\('❌ Erro no cron semanal:', error\)/);
   assert.match(api, /console\.error\('Erro ao buscar ou criar manutenção:', error\)/);
 });
+
+test('logótipo e fotografias continuam disponíveis sem impressão integral na consola', () => {
+  assert.match(api, /logo = COALESCE\(\$5, logo\)/);
+  assert.match(api, /empresa: result\.rows\[0\]/);
+  assert.match(api, /const buffer = Buffer\.from\(base64Limpo, 'base64'\)/);
+  assert.match(api, /console\.error\('Erro ao enviar fotografia:', uploadError\)/);
+  assert.doesNotMatch(api, /console\.log\([^\n]*\blogo\b/);
+  assert.doesNotMatch(api, /console\.log\([^\n]*\bimagem_base64\b/);
+});
+
+test('avisos de validação não imprimem valores enviados e erros continuam identificáveis', () => {
+  assert.doesNotMatch(api, /console\.warn\('⚠️ Empresaid inválido:', empresaid\)/);
+  assert.doesNotMatch(api, /console\.warn\('⚠️ Data inválida para próxima inspeção:', proxima_inspecao\)/);
+  assert.doesNotMatch(api, /console\.warn\('⚠️ Data inválida para validade do seguro:', validade_seguro\)/);
+  assert.doesNotMatch(api, /console\.error\('🔥 STACK:', error\?\.stack\)/);
+  assert.match(api, /console\.error\('🔥 ERRO \/orcamento-aprovado:', error\)/);
+  assert.match(api, /console\.error\('❌ Erro ao registrar status do parâmetro:', error\)/);
+});
