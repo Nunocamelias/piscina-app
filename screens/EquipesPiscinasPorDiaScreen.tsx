@@ -18,6 +18,12 @@ type MensagemProduto = {
   quantidade: string;
 };
 
+type MensagemDecisaoTecnica = {
+  parametro: string;
+  motivo: string;
+  data_visita?: string;
+};
+
 type Cliente = {
   id: number;
   nome: string;
@@ -42,6 +48,7 @@ type Cliente = {
   mensagens_produtos?: {
     pendentes: MensagemProduto[];
     aplicados: MensagemProduto[];
+    decisoes_tecnicas?: MensagemDecisaoTecnica[];
   };
 };
 
@@ -151,6 +158,7 @@ const fetchClientes = useCallback(async () => {
                     (p) => p.registo_id !== registoId
                   ),
                   aplicados: cliente.mensagens_produtos?.aplicados || [],
+                  decisoes_tecnicas: cliente.mensagens_produtos?.decisoes_tecnicas || [],
                 },
               }
             : cliente
@@ -355,6 +363,16 @@ const fetchClientes = useCallback(async () => {
                   </Text>
                 </View>
               ))}
+              {item.mensagens_produtos?.decisoes_tecnicas?.map((mensagem, index) => (
+                <View
+                  key={`decisao-tecnica-${mensagem.parametro}-${index}`}
+                  style={styles.avisoDecisaoTecnica}
+                >
+                  <Text style={styles.mensagemProdutoTexto}>
+                    ℹ Decisão técnica da semana anterior{mensagem.data_visita ? ` (${mensagem.data_visita})` : ''}: {mensagem.parametro} — {mensagem.motivo}
+                  </Text>
+                </View>
+              ))}
             </TouchableOpacity>
           )}
         />
@@ -412,6 +430,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#CCFFCC',
     borderWidth: 1,
     borderColor: '#75B875',
+  },
+  avisoDecisaoTecnica: {
+    marginTop: 8,
+    padding: 9,
+    borderRadius: 8,
+    backgroundColor: '#D3D3D3',
+    borderWidth: 1,
+    borderColor: '#909090',
   },
   mensagemProdutoTexto: {
     fontSize: 13,
