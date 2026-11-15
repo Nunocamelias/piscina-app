@@ -21,3 +21,22 @@ test('retorno das notificações e sinalização de erros permanecem ativos', ()
   assert.match(api, /console\.error\('❌ Erro ao buscar notificações:',\s*error\)/);
   assert.match(api, /console\.error\('❌ Erro ao atualizar empresa:',\s*error\)/);
 });
+
+test('consultas normais e snapshots ISL não inundam os logs', () => {
+  assert.doesNotMatch(api, /console\.log\('\[DEBUG\] /);
+  assert.doesNotMatch(api, /console\.log\('Recebido equipeId:/);
+  assert.doesNotMatch(api, /console\.log\('Recebendo os parâmetros:/);
+  assert.doesNotMatch(api, /console\.log\('Nenhuma manutenção encontrada/);
+  assert.doesNotMatch(api, /console\.log\('Parâmetros padrão adicionados/);
+  assert.doesNotMatch(api, /console\.log\('[^']*\[ISL SNAPSHOT\]/);
+  assert.doesNotMatch(api, /console\.debug\('🛠️ Executando query de inserção/);
+});
+
+test('logs de arranque, reset, mensalidades e erros continuam disponíveis', () => {
+  assert.match(api, /console\.log\('🕒 Iniciando reset automático semanal/);
+  assert.match(api, /console\.log\('✅ Reset automático concluído/);
+  assert.match(api, /console\.log\('✅ Mensalidades lançadas com sucesso/);
+  assert.match(api, /console\.log\(`API rodando na porta/);
+  assert.match(api, /console\.error\('❌ Erro no cron semanal:', error\)/);
+  assert.match(api, /console\.error\('Erro ao buscar ou criar manutenção:', error\)/);
+});
