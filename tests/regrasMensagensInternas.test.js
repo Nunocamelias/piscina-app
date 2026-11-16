@@ -58,3 +58,14 @@ test('mensagem pode ter texto ou fotografias HTTPS, sem exigir ambos', () => {
   assert.ok(validarConteudoMensagem('Foto', ['data:image/png;base64,AAAA']).erro);
   assert.ok(validarConteudoMensagem('Foto', Array(9).fill('https://exemplo.pt/x')).erro);
 });
+
+test('resposta aceita duas fotografias JPEG comprimidas mas recusa ficheiros perigosos', () => {
+  const foto = 'data:image/jpeg;base64,' + 'QUJD'.repeat(50);
+  assert.deepEqual(validarConteudoMensagem('', [foto, foto]), {
+    texto: null, anexos: [foto, foto],
+  });
+  assert.ok(validarConteudoMensagem('Ok', [foto, foto, foto]).erro);
+  assert.ok(validarConteudoMensagem('Ok', ['data:text/html;base64,QUJD']).erro);
+  assert.ok(validarConteudoMensagem('Ok', ['data:image/jpeg;base64,not_valid']).erro);
+  assert.ok(validarConteudoMensagem('Ok', ['data:image/jpeg;base64,' + 'QUJD'.repeat(600000)]).erro);
+});
