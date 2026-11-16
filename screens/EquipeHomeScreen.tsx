@@ -4,6 +4,7 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
+import IndicadorNaoLidas from '../components/IndicadorNaoLidas';
 
 
 // 👇 solução simples: não tipar a navegação a fundo neste ecrã
@@ -89,7 +90,10 @@ const EquipeHomeScreen = ({ navigation, route }: Props) => {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MensagensInternas')}>
-          <Text style={styles.buttonText}>Mensagens internas (teste)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.buttonText}>Mensagens internas (teste)</Text>
+            <IndicadorNaoLidas />
+          </View>
         </TouchableOpacity>
       </View>
 
