@@ -61,6 +61,10 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => navigation.navigate('ReceberNotificacoes')}>
             <Text style={styles.buttonText}>Notificações</Text>
           </TouchableOpacity>
+          {/* Nova caixa em paralelo com o circuito antigo. */}
+          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MensagensInternas')}>
+            <Text style={styles.buttonText}>Mensagens internas (teste)</Text>
+          </TouchableOpacity>
         </View>
 
         {/* 🔹 Rodapé com nome e powered by */}
