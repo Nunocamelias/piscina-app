@@ -65,3 +65,19 @@ test('o ecrã apenas atualiza enquanto aberto; ainda não anuncia push sonoro', 
   assert.match(ecrã, /setInterval\(\(\) =>/);
   assert.doesNotMatch(ecrã, /FirebaseMessaging|createNotificationChannel|Sound\.play\(/);
 });
+
+test('relatorio guardado e associado por identificador, sem criar um novo relatorio', () => {
+  assert.match(folha, /const response = await axios\.post\(\`\$\{Config\.API_URL\}\/notificacoes\`, dadosEnvio\)/);
+  assert.match(folha, /const notificacaoId = Number\(response\.data\?\.notificacao\?\.id\)/);
+  assert.match(folha, /\/mensagens-internas\/conversas\/importar-anomalia/);
+  assert.match(folha, /notificacao_id: notificacaoId/);
+  assert.match(folha, /Authorization: \`Bearer \$\{token\}\`/);
+  assert.match(folha, /catch \(erroAssociacao: unknown\)/);
+  assert.match(folha, /o relatório continua disponível nas notificações antigas/);
+});
+
+test('falhas nao despejam o objeto do relatorio com fotografias nos logs', () => {
+  assert.doesNotMatch(folha, /console\.log\('📩 Enviando relatório com os seguintes dados:', dadosEnvio\)/);
+  assert.doesNotMatch(folha, /console\.error\('❌ Erro ao enviar relatório:', error\)/);
+  assert.match(folha, /Falha no envio do relatório:.*response\?\.status/);
+});
