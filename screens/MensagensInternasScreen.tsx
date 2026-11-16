@@ -181,7 +181,8 @@ const MensagensInternasScreen: React.FC = () => {
   // Atualização só enquanto este ecrã está aberto. O push com som será outra fase.
   useFocusEffect(useCallback(() => {
     if (!sessao) return undefined;
-    void carregarLista(true);
+    // A primeira consulta mostra eventuais erros; as atualizações seguintes são silenciosas.
+    void carregarLista();
     const intervalo = setInterval(() => {
       void carregarLista(true);
       if (conversaRef.current) void carregarMensagens(conversaRef.current, false, true);
