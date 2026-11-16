@@ -2349,7 +2349,12 @@ const handleEnviarRelatorio = async () => {
       Alert.alert('Erro', 'Não foi possível enviar o relatório.');
     }
   } catch (error: unknown) {
-    console.error('❌ Erro ao enviar relatório:', error);
+    // Evitar imprimir o objeto AxiosError completo (pode incluir fotografias Base64).
+    if (axios.isAxiosError(error)) {
+      console.error('Falha no envio do relatório:', error.response?.status || error.code);
+    } else {
+      console.error('Falha no envio do relatório:', error instanceof Error ? error.message : 'erro desconhecido');
+    }
 
     if (axios.isAxiosError(error)) {
       Alert.alert('Erro', error.response?.data?.error || 'Erro ao enviar relatório.');
