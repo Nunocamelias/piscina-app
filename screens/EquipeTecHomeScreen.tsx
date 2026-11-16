@@ -10,6 +10,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../App';
+import IndicadorNaoLidas from '../components/IndicadorNaoLidas';
 
 type RouteParams = {
   equipeId?: number;
@@ -68,7 +69,10 @@ const EquipeTecHomeScreen: React.FC = () => {
           <Text style={styles.buttonSecondaryText}>Ver notificações técnicas</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.buttonSecondary, { marginTop: 12 }]} onPress={() => navigation.navigate('MensagensInternas')}>
-          <Text style={styles.buttonSecondaryText}>Mensagens internas (teste)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.buttonSecondaryText}>Mensagens internas (teste)</Text>
+            <IndicadorNaoLidas />
+          </View>
         </TouchableOpacity>
       </View>
 
