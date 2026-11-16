@@ -104,14 +104,17 @@ function criarRouterMensagensInternas(pool) {
     try {
       const resultado = await pool.query([
         'SELECT c.id, c.assunto, c.estado, c.equipeid, c.cliente_id,',
+        'e.nomeequipe AS equipa_nome, cl.nome AS cliente_nome,',
         'c.notificacao_origem_id, c.grupo_envio_id, c.criada_em, c.atualizada_em,',
         '(SELECT COUNT(*)::INTEGER FROM mensagens_internas m',
         ' WHERE m.conversa_id = c.id AND m.empresaid = c.empresaid',
         ' AND m.autor_id <> $4 AND NOT EXISTS',
         ' (SELECT 1 FROM leituras_mensagens_internas l',
         ' WHERE l.mensagem_id = m.id AND l.usuario_id = $4)) AS nao_lidas',
-        'FROM conversas_internas c WHERE c.empresaid = $1',
-        'AND ($2::BOOLEAN OR c.equipeid = $3)',
+        'FROM conversas_internas c',
+        'LEFT JOIN equipes e ON e.id = c.equipeid AND e.empresaid = c.empresaid',
+        'LEFT JOIN clientes cl ON cl.id = c.cliente_id AND cl.empresaid = c.empresaid',
+        'WHERE c.empresaid = $1 AND ($2::BOOLEAN OR c.equipeid = $3)',
         'ORDER BY c.atualizada_em DESC, c.id DESC',
       ].join(' '), [u.empresaid, eAdministrador(u), u.equipeid, u.id]);
       return res.json(resultado.rows);
@@ -194,8 +197,11 @@ function criarRouterMensagensInternas(pool) {
       const resultado = await pool.query([
         'SELECT m.id, m.autor_id, m.autor_nome, m.texto, m.anexos, m.criada_em,',
         '(SELECT COALESCE(jsonb_agg(jsonb_build_object(',
-        "'usuario_id', l.usuario_id, 'lida_em', l.lida_em)), '[]'::jsonb)",
-        ' FROM leituras_mensagens_internas l WHERE l.mensagem_id = m.id) AS leituras',
+        "'usuario_id', l.usuario_id, 'nome', leitor.nome, 'lida_em', l.lida_em)",
+        "ORDER BY l.lida_em), '[]'::jsonb)",
+        'FROM leituras_mensagens_internas l',
+        'JOIN usuarios leitor ON leitor.id = l.usuario_id AND leitor.empresaid = m.empresaid',
+        'WHERE l.mensagem_id = m.id) AS leituras',
         'FROM mensagens_internas m WHERE m.conversa_id = $1 AND m.empresaid = $2',
         'ORDER BY m.criada_em ASC, m.id ASC',
       ].join(' '), [conversa.id, u.empresaid]);
