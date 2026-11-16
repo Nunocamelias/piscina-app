@@ -67,6 +67,9 @@ const EquipeTecHomeScreen: React.FC = () => {
         >
           <Text style={styles.buttonSecondaryText}>Ver notificações técnicas</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[styles.buttonSecondary, { marginTop: 12 }]} onPress={() => navigation.navigate('MensagensInternas')}>
+          <Text style={styles.buttonSecondaryText}>Mensagens internas (teste)</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
