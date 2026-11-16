@@ -31,7 +31,7 @@ function mockApi(utilizador, opts = {}) {
       if (sql.includes('FROM conversas_internas WHERE id = $1 AND empresaid = $2')) {
         return { rows: [opts.conversa || conversa], rowCount: 1 };
       }
-      if (sql.includes('FROM conversas_internas c WHERE')) {
+      if (sql.includes('FROM conversas_internas c')) {
         return { rows: [{ ...conversa, nao_lidas: 1 }], rowCount: 1 };
       }
       if (sql.includes('FROM mensagens_internas m WHERE m.conversa_id')) {
@@ -139,8 +139,10 @@ test('tecnico apenas consulta as conversas da propria equipa', async () => {
   await comServidor(app, async base => {
     assert.equal((await pedir(base, '/conversas/100/mensagens', tecnico)).status, 200);
     assert.deepEqual((await pedir(base, '/conversas?empresaid=999', tecnico)).status, 200);
-    const lista = chamadas.find(c => c.sql.includes('FROM conversas_internas c WHERE'));
+    const lista = chamadas.find(c => c.sql.includes('FROM conversas_internas c'));
     assert.deepEqual(lista.valores, [7, false, 6, 21]);
+    assert.match(lista.sql, /LEFT JOIN equipes e ON e\.id = c\.equipeid AND e\.empresaid = c\.empresaid/);
+    assert.match(lista.sql, /LEFT JOIN clientes cl ON cl\.id = c\.cliente_id AND cl\.empresaid = c\.empresaid/);
     assert.equal((await pedir(base, '/conversas/100/ler', tecnico, 'POST')).status, 200);
     const leitura = chamadas.find(c => c.sql.startsWith('INSERT INTO leituras_mensagens_internas'));
     assert.deepEqual(leitura.valores, [100, 7, 21]);
