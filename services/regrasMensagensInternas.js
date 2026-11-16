@@ -18,7 +18,8 @@ function eTecnico(utilizador) {
 
 function podeLerConversa(utilizador, conversa) {
   if (!utilizador || !conversa) return false;
-  if (inteiroPositivo(utilizador.empresaid) !== inteiroPositivo(conversa.empresaid)) return false;
+  const empresaId = inteiroPositivo(utilizador.empresaid);
+  if (!empresaId || empresaId !== inteiroPositivo(conversa.empresaid)) return false;
   if (eAdministrador(utilizador)) return true;
   return eTecnico(utilizador) &&
     inteiroPositivo(utilizador.equipeid) !== null &&
