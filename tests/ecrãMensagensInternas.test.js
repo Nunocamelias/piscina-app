@@ -1,0 +1,67 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ler = nome => fs.readFileSync(path.join(__dirname, '..', nome), 'utf8');
+const app = ler('App.tsx');
+const ecrã = ler('screens/MensagensInternasScreen.tsx');
+const admin = ler('screens/AdministracaoScreen.tsx');
+const equipas = ler('screens/EquipeHomeScreen.tsx');
+const tecnicas = ler('screens/EquipeTecHomeScreen.tsx');
+const antigo = ler('screens/ReceberNotificacoesScreen.tsx');
+const folha = ler('screens/FolhaManutencaoScreen.tsx');
+const api = ler('routes/mensagensInternas.js');
+
+test('a navegação regista o novo ecrã sem substituir o ecrã antigo', () => {
+  assert.match(app, /import MensagensInternasScreen from '\.\/screens\/MensagensInternasScreen'/);
+  assert.match(app, /MensagensInternas: undefined/);
+  assert.match(app, /name="MensagensInternas"\s+component=\{MensagensInternasScreen\}/);
+  assert.match(app, /name="ReceberNotificacoes"\s+component=\{ReceberNotificacoesScreen\}/);
+  assert.match(antigo, /const ReceberNotificacoesScreen/);
+});
+
+test('a Administração e os dois tipos de equipa conseguem abrir a nova caixa', () => {
+  for (const origem of [admin, equipas, tecnicas]) {
+    assert.match(origem, /navigation\.navigate\('MensagensInternas'\)/);
+    assert.match(origem, /Mensagens internas \(teste\)/);
+  }
+});
+
+test('o envio de anomalias da folha continua a usar a rota antiga', () => {
+  assert.match(folha, /const handleEnviarRelatorio = async/);
+  assert.match(folha, /axios\.post\(\`\$\{Config\.API_URL\}\/notificacoes\`, dadosEnvio\)/);
+  assert.match(folha, /anexos: imagensAnexadas\.length > 0 \? imagensAnexadas/);
+});
+
+test('as chamadas novas enviam o token e não confiam no empresaid do telemóvel', () => {
+  assert.match(ecrã, /AsyncStorage\.multiGet\(\['authToken', 'userId', 'tipo_usuario'\]\)/);
+  assert.match(ecrã, /Authorization: 'Bearer ' \+ sessao\.token/);
+  assert.match(api, /jwt\.verify\(bearer\[1\], segredo/);
+  assert.match(api, /WHERE id = \$1 AND empresaid = \$2/);
+});
+
+test('o ecrã mostra mensagens não lidas e regista leitura por utilizador', () => {
+  assert.match(ecrã, /Number\(item\.nao_lidas\) > 0/);
+  assert.match(ecrã, /await pedir\('post', caminho \+ '\/ler'\)/);
+  assert.match(ecrã, /leitores\.map\(leitura => leitura\.nome/);
+  assert.match(api, /INSERT INTO leituras_mensagens_internas/);
+});
+
+test('só a Administração pode usar resolver, reabrir e apagar na nova interface', () => {
+  assert.match(ecrã, /\{sessao\.admin && \(/);
+  assert.match(ecrã, /const apagarConversa = \(\) =>/);
+  assert.match(ecrã, /if \(!aberta \|\| !sessao\?\.admin\) return/);
+  assert.match(api, /Apenas a Administração pode apagar conversas/);
+  assert.match(ecrã, /Alert\.alert\('Apagar conversa'/);
+  assert.match(ecrã, /Alert\.alert\('Confirmar resposta'/);
+  assert.match(ecrã, /Alert\.alert\('Confirmar envio'/);
+});
+
+test('o ecrã apenas atualiza enquanto aberto; ainda não anuncia push sonoro', () => {
+  assert.match(ecrã, /useFocusEffect\(/);
+  assert.match(ecrã, /setInterval\(\(\) =>/);
+  assert.doesNotMatch(ecrã, /FirebaseMessaging|createNotificationChannel|Sound\.play\(/);
+});
