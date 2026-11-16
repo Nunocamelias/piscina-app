@@ -43,6 +43,12 @@ function mockApi(utilizador, opts = {}) {
       if (sql.startsWith('INSERT INTO leituras_mensagens_internas')) {
         return { rows: [], rowCount: 1 };
       }
+      if (sql.includes('SELECT id, nome, equipeid FROM usuarios')) {
+        return { rows: [
+          { id: 21, nome: 'Técnico A', equipeid: 6 },
+          { id: 23, nome: 'Técnico B', equipeid: 8 },
+        ], rowCount: 2 };
+      }
       if (sql.includes('SELECT DISTINCT equipeid FROM usuarios')) {
         return { rows: [{ equipeid: 6 }, { equipeid: 8 }], rowCount: 2 };
       }
@@ -65,8 +71,13 @@ function mockApi(utilizador, opts = {}) {
           if (sql.includes('INSERT INTO mensagens_internas')) {
             return { rows: [{ id: sequencia, autor_id: valores[2], autor_nome: valores[3] }], rowCount: 1 };
           }
-          if (sql.includes('SELECT id, empresaid, equipeid, estado FROM conversas_internas')) {
+          if (sql.includes('SELECT id, empresaid, equipeid, estado FROM conversas_internas') ||
+              sql.includes('SELECT id, empresaid, equipeid, notificacao_origem_id FROM conversas_internas')) {
             return { rows: [opts.conversa || conversa], rowCount: 1 };
+          }
+          if (sql.startsWith('DELETE FROM conversas_internas') ||
+              sql.startsWith('DELETE FROM notificacoes')) {
+            return { rows: [], rowCount: 1 };
           }
           if (sql.includes('UPDATE conversas_internas SET estado = CASE')) {
             return { rows: [], rowCount: 1 };
@@ -186,5 +197,38 @@ test('tecnico nao pode iniciar broadcast e anexos invalidos sao rejeitados', asy
     assert.equal((await pedir(base, '/conversas/100/mensagens', tecnico, 'POST', {
       mensagem: 'Foto', anexos: ['file:///private/foto.jpg'],
     })).status, 400);
+  });
+});
+
+test('destinatarios so sao listados pela administracao autenticada da empresa', async () => {
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/tecnicos', admin);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.length, 2);
+    const q = a.chamadas.find(c => c.sql.includes('SELECT id, nome, equipeid FROM usuarios'));
+    assert.deepEqual(q.valores, [7]);
+  });
+  const t = mockApi(tecnico);
+  await comServidor(t.app, async base => {
+    assert.equal((await pedir(base, '/tecnicos', tecnico)).status, 403);
+  });
+});
+
+test('so a administracao elimina a conversa e o relatorio original associado', async () => {
+  const associada = { ...conversa, notificacao_origem_id: 900 };
+  const a = mockApi(admin, { conversa: associada });
+  await comServidor(a.app, async base => {
+    assert.equal((await pedir(base, '/conversas/100', admin, 'DELETE')).status, 200);
+    const deletes = a.chamadas.filter(c => c.sql.startsWith('DELETE FROM'));
+    assert.equal(deletes.length, 2);
+    assert.deepEqual(deletes[0].valores, [100, 7]);
+    assert.deepEqual(deletes[1].valores, [900, 7]);
+    assert.ok(a.chamadas.some(c => c.sql === 'COMMIT'));
+  });
+  const t = mockApi(tecnico, { conversa: associada });
+  await comServidor(t.app, async base => {
+    assert.equal((await pedir(base, '/conversas/100', tecnico, 'DELETE')).status, 403);
+    assert.equal(t.chamadas.some(c => c.sql.startsWith('DELETE FROM')), false);
   });
 });
