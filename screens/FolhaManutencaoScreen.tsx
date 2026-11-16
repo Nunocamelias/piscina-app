@@ -2305,13 +2305,42 @@ const handleEnviarRelatorio = async () => {
     criador_id: criadorIdFinal,
   };
 
-  console.log('📩 Enviando relatório com os seguintes dados:', dadosEnvio);
-
+  // Não imprimir dadosEnvio: pode conter fotografias inteiras em Base64.
   try {
+    // 1. Manter o envio antigo que já funciona, sem alterar o formato dos dados.
     const response = await axios.post(`${Config.API_URL}/notificacoes`, dadosEnvio);
 
     if (response.status === 201) {
-      Alert.alert('Sucesso', 'Relatório enviado com sucesso!');
+      // 2. Associar o relatório original a uma conversa da equipa.
+      // Se falhar, o relatório já está guardado e não deve ser reenviado.
+      const notificacaoId = Number(response.data?.notificacao?.id);
+      let conversaAssociada = false;
+      if (Number.isSafeInteger(notificacaoId) && notificacaoId > 0) {
+        try {
+          const token = await AsyncStorage.getItem('authToken');
+          if (token) {
+            await axios.post(
+              `${Config.API_URL}/mensagens-internas/conversas/importar-anomalia`,
+              { notificacao_id: notificacaoId },
+              { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+            );
+            conversaAssociada = true;
+          }
+        } catch (erroAssociacao: unknown) {
+          // Não registar o relatório nem os anexos nos logs.
+          const codigo = axios.isAxiosError(erroAssociacao)
+            ? erroAssociacao.response?.status
+            : null;
+          console.warn('Relatório enviado, mas a associação à conversa falhou.', codigo || '');
+        }
+      }
+
+      Alert.alert(
+        'Relatório enviado',
+        conversaAssociada
+          ? 'Relatório enviado à Administração e associado à conversa da equipa.'
+          : 'Relatório enviado à Administração. A conversa interna ainda não foi criada; o relatório continua disponível nas notificações antigas.'
+      );
       setAnomaliaDescricao('');
       setValorServicoExtra('');
       setImagensAnexadas([]); // Limpa os anexos
