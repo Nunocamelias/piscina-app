@@ -14,6 +14,7 @@ const tecnicas = ler('screens/EquipeTecHomeScreen.tsx');
 const antigo = ler('screens/ReceberNotificacoesScreen.tsx');
 const folha = ler('screens/FolhaManutencaoScreen.tsx');
 const api = ler('routes/mensagensInternas.js');
+const apiPrincipal = ler('api.js');
 
 test('a navegação regista o novo ecrã sem substituir o ecrã antigo', () => {
   assert.match(app, /import MensagensInternasScreen from '\.\/screens\/MensagensInternasScreen'/);
@@ -80,4 +81,18 @@ test('falhas nao despejam o objeto do relatorio com fotografias nos logs', () =>
   assert.doesNotMatch(folha, /console\.log\('📩 Enviando relatório com os seguintes dados:', dadosEnvio\)/);
   assert.doesNotMatch(folha, /console\.error\('❌ Erro ao enviar relatório:', error\)/);
   assert.match(folha, /Falha no envio do relatório:.*response\?\.status/);
+});
+
+test('login exige chave JWT configurada e emite sessão de 16 horas', () => {
+  assert.match(apiPrincipal, /const segredoJwt = process\.env\.JWT_SECRET/);
+  assert.match(apiPrincipal, /if \(!segredoJwt\)/);
+  assert.match(apiPrincipal, /error: 'Autenticacao temporariamente indisponivel/);
+  assert.match(apiPrincipal, /algorithm: 'HS256', expiresIn: '16h'/);
+  assert.doesNotMatch(apiPrincipal, /JWT_SECRET\s*\|\|\s*'secreto'/);
+});
+
+test('mensagens recebidas enquanto o assunto esta aberto sao marcadas como lidas', () => {
+  assert.match(ecrã, /carregarMensagens\(conversaRef\.current, true, true\)/);
+  assert.match(ecrã, /marcarLeitura && conversaRef\.current === String\(conversaId\)/);
+  assert.match(ecrã, /await pedir\('post', caminho \+ '\/ler'\)/);
 });
