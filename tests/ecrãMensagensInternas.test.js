@@ -96,3 +96,13 @@ test('mensagens recebidas enquanto o assunto esta aberto sao marcadas como lidas
   assert.match(ecrã, /marcarLeitura && conversaRef\.current === String\(conversaId\)/);
   assert.match(ecrã, /await pedir\('post', caminho \+ '\/ler'\)/);
 });
+
+test('respostas podem incluir fotografias e mantêm confirmação antes de enviar', () => {
+  assert.match(ecrã, /import ImageResizer from 'react-native-image-resizer'/);
+  assert.match(ecrã, /DocumentPicker\.pick\(/);
+  assert.match(ecrã, /ImageResizer\.createResizedImage/);
+  assert.match(ecrã, /const imagem = 'data:image\/jpeg;base64,' \+ base64/);
+  assert.match(ecrã, /mensagem: texto, anexos/);
+  assert.match(ecrã, /Alert\.alert\('Confirmar resposta'/);
+  assert.match(ecrã, /Alert\.alert\('Remover fotografia'/);
+});
