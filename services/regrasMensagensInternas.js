@@ -36,8 +36,18 @@ function validarConteudoMensagem(texto, anexos) {
   const mensagem = typeof texto === 'string' ? texto.trim() : '';
   if (mensagem.length > 5000) return { erro: 'Mensagem demasiado longa (limite 5000 caracteres).' };
   if (!Array.isArray(anexos)) return { erro: 'Os anexos devem ser uma lista.' };
-  if (anexos.length > 8 || anexos.some(a => typeof a !== 'string' || !/^https:\/\//i.test(a) || a.length > 2048)) {
-    return { erro: 'São permitidos até 8 anexos com endereços HTTPS válidos.' };
+  // Respostas com fotos: apenas JPEG comprimido e com tamanho limitado.
+  // A app já utiliza esta conversão noutros ecrãs; não são necessárias bibliotecas novas.
+  const prefixoFoto = 'data:image/jpeg;base64,';
+  const fotoValida = a => typeof a === 'string' &&
+    a.startsWith(prefixoFoto) &&
+    a.length <= 2200000 &&
+    a.length > prefixoFoto.length + 4 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(a.slice(prefixoFoto.length));
+  const urlValido = a => typeof a === 'string' && /^https:\/\//i.test(a) && a.length <= 2048;
+  const totalFotos = anexos.filter(a => typeof a === 'string' && a.startsWith('data:')).length;
+  if (anexos.length > 8 || totalFotos > 2 || anexos.some(a => !urlValido(a) && !fotoValida(a))) {
+    return { erro: 'Até 2 fotografias JPEG comprimidas (1,6 MB cada) ou endereços HTTPS válidos.' };
   }
   if (!mensagem && !anexos.length) return { erro: 'Escreva uma mensagem ou anexe uma fotografia.' };
   return { texto: mensagem || null, anexos };
