@@ -23,6 +23,7 @@ import ParametrosQuimicosScreen from './screens/ParametrosQuimicosScreen';
 import FolhaManutencaoScreen from './screens/FolhaManutencaoScreen';
 import RegisterCompanyScreen from './screens/RegisterCompanyScreen';
 import ReceberNotificacoesScreen from './screens/ReceberNotificacoesScreen';
+import MensagensInternasScreen from './screens/MensagensInternasScreen';
 import InfoCompanyScreen from './screens/InfoCompanyScreen';
 import EquipeTecHomeScreen from './screens/EquipeTecHomeScreen';
 import OrcamentacaoHomeScreen from './screens/OrcamentacaoHomeScreen';
@@ -97,6 +98,7 @@ export type RootStackParamList = {
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;
+    MensagensInternas: undefined;
     InfoCompany: undefined;
     EquipeTecHome: { equipeId: number; equipeNome: string };   // novas equipas técnicas
     OrcamentacaoHome: undefined;
@@ -482,6 +484,15 @@ const App = (): React.JSX.Element => {
           },
           headerTitleAlign: 'center',
           headerTintColor: '#000', }}/>
+        <Stack.Screen
+          name="MensagensInternas"
+          component={MensagensInternasScreen}
+          options={{
+            headerTitle: CustomHeaderTitle,
+            headerStyle: { backgroundColor: '#ADD8E6' },
+            headerTitleAlign: 'center',
+            headerTintColor: '#000000',
+          }}/>
         <Stack.Screen
           name="OrcamentacaoHome"
           component={OrcamentacaoHomeScreen}
