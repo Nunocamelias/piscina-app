@@ -88,6 +88,9 @@ const EquipeHomeScreen = ({ navigation, route }: Props) => {
              As minhas notificações
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MensagensInternas')}>
+          <Text style={styles.buttonText}>Mensagens internas (teste)</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 🔹 Nome da empresa e "powered by" fixos no fundo */}
