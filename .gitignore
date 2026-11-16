@@ -54,3 +54,10 @@ coverage/
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Firebase: configuração Android e credenciais privadas (nunca enviar para Git)
+android/app/google-services.json
+google-services.json
+GoogleService-Info.plist
+*firebase*service-account*.json
+*service-account*firebase*.json
