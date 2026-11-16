@@ -28,6 +28,7 @@ test('equipa diferente, outra empresa e outros departamentos nao acedem', () => 
   assert.equal(podeLerConversa(contabilidade, assunto), false);
   assert.equal(podeLerConversa({ ...tecnicoA, equipeid: null }, assunto), false);
   assert.equal(podeLerConversa(null, assunto), false);
+  assert.equal(podeLerConversa({ ...admin, empresaid: null }, { ...assunto, empresaid: null }), false);
 });
 
 test('administracao da empresa pode gerir; tecnico nunca apaga nem resolve', () => {
@@ -39,7 +40,7 @@ test('administracao da empresa pode gerir; tecnico nunca apaga nem resolve', () 
 });
 
 test('IDs invalidos nunca passam validacao', () => {
-  for (const valor of [0, -2, 'abc', null, undefined, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const valor of [0, -2, 'abc', null, undefined, true, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     assert.equal(inteiroPositivo(valor), null);
   }
   assert.equal(inteiroPositivo('6'), 6);
