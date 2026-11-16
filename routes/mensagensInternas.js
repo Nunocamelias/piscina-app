@@ -66,6 +66,54 @@ function criarRouterMensagensInternas(pool) {
     return res.status(500).json({ error: 'Não foi possível concluir a operação.' });
   };
 
+  // Dispositivos para futuras notificacoes push.
+  // Nao aceita empresaid nem usuario_id do pedido: usa APENAS a sessao.
+  // Nunca devolver, imprimir ou expor publicamente os tokens Firebase.
+  const tokenDispositivoValido = valor =>
+    typeof valor === 'string' && valor.length >= 20 && valor.length <= 4096 &&
+    /^[A-Za-z0-9_:.-]+$/.test(valor);
+
+  router.put('/dispositivos', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    const token = req.body?.token;
+    if (!tokenDispositivoValido(token) || req.body?.plataforma !== 'android') {
+      return res.status(400).json({ error: 'Dispositivo Android ou token inválido.' });
+    }
+    try {
+      await pool.query([
+        'INSERT INTO dispositivos_push (empresaid, usuario_id, token, plataforma)',
+        "VALUES ($1, $2, $3, 'android')",
+        'ON CONFLICT (token) DO UPDATE SET',
+        'empresaid = EXCLUDED.empresaid,',
+        'usuario_id = EXCLUDED.usuario_id,',
+        'plataforma = EXCLUDED.plataforma,',
+        'atualizado_em = NOW()',
+      ].join(' '), [u.empresaid, u.id, token]);
+      return res.status(204).end();
+    } catch (error) {
+      return falha(res, error, 'registar-dispositivo');
+    }
+  });
+
+  // Retira o token apenas se ainda pertencer a este utilizador e empresa.
+  // Evita que um logout antigo retire o token de um novo utilizador.
+  router.delete('/dispositivos', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    const token = req.body?.token;
+    if (!tokenDispositivoValido(token)) {
+      return res.status(400).json({ error: 'Token de dispositivo inválido.' });
+    }
+    try {
+      await pool.query(
+        'DELETE FROM dispositivos_push WHERE token = $1 AND usuario_id = $2 AND empresaid = $3',
+        [token, u.id, u.empresaid]
+      );
+      return res.status(204).end();
+    } catch (error) {
+      return falha(res, error, 'remover-dispositivo');
+    }
+  });
+
   // Selecionador da Administracao (sem expor utilizadores de outras empresas).
   router.get('/tecnicos', async (req, res) => {
     const u = req.utilizadorMensagens;
