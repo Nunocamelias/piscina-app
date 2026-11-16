@@ -20,7 +20,9 @@ test('nao avisa na primeira leitura nem com contagem igual ou inferior', () => {
 
 test('deteta uma nova mensagem mesmo quando outro assunto foi lido', () => {
   const antes = resumoNaoLidas([{ id: 1, nao_lidas: 2 }, { id: 2, nao_lidas: 1 }]);
-  const depois = resumoNaoLidas([{ id: 1, nao_lidas: 0 }, { id: 2, nao_lidas: 2 }]);
+  // Foi lida uma mensagem no assunto 1 e chegou uma nova no assunto 2.
+  // O total permanece igual (3), mas devemos detetar a mensagem nova.
+  const depois = resumoNaoLidas([{ id: 1, nao_lidas: 1 }, { id: 2, nao_lidas: 2 }]);
   assert.equal(antes.total, depois.total);
   assert.equal(chegaramMensagensNovas(antes, depois), true);
 });
