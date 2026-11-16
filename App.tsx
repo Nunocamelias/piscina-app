@@ -1,5 +1,8 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import VigiarMensagensEmPrimeiroPlano from './components/VigiarMensagensEmPrimeiroPlano';
+import { FornecedorNaoLidas } from './services/ContextoNaoLidas';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from './screens/LoginScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -107,11 +110,46 @@ export type RootStackParamList = {
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const CustomHeaderTitle = () => <HeaderLogo />;
 
 const App = (): React.JSX.Element => {
+  const [rotaAtual, setRotaAtual] = React.useState<string>('Login');
+  const [naoLidas, setNaoLidas] = React.useState(0);
+  const [avisoNovo, setAvisoNovo] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!avisoNovo) return undefined;
+    const temporizador = setTimeout(() => setAvisoNovo(false), 8000);
+    return () => clearTimeout(temporizador);
+  }, [avisoNovo]);
+
+  const aoChegarNova = React.useCallback(() => {
+    if (navigationRef.isReady() &&
+        navigationRef.getCurrentRoute()?.name !== 'MensagensInternas') {
+      setAvisoNovo(true);
+    }
+  }, []);
+
+  const abrirMensagens = () => {
+    setAvisoNovo(false);
+    if (navigationRef.isReady()) navigationRef.navigate('MensagensInternas');
+  };
+
+  const atualizarRota = () => {
+    const atual = navigationRef.getCurrentRoute()?.name || 'Login';
+    setRotaAtual(atual);
+    if (atual === 'MensagensInternas' || atual === 'Login') setAvisoNovo(false);
+  };
+
   return (
-  <NavigationContainer>
+    <FornecedorNaoLidas value={naoLidas}>
+      <View style={{ flex: 1 }}>
+        <NavigationContainer
+          ref={navigationRef}
+          onReady={atualizarRota}
+          onStateChange={atualizarRota}
+        >
     <Stack.Navigator initialRouteName="Login">
       <Stack.Screen
         name="Login"
@@ -555,7 +593,34 @@ const App = (): React.JSX.Element => {
           headerTintColor: '#000', }}/>
 
       </Stack.Navigator>
-    </NavigationContainer>
+        </NavigationContainer>
+        <VigiarMensagensEmPrimeiroPlano
+          ativado={rotaAtual !== 'Login'}
+          aoAtualizar={setNaoLidas}
+          aoChegarNova={aoChegarNova}
+        />
+        {avisoNovo && rotaAtual !== 'Login' && rotaAtual !== 'MensagensInternas' && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Abrir novas mensagens internas"
+            onPress={abrirMensagens}
+            style={{
+              position: 'absolute', top: 62, left: 14, right: 14,
+              backgroundColor: '#ADD8E6', borderRadius: 16,
+              paddingVertical: 14, paddingHorizontal: 18,
+              borderWidth: 1, borderColor: '#333333', elevation: 16,
+            }}
+          >
+            <Text style={{ color: '#000000', fontWeight: '700', textAlign: 'center' }}>
+              Nova mensagem interna · {naoLidas} por ler
+            </Text>
+            <Text style={{ color: '#333333', textAlign: 'center', fontSize: 12 }}>
+              Toca aqui para abrir as conversas
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </FornecedorNaoLidas>
   );
 };
 
