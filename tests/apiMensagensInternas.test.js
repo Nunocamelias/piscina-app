@@ -290,3 +290,18 @@ test('registo rejeita tokens invalidos, outras plataformas e pedidos sem login',
     assert.equal(chamadas.filter(c => c.sql.includes('dispositivos_push')).length, 0);
   });
 });
+
+test('fotografia comprimida pode ser resposta de tecnico sem texto adicional', async () => {
+  const { app, chamadas } = mockApi(tecnico);
+  const foto = 'data:image/jpeg;base64,' + 'QUJD'.repeat(100);
+  await comServidor(app, async base => {
+    const resposta = await pedir(base, '/conversas/100/mensagens', tecnico, 'POST', {
+      mensagem: '', anexos: [foto],
+    });
+    assert.equal(resposta.status, 201);
+    const insercao = chamadas.find(c => c.sql.includes('INSERT INTO mensagens_internas'));
+    assert.equal(insercao.valores[2], 21);
+    assert.equal(insercao.valores[4], null);
+    assert.equal(insercao.valores[5], JSON.stringify([foto]));
+  });
+});
