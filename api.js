@@ -3180,11 +3180,22 @@ app.post('/login', async (req, res) => {
       tipoUsuario = user.equipeid ? 'equipe' : 'admin';
     }
 
-    // ✅ Token com id REAL
+    // Autenticacao das mensagens internas: a API e a app devem usar a mesma
+    // chave JWT. Nunca usar uma chave fixa de reserva em producao.
+    const segredoJwt = process.env.JWT_SECRET;
+    if (!segredoJwt) {
+      console.error('Configuracao incompleta: JWT_SECRET em falta.');
+      return res.status(503).json({
+        error: 'Autenticacao temporariamente indisponivel. Contacte a Administracao.',
+      });
+    }
+
+    // Sessao valida durante um turno completo de trabalho (16 horas).
+    // Continua a ser necessario iniciar sessao de novo no dia seguinte.
     const token = jwt.sign(
       { id: user.id, tipo_usuario: tipoUsuario, empresaid: user.empresaid },
-      process.env.JWT_SECRET || 'secreto',
-      { expiresIn: '1h' }
+      segredoJwt,
+      { algorithm: 'HS256', expiresIn: '16h' }
     );
 
     // ✅ Response com id REAL + mapeamento consistente
