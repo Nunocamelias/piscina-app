@@ -43,6 +43,12 @@ function mockApi(utilizador, opts = {}) {
       if (sql.startsWith('INSERT INTO leituras_mensagens_internas')) {
         return { rows: [], rowCount: 1 };
       }
+      if (sql.startsWith('INSERT INTO dispositivos_push')) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.startsWith('DELETE FROM dispositivos_push')) {
+        return { rows: [], rowCount: 1 };
+      }
       if (sql.includes('SELECT id, nome, equipeid FROM usuarios')) {
         return { rows: [
           { id: 21, nome: 'Técnico A', equipeid: 6 },
@@ -120,7 +126,8 @@ async function pedir(base, caminho, utilizador, metodo = 'GET', body, extra = {}
     method: metodo, headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  return { status: res.status, body: await res.json() };
+  const texto = await res.text();
+  return { status: res.status, body: texto ? JSON.parse(texto) : null };
 }
 
 test('nao se pode consultar mensagens sem JWT valido', async () => {
@@ -232,5 +239,54 @@ test('so a administracao elimina a conversa e o relatorio original associado', a
   await comServidor(t.app, async base => {
     assert.equal((await pedir(base, '/conversas/100', tecnico, 'DELETE')).status, 403);
     assert.equal(t.chamadas.some(c => c.sql.startsWith('DELETE FROM')), false);
+  });
+});
+
+const tokenDeTeste = 'abcde12345_abcde12345:token-fcm-teste-0001';
+
+test('registo de dispositivo usa apenas identidade autenticada e nao revela token', async () => {
+  const { app, chamadas } = mockApi(tecnico);
+  await comServidor(app, async base => {
+    const r = await pedir(base, '/dispositivos', tecnico, 'PUT', {
+      token: tokenDeTeste, plataforma: 'android', usuario_id: 999, empresaid: 999,
+    });
+    assert.equal(r.status, 204);
+    assert.equal(r.body, null);
+    const insercao = chamadas.find(c => c.sql.startsWith('INSERT INTO dispositivos_push'));
+    assert.deepEqual(insercao.valores, [7, 21, tokenDeTeste]);
+    assert.match(insercao.sql, /ON CONFLICT \(token\) DO UPDATE/);
+  });
+});
+
+test('o token so pode ser retirado pelo dono autenticado e pela mesma empresa', async () => {
+  const { app, chamadas } = mockApi(tecnico);
+  await comServidor(app, async base => {
+    const r = await pedir(base, '/dispositivos', tecnico, 'DELETE', {
+      token: tokenDeTeste, usuario_id: 999, empresaid: 999,
+    });
+    assert.equal(r.status, 204);
+    assert.deepEqual(
+      chamadas.find(c => c.sql.startsWith('DELETE FROM dispositivos_push')).valores,
+      [tokenDeTeste, 21, 7]
+    );
+  });
+});
+
+test('registo rejeita tokens invalidos, outras plataformas e pedidos sem login', async () => {
+  const { app, chamadas } = mockApi(tecnico);
+  await comServidor(app, async base => {
+    assert.equal((await pedir(base, '/dispositivos', null, 'PUT', {
+      token: tokenDeTeste, plataforma: 'android',
+    })).status, 401);
+    assert.equal((await pedir(base, '/dispositivos', tecnico, 'PUT', {
+      token: 'curto', plataforma: 'android',
+    })).status, 400);
+    assert.equal((await pedir(base, '/dispositivos', tecnico, 'PUT', {
+      token: tokenDeTeste, plataforma: 'ios',
+    })).status, 400);
+    assert.equal((await pedir(base, '/dispositivos', tecnico, 'DELETE', {
+      token: 'invalid\twith whitespace'.repeat(3),
+    })).status, 400);
+    assert.equal(chamadas.filter(c => c.sql.includes('dispositivos_push')).length, 0);
   });
 });
