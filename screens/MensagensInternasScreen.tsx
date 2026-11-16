@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, Image, Modal, RefreshControl,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,6 +9,9 @@ import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import Config from 'react-native-config';
 import ImageViewing from 'react-native-image-viewing';
+import * as DocumentPicker from '@react-native-documents/picker';
+import RNFS from 'react-native-fs';
+import ImageResizer from 'react-native-image-resizer';
 
 type Sessao = { token: string; usuarioId: number; admin: boolean };
 type Conversa = {
@@ -76,6 +79,8 @@ const MensagensInternasScreen: React.FC = () => {
   const [aCarregar, setACarregar] = useState(false);
   const [aEnviar, setAEnviar] = useState(false);
   const [resposta, setResposta] = useState('');
+  const [imagensResposta, setImagensResposta] = useState<string[]>([]);
+  const [aEscolherImagem, setAEscolherImagem] = useState(false);
   const [novaAberta, setNovaAberta] = useState(false);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [destinatario, setDestinatario] = useState('');
@@ -197,6 +202,7 @@ const MensagensInternasScreen: React.FC = () => {
     setAberta(conversa);
     setMensagens([]);
     setResposta('');
+    setImagensResposta([]);
     void carregarMensagens(conversa.id, true);
   };
 
@@ -207,12 +213,85 @@ const MensagensInternasScreen: React.FC = () => {
     void carregarLista(true);
   };
 
+  const anexarFotografia = async () => {
+    if (!aberta || aberta.estado === 'resolvido' || aEscolherImagem) return;
+    if (imagensResposta.length >= 2) {
+      Alert.alert('Fotografias', 'Podes anexar até duas fotografias por resposta.');
+      return;
+    }
+    setAEscolherImagem(true);
+    let caminhoTemporario: string | null = null;
+    try {
+      const resultado = await DocumentPicker.pick({
+        type: [DocumentPicker.types.images],
+        allowMultiSelection: false,
+      });
+      const ficheiro = Array.isArray(resultado) ? resultado[0] : resultado;
+      if (!ficheiro?.uri) throw new Error('Fotografia sem endereço válido.');
+
+      let uri = ficheiro.uri;
+      if (Platform.OS === 'android' && uri.startsWith('content://')) {
+        caminhoTemporario = RNFS.CachesDirectoryPath + '/mensagem_' + Date.now() + '.jpg';
+        await RNFS.copyFile(uri, caminhoTemporario);
+        uri = 'file://' + caminhoTemporario;
+      }
+
+      // Mesmo compressor que já funciona no ecrã das fotografias das válvulas.
+      let comprimida = await ImageResizer.createResizedImage(
+        uri, 1280, 1280, 'JPEG', 70, 0
+      );
+      let caminhoComprimido = comprimida.uri.replace('file://', '');
+      let tamanho = Number((await RNFS.stat(caminhoComprimido)).size);
+      if (tamanho > 1.5 * 1024 * 1024) {
+        comprimida = await ImageResizer.createResizedImage(
+          comprimida.uri, 900, 900, 'JPEG', 55, 0
+        );
+        caminhoComprimido = comprimida.uri.replace('file://', '');
+        tamanho = Number((await RNFS.stat(caminhoComprimido)).size);
+      }
+      if (tamanho > 1.5 * 1024 * 1024) {
+        throw new Error('Esta fotografia continua demasiado grande. Escolhe outra.');
+      }
+
+      const base64 = await RNFS.readFile(caminhoComprimido, 'base64');
+      const imagem = 'data:image/jpeg;base64,' + base64;
+      if (imagem.length > 2200000) {
+        throw new Error('Esta fotografia excede o tamanho permitido.');
+      }
+      setImagensResposta(anteriores => anteriores.length < 2
+        ? [...anteriores, imagem] : anteriores);
+    } catch (erro: any) {
+      const codigo = String(erro?.code || '');
+      if (!codigo.toUpperCase().includes('CANCEL')) {
+        Alert.alert('Fotografia', erro instanceof Error
+          ? erro.message : 'Não foi possível anexar esta fotografia.');
+      }
+    } finally {
+      if (caminhoTemporario) {
+        await RNFS.unlink(caminhoTemporario).catch(() => {});
+      }
+      setAEscolherImagem(false);
+    }
+  };
+
+  const removerFotografia = (indice: number) => {
+    Alert.alert('Remover fotografia', 'Retirar esta fotografia da resposta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Remover', style: 'destructive',
+        onPress: () => setImagensResposta(anteriores =>
+          anteriores.filter((_, posicao) => posicao !== indice)) },
+    ]);
+  };
+
   const enviarResposta = () => {
-    if (!aberta || !resposta.trim() || aEnviar) {
-      if (!resposta.trim()) Alert.alert('Atenção', 'Escreve a resposta antes de enviar.');
+    if (!aberta || aEnviar || (!resposta.trim() && imagensResposta.length === 0)) {
+      if (!resposta.trim() && imagensResposta.length === 0) {
+        Alert.alert('Atenção', 'Escreve uma resposta ou anexa uma fotografia.');
+      }
       return;
     }
     const texto = resposta.trim();
+    const anexos = [...imagensResposta];
     const conversaId = aberta.id;
     Alert.alert('Confirmar resposta', 'Enviar esta resposta para a conversa?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -221,8 +300,11 @@ const MensagensInternasScreen: React.FC = () => {
         onPress: async () => {
           setAEnviar(true);
           try {
-            await pedir('post', '/conversas/' + conversaId + '/mensagens', { mensagem: texto });
+            await pedir('post', '/conversas/' + conversaId + '/mensagens', {
+              mensagem: texto, anexos,
+            });
             setResposta('');
+            setImagensResposta([]);
             await carregarMensagens(conversaId, true);
           } catch (erro) {
             tratarErro(erro);
@@ -429,9 +511,40 @@ const MensagensInternasScreen: React.FC = () => {
                 multiline
                 maxLength={5000}
               />
-              <TouchableOpacity style={[styles.botao, aEnviar && styles.desativado]} onPress={enviarResposta} disabled={aEnviar}>
-                <Text style={styles.textoBotao}>{aEnviar ? 'A enviar...' : 'Responder'}</Text>
-              </TouchableOpacity>
+              {imagensResposta.length > 0 && (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {imagensResposta.map((uri, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      accessibilityLabel={'Remover fotografia ' + (i + 1)}
+                      onPress={() => removerFotografia(i)}
+                    >
+                      <Image source={{ uri }} style={{ width: 70, height: 60, borderRadius: 8 }} />
+                      <Text style={{ color: '#000000', fontSize: 11 }}>Remover foto</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.botaoSecundario, { flex: 1 }]}
+                  disabled={aEscolherImagem || aEnviar || imagensResposta.length >= 2}
+                  onPress={() => void anexarFotografia()}
+                >
+                  <Text style={styles.textoSecundario}>
+                    {aEscolherImagem ? 'A preparar...' : '📷 Foto'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.botao, { flex: 2 }, aEnviar && styles.desativado]}
+                  onPress={enviarResposta}
+                  disabled={aEnviar || aEscolherImagem}
+                >
+                  <Text style={styles.textoBotao}>
+                    {aEnviar ? 'A enviar...' : 'Responder'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <View style={styles.avisoResolvido}>
