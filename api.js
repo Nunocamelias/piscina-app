@@ -41,6 +41,12 @@ pool.connect((err, client, release) => {
   console.log('Conexão bem-sucedida ao banco.');
   release();
 });
+
+// Novo modulo isolado: conversas da Administracao com equipas de manutencao.
+// Nao altera o circuito antigo de /notificacoes nesta fase.
+const { criarRouterMensagensInternas } = require('./routes/mensagensInternas');
+app.use('/mensagens-internas', criarRouterMensagensInternas(pool));
+
 // Função para sanitizar strings
 const sanitizeString = (value) => {
   if (typeof value === 'string') {
