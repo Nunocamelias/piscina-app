@@ -167,7 +167,9 @@ const MensagensInternasScreen: React.FC = () => {
           ? { ...atual, estado: resultado.conversa?.estado || atual.estado }
           : atual);
       }
-      if (marcarLeitura) {
+      // Uma mensagem nova enquanto a conversa esta aberta tambem conta
+      // como lida, mas nunca marcar leitura se o utilizador ja saiu.
+      if (marcarLeitura && conversaRef.current === String(conversaId)) {
         await pedir('post', caminho + '/ler');
         await carregarLista(true);
       }
@@ -185,7 +187,7 @@ const MensagensInternasScreen: React.FC = () => {
     void carregarLista();
     const intervalo = setInterval(() => {
       void carregarLista(true);
-      if (conversaRef.current) void carregarMensagens(conversaRef.current, false, true);
+      if (conversaRef.current) void carregarMensagens(conversaRef.current, true, true);
     }, 25000);
     return () => clearInterval(intervalo);
   }, [sessao, carregarLista, carregarMensagens]));
