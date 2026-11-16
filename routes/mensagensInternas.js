@@ -3,6 +3,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const { importarRelatorioAnomalia } = require('../services/importarRelatorioAnomalia');
 const {
   inteiroPositivo, eAdministrador, eTecnico, podeLerConversa,
   podeGerirConversa, validarConteudoMensagem,
@@ -64,6 +65,38 @@ function criarRouterMensagensInternas(pool) {
     console.error('Erro em mensagens internas (' + contexto + '):', error.code || error.message);
     return res.status(500).json({ error: 'Não foi possível concluir a operação.' });
   };
+
+  // Selecionador da Administracao (sem expor utilizadores de outras empresas).
+  router.get('/tecnicos', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    if (!eAdministrador(u)) {
+      return res.status(403).json({ error: 'Apenas a Administração pode consultar os destinatários.' });
+    }
+    try {
+      const result = await pool.query([
+        'SELECT id, nome, equipeid FROM usuarios',
+        "WHERE empresaid = $1 AND tipo_usuario IN ('equipe','equipa_manutencao','equipa_tecnica')",
+        'AND equipeid IS NOT NULL ORDER BY nome, id',
+      ].join(' '), [u.empresaid]);
+      return res.json(result.rows);
+    } catch (error) {
+      return falha(res, error, 'tecnicos');
+    }
+  });
+
+  // Importar uma anomalia ja criada pelo sistema de manutencao.
+  // E idempotente e nunca altera a tabela antiga.
+  router.post('/conversas/importar-anomalia', async (req, res) => {
+    try {
+      const resultado = await importarRelatorioAnomalia(
+        pool, req.utilizadorMensagens, req.body.notificacao_id
+      );
+      return res.status(resultado.criada ? 201 : 200).json(resultado);
+    } catch (error) {
+      if (error.statusHttp) return res.status(error.statusHttp).json({ error: error.message });
+      return falha(res, error, 'importar-anomalia');
+    }
+  });
 
   // Lista apenas os assuntos da empresa e, para tecnicos, da SUA equipa.
   router.get('/conversas', async (req, res) => {
@@ -250,8 +283,45 @@ function criarRouterMensagensInternas(pool) {
     }
   });
 
-  // Eliminacao sera ligada ao ciclo de vida da notificacao original,
-  // na fase de integracao, para nao deixar dados inconsistentes.
+  // Apenas a Administracao apaga o assunto inteiro.
+  // Quando a origem e uma notificacao antiga, remove tambem essa origem:
+  // impede que volte a ser importada depois de apagada.
+  router.delete('/conversas/:id', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    if (!eAdministrador(u)) return res.status(403).json({ error: 'Apenas a Administração pode apagar conversas.' });
+    const id = inteiroPositivo(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+      const dados = await client.query(
+        'SELECT id, empresaid, equipeid, notificacao_origem_id FROM conversas_internas WHERE id = $1 AND empresaid = $2 FOR UPDATE',
+        [id, u.empresaid]
+      );
+      if (!podeGerirConversa(u, dados.rows[0])) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Assunto não encontrado.' });
+      }
+      const origem = inteiroPositivo(dados.rows[0].notificacao_origem_id);
+      await client.query('DELETE FROM conversas_internas WHERE id = $1 AND empresaid = $2', [id, u.empresaid]);
+      if (origem) {
+        await client.query(
+          'DELETE FROM notificacoes WHERE id = $1 AND empresaid = $2',
+          [origem, u.empresaid]
+        );
+      }
+      await client.query('COMMIT');
+      return res.json({ ok: true });
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {});
+      return falha(res, error, 'apagar');
+    } finally {
+      if (client) client.release();
+    }
+  });
+
   return router;
 }
 
