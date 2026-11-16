@@ -4,6 +4,8 @@
 const PERFIS_TECNICOS = new Set(['equipe', 'equipa_manutencao', 'equipa_tecnica']);
 
 function inteiroPositivo(valor) {
+  if (typeof valor !== 'number' &&
+      !(typeof valor === 'string' && /^\d+$/.test(valor.trim()))) return null;
   const n = Number(valor);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
