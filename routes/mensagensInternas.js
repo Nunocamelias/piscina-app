@@ -171,11 +171,16 @@ function criarRouterMensagensInternas(pool) {
     }
   });
 
-  // Administracao: cria um assunto para a equipa de um tecnico ou para cada
-  // equipa com tecnicos da empresa ("todos"). Respostas nunca cruzam equipas.
+  // Administracao: escolhe uma equipa ou envia a todas.
+  // Tecnico: inicia um assunto operacional com a Administracao da propria empresa.
+  // Respostas nunca cruzam equipas.
   router.post('/conversas', async (req, res) => {
     const u = req.utilizadorMensagens;
-    if (!eAdministrador(u)) return res.status(403).json({ error: 'Apenas a Administração pode iniciar esta mensagem.' });
+    const admin = eAdministrador(u);
+    // Um tecnico nunca escolhe outra equipa nem envia comunicados gerais.
+    if (!admin && (req.body.todos === true || req.body.tecnico_id != null)) {
+      return res.status(403).json({ error: 'Os técnicos só podem iniciar conversas com a Administração.' });
+    }
 
     const assunto = typeof req.body.assunto === 'string' ? req.body.assunto.trim() : '';
     if (!assunto || assunto.length > 255) {
@@ -183,9 +188,9 @@ function criarRouterMensagensInternas(pool) {
     }
     const conteudo = validarConteudoMensagem(req.body.mensagem, req.body.anexos || []);
     if (conteudo.erro) return res.status(400).json({ error: conteudo.erro });
-    const todos = req.body.todos === true;
+    const todos = admin && req.body.todos === true;
     const destinatarioId = inteiroPositivo(req.body.tecnico_id);
-    if (!todos && !destinatarioId) {
+    if (admin && !todos && !destinatarioId) {
       return res.status(400).json({ error: 'Escolha um técnico ou a opção Todos.' });
     }
 
@@ -193,7 +198,20 @@ function criarRouterMensagensInternas(pool) {
     try {
       // Buscar equipas usando apenas o empresaid autenticado.
       let destinos;
-      if (todos) {
+      if (!admin) {
+        const equipaId = inteiroPositivo(u.equipeid);
+        if (!equipaId) {
+          return res.status(403).json({ error: 'O técnico não tem uma equipa válida atribuída.' });
+        }
+        const equipa = await pool.query(
+          'SELECT id FROM equipes WHERE id = $1 AND empresaid = $2',
+          [equipaId, u.empresaid]
+        );
+        if (!equipa.rowCount) {
+          return res.status(403).json({ error: 'O técnico não tem uma equipa válida atribuída.' });
+        }
+        destinos = [equipaId];
+      } else if (todos) {
         const result = await pool.query(
           "SELECT DISTINCT equipeid FROM usuarios WHERE empresaid = $1 AND tipo_usuario IN ('equipe','equipa_manutencao','equipa_tecnica') AND equipeid IS NOT NULL ORDER BY equipeid",
           [u.empresaid]
