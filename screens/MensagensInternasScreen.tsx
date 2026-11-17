@@ -86,6 +86,7 @@ const MensagensInternasScreen: React.FC = () => {
   const [destinatario, setDestinatario] = useState('');
   const [assunto, setAssunto] = useState('');
   const [textoNovo, setTextoNovo] = useState('');
+  const [imagensNova, setImagensNova] = useState<string[]>([]);
   const [imagensAbertas, setImagensAbertas] = useState<{ uri: string }[]>([]);
   const [visualizarImagens, setVisualizarImagens] = useState(false);
   const conversaRef = useRef<string | null>(null);
@@ -213,10 +214,14 @@ const MensagensInternasScreen: React.FC = () => {
     void carregarLista(true);
   };
 
-  const anexarFotografia = async () => {
-    if (!aberta || aberta.estado === 'resolvido' || aEscolherImagem) return;
-    if (imagensResposta.length >= 2) {
-      Alert.alert('Fotografias', 'Podes anexar até duas fotografias por resposta.');
+  const anexarFotografia = async (destino: 'resposta' | 'nova' = 'resposta') => {
+    if (aEscolherImagem || aEnviar) return;
+    if (destino === 'resposta' && (!aberta || aberta.estado === 'resolvido')) return;
+    if (destino === 'nova' && !novaAberta) return;
+    const imagens = destino === 'nova' ? imagensNova : imagensResposta;
+    const setImagens = destino === 'nova' ? setImagensNova : setImagensResposta;
+    if (imagens.length >= 2) {
+      Alert.alert('Fotografias', 'Podes anexar até duas fotografias por mensagem.');
       return;
     }
     setAEscolherImagem(true);
@@ -258,7 +263,7 @@ const MensagensInternasScreen: React.FC = () => {
       if (imagem.length > 2200000) {
         throw new Error('Esta fotografia excede o tamanho permitido.');
       }
-      setImagensResposta(anteriores => anteriores.length < 2
+      setImagens(anteriores => anteriores.length < 2
         ? [...anteriores, imagem] : anteriores);
     } catch (erro: any) {
       const codigo = String(erro?.code || '');
@@ -274,11 +279,13 @@ const MensagensInternasScreen: React.FC = () => {
     }
   };
 
-  const removerFotografia = (indice: number) => {
-    Alert.alert('Remover fotografia', 'Retirar esta fotografia da resposta?', [
+  const removerFotografia = (indice: number, destino: 'resposta' | 'nova' = 'resposta') => {
+    if (aEnviar || aEscolherImagem) return;
+    const setImagens = destino === 'nova' ? setImagensNova : setImagensResposta;
+    Alert.alert('Remover fotografia', 'Retirar esta fotografia da mensagem?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Remover', style: 'destructive',
-        onPress: () => setImagensResposta(anteriores =>
+        onPress: () => setImagens(anteriores =>
           anteriores.filter((_, posicao) => posicao !== indice)) },
     ]);
   };
@@ -358,9 +365,15 @@ const MensagensInternasScreen: React.FC = () => {
   };
 
   const prepararNova = async () => {
+    if (!sessao || aEnviar || aEscolherImagem) return;
     setAssunto('');
     setTextoNovo('');
+    setImagensNova([]);
     setDestinatario('');
+    if (!sessao.admin) {
+      setNovaAberta(true);
+      return;
+    }
     try {
       const dados = await pedir('get', '/tecnicos');
       setTecnicos(Array.isArray(dados) ? dados : []);
@@ -371,19 +384,28 @@ const MensagensInternasScreen: React.FC = () => {
   };
 
   const criarNova = () => {
-    if (!assunto.trim() || !textoNovo.trim() || !destinatario || aEnviar) {
-      Alert.alert('Atenção', 'Preenche o destinatário, o assunto e a mensagem.');
+    if (!sessao || aEnviar || aEscolherImagem) return;
+    if (!assunto.trim() || (!textoNovo.trim() && imagensNova.length === 0)) {
+      Alert.alert('Atenção', 'Preenche o assunto e escreve uma mensagem ou anexa uma fotografia.');
       return;
     }
-    const todos = destinatario === 'todos';
+    const todos = sessao.admin && destinatario === 'todos';
     const escolhido = tecnicos.find(t => String(t.id) === destinatario);
-    if (!todos && !escolhido) {
-      Alert.alert('Atenção', 'Escolhe um técnico válido.');
+    if (sessao.admin && !todos && !escolhido) {
+      Alert.alert('Atenção', 'Escolhe um técnico válido ou Todos.');
       return;
     }
-    const destinoTexto = todos
-      ? 'todos os técnicos da empresa (uma conversa por equipa)'
-      : 'a equipa do técnico ' + escolhido?.nome;
+    const destinoTexto = !sessao.admin
+      ? 'a Administração'
+      : todos
+        ? 'todos os técnicos da empresa (uma conversa por equipa)'
+        : 'a equipa do técnico ' + escolhido?.nome;
+    const dados = {
+      assunto: assunto.trim(),
+      mensagem: textoNovo.trim(),
+      anexos: [...imagensNova],
+      ...(sessao.admin ? { todos, tecnico_id: todos ? undefined : Number(destinatario) } : {}),
+    };
     Alert.alert('Confirmar envio', 'Enviar a mensagem para ' + destinoTexto + '?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -391,13 +413,9 @@ const MensagensInternasScreen: React.FC = () => {
         onPress: async () => {
           setAEnviar(true);
           try {
-            await pedir('post', '/conversas', {
-              assunto: assunto.trim(),
-              mensagem: textoNovo.trim(),
-              todos,
-              tecnico_id: todos ? undefined : Number(destinatario),
-            });
+            await pedir('post', '/conversas', dados);
             setNovaAberta(false);
+            setImagensNova([]);
             await carregarLista();
           } catch (erro) {
             tratarErro(erro);
@@ -557,11 +575,9 @@ const MensagensInternasScreen: React.FC = () => {
           <View style={styles.topo}>
             <Text style={styles.titulo}>Mensagens internas</Text>
             <Text style={styles.metadados}>Administração e equipas de manutenção</Text>
-            {sessao.admin && (
-              <TouchableOpacity style={styles.botao} onPress={() => void prepararNova()}>
-                <Text style={styles.textoBotao}>+ Nova mensagem</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={styles.botao} onPress={() => void prepararNova()}>
+              <Text style={styles.textoBotao}>+ Nova mensagem</Text>
+            </TouchableOpacity>
           </View>
           <FlatList
             data={lista}
@@ -573,26 +589,35 @@ const MensagensInternasScreen: React.FC = () => {
           />
         </View>
       )}
-      <Modal visible={novaAberta} animationType="slide" transparent onRequestClose={() => !aEnviar && setNovaAberta(false)}>
+      <Modal visible={novaAberta} animationType="slide" transparent onRequestClose={() => !aEnviar && !aEscolherImagem && setNovaAberta(false)}>
         <View style={styles.fundoModal}>
           <View style={styles.modal}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.titulo}>Nova mensagem</Text>
               <Text style={styles.etiqueta}>Destinatário</Text>
-              <View style={styles.campoPicker}>
-                <Picker selectedValue={destinatario} onValueChange={valor => setDestinatario(String(valor))}>
-                  <Picker.Item label="Escolher técnico..." value="" />
-                  <Picker.Item label="Todos os técnicos" value="todos" />
-                  {tecnicos.map(t => (
-                    <Picker.Item
-                      key={t.id}
-                      label={t.nome + ' · Equipa ' + t.equipeid}
-                      value={String(t.id)}
-                    />
-                  ))}
-                </Picker>
-              </View>
-              <Text style={styles.metadados}>Os colegas da mesma equipa podem ler e responder.</Text>
+              {sessao.admin ? (
+                <>
+                  <View style={styles.campoPicker}>
+                    <Picker selectedValue={destinatario} onValueChange={valor => setDestinatario(String(valor))}>
+                      <Picker.Item label="Escolher técnico..." value="" />
+                      <Picker.Item label="Todos os técnicos" value="todos" />
+                      {tecnicos.map(t => (
+                        <Picker.Item
+                          key={t.id}
+                          label={t.nome + ' · Equipa ' + t.equipeid}
+                          value={String(t.id)}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                  <Text style={styles.metadados}>Os colegas da mesma equipa podem ler e responder.</Text>
+                </>
+              ) : (
+                <View style={styles.campo}>
+                  <Text style={styles.textoSecundario}>Administração</Text>
+                  <Text style={styles.metadados}>Os colegas da mesma equipa podem ler e responder.</Text>
+                </View>
+              )}
               <Text style={styles.etiqueta}>Assunto</Text>
               <TextInput style={styles.campo} value={assunto} onChangeText={setAssunto} maxLength={255} />
               <Text style={styles.etiqueta}>Mensagem</Text>
@@ -603,10 +628,32 @@ const MensagensInternasScreen: React.FC = () => {
                 multiline
                 maxLength={5000}
               />
-              <TouchableOpacity style={styles.botao} disabled={aEnviar} onPress={criarNova}>
+              {imagensNova.length > 0 && (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {imagensNova.map((uri, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      disabled={aEnviar || aEscolherImagem}
+                      accessibilityLabel={'Remover fotografia ' + (i + 1)}
+                      onPress={() => removerFotografia(i, 'nova')}
+                    >
+                      <Image source={{ uri }} style={{ width: 70, height: 60, borderRadius: 8 }} />
+                      <Text style={{ color: '#000000', fontSize: 11 }}>Remover foto</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.botaoSecundario}
+                disabled={aEscolherImagem || aEnviar || imagensNova.length >= 2}
+                onPress={() => void anexarFotografia('nova')}
+              >
+                <Text style={styles.textoSecundario}>{aEscolherImagem ? 'A preparar...' : '📷 Foto (' + imagensNova.length + '/2)'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.botao} disabled={aEnviar || aEscolherImagem} onPress={criarNova}>
                 <Text style={styles.textoBotao}>{aEnviar ? 'A enviar...' : 'Enviar mensagem'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.botaoSecundario} disabled={aEnviar} onPress={() => setNovaAberta(false)}>
+              <TouchableOpacity style={styles.botaoSecundario} disabled={aEnviar || aEscolherImagem} onPress={() => setNovaAberta(false)}>
                 <Text style={styles.textoSecundario}>Cancelar</Text>
               </TouchableOpacity>
             </ScrollView>
