@@ -55,6 +55,10 @@ function mockApi(utilizador, opts = {}) {
           { id: 23, nome: 'Técnico B', equipeid: 8 },
         ], rowCount: 2 };
       }
+      if (sql.includes('SELECT id FROM equipes WHERE id = $1 AND empresaid = $2')) {
+        const valida = !opts.equipaInvalida && valores[0] === utilizador.equipeid && valores[1] === utilizador.empresaid;
+        return { rows: valida ? [{ id: valores[0] }] : [], rowCount: valida ? 1 : 0 };
+      }
       if (sql.includes('SELECT DISTINCT equipeid FROM usuarios')) {
         return { rows: [{ equipeid: 6 }, { equipeid: 8 }], rowCount: 2 };
       }
@@ -304,4 +308,70 @@ test('fotografia comprimida pode ser resposta de tecnico sem texto adicional', a
     assert.equal(insercao.valores[4], null);
     assert.equal(insercao.valores[5], JSON.stringify([foto]));
   });
+});
+
+test('tecnico inicia assunto operacional com foto, usando somente empresa e equipa autenticadas', async () => {
+  const { app, chamadas } = mockApi(tecnico);
+  const foto = 'data:image/jpeg;base64,/9j/2Q==';
+  await comServidor(app, async base => {
+    const r = await pedir(base, '/conversas', tecnico, 'POST', {
+      assunto: 'Problema na carrinha', anexos: [foto],
+      empresaid: 999, equipeid: 8, autor_id: 999, cliente_id: 123,
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.conversas_ids.length, 1);
+    assert.equal(r.body.grupo_envio_id, null);
+    const equipa = chamadas.find(c => c.sql.includes('SELECT id FROM equipes'));
+    assert.deepEqual(equipa.valores, [6, 7]);
+    const criada = chamadas.find(c => c.sql.includes('INSERT INTO conversas_internas'));
+    assert.deepEqual(criada.valores, [7, 6, null, 'Problema na carrinha', 21]);
+    assert.doesNotMatch(criada.sql, /cliente_id|notificacao_origem_id/);
+    const msg = chamadas.find(c => c.sql.includes('INSERT INTO mensagens_internas'));
+    assert.deepEqual(msg.valores, [r.body.conversas_ids[0], 7, 21, tecnico.nome, null, JSON.stringify([foto])]);
+    assert.ok(chamadas.some(c => c.sql === 'COMMIT'));
+  });
+});
+
+test('tecnico nao pode escolher destinatario nem criar conversa sem equipa valida', async () => {
+  const t = mockApi(tecnico);
+  await comServidor(t.app, async base => {
+    const r = await pedir(base, '/conversas', tecnico, 'POST', {
+      assunto: 'Material', mensagem: 'Precisamos de cloro', tecnico_id: 23,
+    });
+    assert.equal(r.status, 403);
+  });
+  assert.ok(!t.chamadas.some(c => c.sql.includes('INSERT INTO conversas_internas')));
+  for (const [u, opts] of [[{ ...tecnico, equipeid: null }, {}], [tecnico, { equipaInvalida: true }]]) {
+    const semEquipa = mockApi(u, opts);
+    await comServidor(semEquipa.app, async base => {
+      assert.equal((await pedir(base, '/conversas', u, 'POST', {
+        assunto: 'Material', mensagem: 'Precisamos de cloro',
+      })).status, 403);
+    });
+    assert.ok(!semEquipa.chamadas.some(c => c.sql.includes('INSERT INTO conversas_internas')));
+  }
+});
+
+test('administracao envia fotografia inicial e ambos os perfis rejeitam anexos invalidos ou mensagem vazia', async () => {
+  const foto = 'data:image/jpeg;base64,/9j/2Q==';
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/conversas', admin, 'POST', {
+      todos: true, assunto: 'Material', mensagem: 'Ver fotografia', anexos: [foto],
+    });
+    assert.equal(r.status, 201);
+    const msgs = a.chamadas.filter(c => c.sql.includes('INSERT INTO mensagens_internas'));
+    assert.equal(msgs.length, 2);
+    assert.ok(msgs.every(c => c.valores[5] === JSON.stringify([foto])));
+  });
+  for (const u of [admin, tecnico]) {
+    const t = mockApi(u);
+    await comServidor(t.app, async base => {
+      const destino = u.tipo_usuario === 'admin' ? { tecnico_id: 21 } : {};
+      for (const body of [{ mensagem: '' }, { mensagem: 'Foto', anexos: ['file:///local.jpg'] }, { anexos: [foto, foto, foto] }]) {
+        assert.equal((await pedir(base, '/conversas', u, 'POST', { assunto: 'Teste', ...destino, ...body })).status, 400);
+      }
+    });
+    assert.ok(!t.chamadas.some(c => c.sql.includes('INSERT INTO conversas_internas')));
+  }
 });
