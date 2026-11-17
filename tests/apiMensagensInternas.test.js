@@ -175,7 +175,16 @@ test('admin pode marcar resolvido e reabrir sem tocar nas notificacoes antigas',
   await comServidor(app, async base => {
     assert.equal((await pedir(base, '/conversas/100/estado', admin, 'PATCH', { estado: 'resolvido' })).status, 200);
     assert.equal((await pedir(base, '/conversas/100/estado', admin, 'PATCH', { estado: 'pendente' })).status, 200);
+    assert.equal((await pedir(base, '/conversas/100/estado', admin, 'PATCH', { estado: 'em_resolucao' })).status, 200);
     assert.equal((await pedir(base, '/conversas/100/estado', admin, 'PATCH', { estado: 'pago' })).status, 400);
+    // O mock nao executa SQL: verificar a tipagem explicita nas duas
+    // ocorrencias do parametro que causava 42P08 no PostgreSQL real.
+    const updates = chamadas.filter(c => c.sql.includes('UPDATE conversas_internas SET estado = $3'));
+    assert.equal(updates.length, 3);
+    for (const [i, estado] of ['resolvido', 'pendente', 'em_resolucao'].entries()) {
+      assert.match(updates[i].sql, /SET estado = \$3::varchar, resolvida_em = CASE WHEN \$3::varchar = 'resolvido' THEN NOW\(\) ELSE NULL END/);
+      assert.deepEqual(updates[i].valores, [100, 7, estado]);
+    }
     assert.ok(!chamadas.some(c => /DELETE FROM notificacoes/.test(c.sql)));
   });
 });
