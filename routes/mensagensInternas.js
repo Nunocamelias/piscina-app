@@ -345,8 +345,10 @@ function criarRouterMensagensInternas(pool) {
     try {
       const conversa = await obterConversa(pool, u, req.params.id);
       if (!podeGerirConversa(u, conversa)) return res.status(404).json({ error: 'Assunto não encontrado.' });
+      // O PostgreSQL deve usar o mesmo tipo para $3 na atribuicao e na
+      // comparacao do CASE, evitando o erro 42P08 (tipos inconsistentes).
       const resultado = await pool.query(
-        "UPDATE conversas_internas SET estado = $3, resolvida_em = CASE WHEN $3 = 'resolvido' THEN NOW() ELSE NULL END, atualizada_em = NOW() WHERE id = $1 AND empresaid = $2 RETURNING id, estado, resolvida_em",
+        "UPDATE conversas_internas SET estado = $3::varchar, resolvida_em = CASE WHEN $3::varchar = 'resolvido' THEN NOW() ELSE NULL END, atualizada_em = NOW() WHERE id = $1 AND empresaid = $2 RETURNING id, estado, resolvida_em",
         [conversa.id, u.empresaid, estado]
       );
       return res.json(resultado.rows[0]);
