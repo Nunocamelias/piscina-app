@@ -106,3 +106,24 @@ test('respostas podem incluir fotografias e mantêm confirmação antes de envia
   assert.match(ecrã, /Alert\.alert\('Confirmar resposta'/);
   assert.match(ecrã, /Alert\.alert\('Remover fotografia'/);
 });
+
+test('nova mensagem disponivel aos tecnicos com destinatario fixo e sem consultar a lista de tecnicos', () => {
+  const preparar = ecrã.slice(ecrã.indexOf('const prepararNova ='), ecrã.indexOf('const criarNova ='));
+  assert.ok(preparar.indexOf('if (!sessao.admin)') < preparar.indexOf("pedir('get', '/tecnicos')"));
+  assert.match(preparar, /if \(!sessao\.admin\) \{\s*setNovaAberta\(true\);\s*return;/);
+  assert.match(ecrã, /onPress=\{\(\) => void prepararNova\(\)\}/);
+  assert.doesNotMatch(ecrã, /\{sessao\.admin && \(\s*<TouchableOpacity[^>]*prepararNova/);
+  assert.match(ecrã, /<Text style=\{styles\.textoSecundario\}>Administração<\/Text>/);
+  assert.match(ecrã, /\.\.\.\(sessao\.admin \? \{ todos, tecnico_id:/);
+});
+
+test('mensagem inicial permite ate duas fotografias, com rascunho separado e sem texto obrigatorio', () => {
+  assert.match(ecrã, /const \[imagensNova, setImagensNova\] = useState<string\[\]>\(\[\]\)/);
+  assert.match(ecrã, /destino === 'nova' \? setImagensNova : setImagensResposta/);
+  assert.match(ecrã, /!textoNovo\.trim\(\) && imagensNova\.length === 0/);
+  assert.match(ecrã, /anexos: \[\.\.\.imagensNova\]/);
+  assert.match(ecrã, /anexarFotografia\('nova'\)/);
+  assert.match(ecrã, /removerFotografia\(i, 'nova'\)/);
+  assert.match(ecrã, /imagensNova\.length >= 2/);
+  assert.match(ecrã, /await pedir\('post', '\/conversas', dados\)/);
+});
