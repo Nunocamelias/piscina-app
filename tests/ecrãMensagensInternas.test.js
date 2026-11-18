@@ -18,7 +18,7 @@ const apiPrincipal = ler('api.js');
 
 test('a navegação regista o novo ecrã sem substituir o ecrã antigo', () => {
   assert.match(app, /import MensagensInternasScreen from '\.\/screens\/MensagensInternasScreen'/);
-  assert.match(app, /MensagensInternas: undefined/);
+  assert.match(app, /MensagensInternas: \{ conversaId\?: string \| number \} \| undefined/);
   assert.match(app, /name="MensagensInternas"\s+component=\{MensagensInternasScreen\}/);
   assert.match(app, /name="ReceberNotificacoes"\s+component=\{ReceberNotificacoesScreen\}/);
   assert.match(antigo, /const ReceberNotificacoesScreen/);
@@ -152,4 +152,27 @@ test('reportar anomalias tem formulario proprio sem alterar a integracao existen
   assert.match(folha, /await handleEnviarRelatorio\(\)/);
   assert.match(folha, /removerAnexoRelatorio\(index\)/);
   assert.match(folha, /assunto: 'Relatório de Anomalia'/);
+});
+
+test('cliente opcional só para administração e equipa escolhida', () => {
+  assert.match(ecrã, /clientesAssociados.filter\(c => Number\(c.equipeid\) === Number\(equipeEscolhida\)\)/);
+  assert.match(ecrã, /cliente_id: clienteEscolhido && !todos \? clienteEscolhido.id : undefined/);
+  assert.match(ecrã, /Cliente associado \(opcional\)/);
+  assert.match(ecrã, /setClienteSelecionado\(''\)/);
+});
+
+test('cartão só apresenta indicações não lidas e folha mantém as lidas até à conclusão', () => {
+  const agenda = ler('screens/EquipesPiscinasPorDiaScreen.tsx');
+  const hook = ler('services/useIndicacoesManutencao.ts');
+  assert.match(agenda, /Number\(i.cliente_id\) === Number\(item.id\) && !i.lida/);
+  assert.ok(agenda.indexOf('<IndicacaoManutencaoCard') < agenda.indexOf('item.mensagens_produtos?.pendentes?.map'));
+  assert.match(folha, /!isSomenteLeitura && \(indicacoes.length > 0/);
+  assert.match(folha, /indicacoes.map\(i =>/);
+  assert.match(folha, /skipNextFocusReloadRef.current = true;\s*navigation.push\('MensagensInternas', \{ conversaId: i.conversa_id \}\)/);
+  assert.match(agenda, /navigation.push\('MensagensInternas', \{ conversaId: i.conversa_id \}\)/);
+  assert.match(ecrã, /lista.find\(c => String\(c.id\) === String\(alvoInicial\)\)/);
+  assert.match(hook, /useFocusEffect/);
+  assert.match(hook, /Authorization: 'Bearer ' \+ token/);
+  assert.match(hook, /setInterval\(/);
+  assert.doesNotMatch(hook, /setItem\(/);
 });
