@@ -22,6 +22,7 @@ type Conversa = {
   equipa_nome?: string | null;
   cliente_nome?: string | null;
   grupo_envio_id?: string | null;
+  notificacao_origem_id?: number | string | null;
   nao_lidas: number;
   atualizada_em: string;
 };
@@ -170,7 +171,8 @@ const MensagensInternasScreen: React.FC = () => {
       if (conversaRef.current === String(conversaId)) {
         setMensagens(Array.isArray(resultado.mensagens) ? resultado.mensagens : []);
         setAberta(atual => atual && String(atual.id) === String(conversaId)
-          ? { ...atual, estado: resultado.conversa?.estado || atual.estado }
+          ? { ...atual, estado: resultado.conversa?.estado || atual.estado,
+              notificacao_origem_id: resultado.conversa?.notificacao_origem_id ?? atual.notificacao_origem_id }
           : atual);
       }
       // Uma mensagem nova enquanto a conversa esta aberta tambem conta
@@ -347,7 +349,11 @@ const MensagensInternasScreen: React.FC = () => {
   const apagarConversa = () => {
     if (!aberta || !sessao?.admin) return;
     const id = aberta.id;
-    Alert.alert('Apagar conversa', 'Esta operação é definitiva e apaga também o relatório de origem, caso exista. Continuar?', [
+    if (aberta.notificacao_origem_id != null) {
+      Alert.alert('Relatório protegido', 'Este assunto está ligado a um relatório de anomalia. Utiliza Resolver para o encerrar e conservar o histórico.');
+      return;
+    }
+    Alert.alert('Apagar conversa', 'Esta operação é definitiva e apaga todas as mensagens e fotografias desta conversa. Continuar?', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Apagar',
@@ -504,10 +510,15 @@ const MensagensInternasScreen: React.FC = () => {
                 <TouchableOpacity style={styles.botaoSecundario} onPress={() => alterarEstado(aberta.estado === 'resolvido' ? 'pendente' : 'resolvido')}>
                   <Text style={styles.textoSecundario}>{aberta.estado === 'resolvido' ? 'Reabrir' : 'Resolver'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.botaoSecundario, styles.botaoApagar]} onPress={apagarConversa}>
-                  <Text style={styles.textoSecundario}>Apagar</Text>
-                </TouchableOpacity>
+                {aberta.notificacao_origem_id == null && (
+                  <TouchableOpacity style={[styles.botaoSecundario, styles.botaoApagar]} onPress={apagarConversa}>
+                    <Text style={styles.textoSecundario}>Apagar</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+            )}
+            {sessao.admin && aberta.notificacao_origem_id != null && (
+              <Text style={styles.metadados}>Relatório de anomalia protegido · utiliza Resolver para encerrar.</Text>
             )}
           </View>
           <ScrollView
@@ -685,7 +696,7 @@ const styles = StyleSheet.create({
   naoLidasTexto: { color: CORES.branco, fontWeight: '700', fontSize: 12 },
   estado: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, color: CORES.preto, fontSize: 12 },
   vazio: { textAlign: 'center', color: '#555555', marginTop: 50, paddingHorizontal: 20 },
-  voltar: { backgroundColor: CORES.azul, padding: 12 },
+  voltar: { backgroundColor: '#22b4b4ff', padding: 12 },
   acoes: { flexDirection: 'row', gap: 10 },
   botao: { backgroundColor: '#22B4B4', borderRadius: 25, paddingHorizontal: 18, paddingVertical: 13, alignItems: 'center', marginTop: 6 },
   textoBotao: { color: CORES.preto, fontWeight: '700' },
