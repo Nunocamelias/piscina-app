@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Appearance, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import IndicadorNaoLidas from '../components/IndicadorNaoLidas';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 const isDarkMode = Appearance.getColorScheme() === 'dark';
@@ -12,6 +13,7 @@ type Props = {
 
 const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
   const [empresaNome, setEmpresaNome] = useState('');
+  const insets = useSafeAreaInsets();
 
 
   // 🔹 Carrega logo e nome da empresa
@@ -24,7 +26,10 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContainer, { paddingBottom: Math.max(insets.bottom, 12) + 16 }]}
+    >
       <View style={styles.container}>
 
         {/* 🔹 Secção principal */}
@@ -82,27 +87,28 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
+  },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'flex-start',
-    backgroundColor: isDarkMode ? '#B0B0B0' : '#D3D3D3',
-    paddingVertical: 20,
-    paddingBottom: 80, // 🔹 garante espaço entre os botões e o rodapé
+    paddingTop: 20,
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
   },
   mainSection: {
     alignItems: 'center',
     width: '100%',
-    marginTop: 60, // 🔹 controla a distância entre o logo e os botões
+    marginTop: 12,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 70,
-    marginTop: 60,
+    marginBottom: 28,
     color: '#000',
      // 🔹 Sombra igual à dos botões
     textShadowColor: 'rgba(0, 0, 0, 0.25)', // 👈 opacidade aqui
@@ -131,9 +137,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
   },
+  // Rodapé no fluxo normal: nunca sobrepor os últimos botões.
   footer: {
-    position: 'absolute',
-    bottom: 10,
+    marginTop: 'auto',
+    paddingTop: 24,
     width: '100%',
     alignItems: 'center',
   },
