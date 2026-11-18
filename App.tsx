@@ -101,7 +101,7 @@ export type RootStackParamList = {
     };
     RegisterCompany: undefined;
     ReceberNotificacoes: undefined;
-    MensagensInternas: undefined;
+    MensagensInternas: { conversaId?: string | number } | undefined;
     InfoCompany: undefined;
     EquipeTecHome: { equipeId: number; equipeNome: string };   // novas equipas técnicas
     OrcamentacaoHome: undefined;
