@@ -357,9 +357,9 @@ function criarRouterMensagensInternas(pool) {
     }
   });
 
-  // Apenas a Administracao apaga o assunto inteiro.
-  // Quando a origem e uma notificacao antiga, remove tambem essa origem:
-  // impede que volte a ser importada depois de apagada.
+  // Apenas a Administracao apaga assuntos operacionais.
+  // As conversas ligadas a relatorios ficam protegidas: conservar o historico
+  // e a ligacao ao circuito antigo, evitando tambem uma futura reimportacao.
   router.delete('/conversas/:id', async (req, res) => {
     const u = req.utilizadorMensagens;
     if (!eAdministrador(u)) return res.status(403).json({ error: 'Apenas a Administração pode apagar conversas.' });
@@ -378,14 +378,11 @@ function criarRouterMensagensInternas(pool) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Assunto não encontrado.' });
       }
-      const origem = inteiroPositivo(dados.rows[0].notificacao_origem_id);
-      await client.query('DELETE FROM conversas_internas WHERE id = $1 AND empresaid = $2', [id, u.empresaid]);
-      if (origem) {
-        await client.query(
-          'DELETE FROM notificacoes WHERE id = $1 AND empresaid = $2',
-          [origem, u.empresaid]
-        );
+      if (dados.rows[0].notificacao_origem_id != null) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Relatório de anomalia protegido. Utilize Resolver para encerrar o assunto.' });
       }
+      await client.query('DELETE FROM conversas_internas WHERE id = $1 AND empresaid = $2', [id, u.empresaid]);
       await client.query('COMMIT');
       return res.json({ ok: true });
     } catch (error) {
