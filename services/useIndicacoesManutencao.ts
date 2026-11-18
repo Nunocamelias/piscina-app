@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Config from 'react-native-config';
@@ -35,7 +36,7 @@ export function useIndicacoesManutencao(
       return undefined;
     }
     const atualizar = async () => {
-      if (cancelado || emCurso) return;
+      if (cancelado || emCurso || AppState.currentState !== 'active') return;
       emCurso = true;
       try {
         const dados = Object.fromEntries(await AsyncStorage.multiGet(['authToken', 'userId', 'tipo_usuario', 'empresaid']));
@@ -80,7 +81,10 @@ export function useIndicacoesManutencao(
     };
     void atualizar();
     const intervalo = setInterval(() => { void atualizar(); }, 30000);
-    return () => { cancelado = true; clearInterval(intervalo); };
+    const subscricao = AppState.addEventListener('change', estado => {
+      if (estado === 'active') void atualizar();
+    });
+    return () => { cancelado = true; clearInterval(intervalo); subscricao.remove(); };
   }, [ativo, escopo, empresaid, equipeId, clienteId]));
   return { indicacoes: ativo ? indicacoes : [], indisponiveis: ativo && indisponiveis };
 }
