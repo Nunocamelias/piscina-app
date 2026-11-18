@@ -27,7 +27,8 @@ test('a navegação regista o novo ecrã sem substituir o ecrã antigo', () => {
 test('a Administração e os dois tipos de equipa conseguem abrir a nova caixa', () => {
   for (const origem of [admin, equipas, tecnicas]) {
     assert.match(origem, /navigation\.navigate\('MensagensInternas'\)/);
-    assert.match(origem, /Mensagens internas \(teste\)/);
+    assert.match(origem, /Mensagens internas/);
+    assert.doesNotMatch(origem, /Mensagens internas \(teste\)/);
   }
 });
 
@@ -126,4 +127,29 @@ test('mensagem inicial permite ate duas fotografias, com rascunho separado e sem
   assert.match(ecrã, /removerFotografia\(i, 'nova'\)/);
   assert.match(ecrã, /imagensNova\.length >= 2/);
   assert.match(ecrã, /await pedir\('post', '\/conversas', dados\)/);
+});
+
+test('cabecalho de mensagens tem a mesma cor e sombra dos restantes ecras', () => {
+  const bloco = app.slice(app.indexOf('name="MensagensInternas"'), app.indexOf('name="OrcamentacaoHome"'));
+  assert.match(bloco, /backgroundColor: '#22b4b4ff'/);
+  assert.match(bloco, /elevation: 10/);
+  assert.match(ecrã, /voltar: \{ backgroundColor: '#22b4b4ff'/);
+});
+
+test('relatorios associados sao protegidos da eliminacao e podem ser encerrados', () => {
+  assert.match(ecrã, /aberta\.notificacao_origem_id == null && \(/);
+  assert.match(ecrã, /Relatório de anomalia protegido/);
+  assert.match(api, /dados\.rows\[0\]\.notificacao_origem_id != null/);
+  assert.doesNotMatch(api, /DELETE FROM notificacoes/);
+});
+
+test('reportar anomalias tem formulario proprio sem alterar a integracao existente', () => {
+  assert.match(folha, /visible=\{isReportExpanded\}/);
+  assert.match(folha, /<Text style=\{styles\.relatorioTitulo\}>Reportar anomalia<\/Text>/);
+  assert.match(folha, /value=\{anomaliaDescricao\}/);
+  assert.match(folha, /onPress=\{confirmarEnvioRelatorio\}/);
+  assert.match(folha, /Alert\.alert\('Confirmar envio do relatório'/);
+  assert.match(folha, /await handleEnviarRelatorio\(\)/);
+  assert.match(folha, /removerAnexoRelatorio\(index\)/);
+  assert.match(folha, /assunto: 'Relatório de Anomalia'/);
 });
