@@ -202,3 +202,15 @@ test('conversa reserva margem inferior segura para os botões Foto e Responder',
   assert.match(ecrã, /onPress=\{enviarResposta\}/);
   assert.match(ecrã, /onPress=\{\(\) => void anexarFotografia\(\)\}/);
 });
+
+test('seletores de destinatário e cliente mantêm contraste no campo fechado', () => {
+  for (const valor of ['destinatario', 'clienteSelecionado']) {
+    const seletor = ecrã.match(new RegExp('<Picker\\s+[^>]*selectedValue=\\{' + valor + '\\}[^>]*>'));
+    assert.ok(seletor);
+    assert.match(seletor[0], /style=\{styles\.seletor\}/);
+    assert.match(seletor[0], /dropdownIconColor=\{CORES\.preto\}/);
+  }
+  assert.match(ecrã, /seletor: \{ color: CORES\.preto, backgroundColor: CORES\.branco \}/);
+  // Não substituir as cores nativas das opções da lista aberta.
+  assert.doesNotMatch(ecrã, /<Picker\.Item[^>]*\bcolor=/);
+});
