@@ -1,8 +1,8 @@
 import React from 'react';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 import { View, Text, TouchableOpacity } from 'react-native';
 import VigiarMensagensEmPrimeiroPlano from './components/VigiarMensagensEmPrimeiroPlano';
-import { FornecedorNaoLidas } from './services/ContextoNaoLidas';
+import { FornecedorNaoLidas, useNaoLidasMensagens } from './services/ContextoNaoLidas';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from './screens/LoginScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -113,6 +113,35 @@ const Stack = createStackNavigator<RootStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const CustomHeaderTitle = () => <HeaderLogo />;
 
+// Push conserva o ecrã de origem (por exemplo uma folha ainda em edição).
+const abrirCaixaMensagens = () => {
+  if (!navigationRef.isReady()) return;
+  const rota = navigationRef.getCurrentRoute()?.name;
+  if (!rota || rota === 'Login' || rota === 'MensagensInternas') return;
+  navigationRef.dispatch(StackActions.push('MensagensInternas'));
+};
+
+// Indicador persistente: não depende de apanhar o aviso temporário.
+const CabecalhoMensagens = () => {
+  const total = useNaoLidasMensagens();
+  if (total <= 0) return null;
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={total + ' mensagens internas por ler. Abrir mensagens'}
+      onPress={abrirCaixaMensagens}
+      style={{ minWidth: 52, minHeight: 44, marginRight: 8, justifyContent: 'center', alignItems: 'center' }}
+    >
+      <Text style={{ fontSize: 27, color: '#000000', lineHeight: 34 }}>✉</Text>
+      <View style={{ position: 'absolute', right: 0, top: 0, minWidth: 20,
+        paddingHorizontal: 4, paddingVertical: 2, borderRadius: 12,
+        backgroundColor: '#A91B1B', alignItems: 'center' }}>
+        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{total > 99 ? '99+' : total}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 const App = (): React.JSX.Element => {
   const [rotaAtual, setRotaAtual] = React.useState<string>('Login');
   const [naoLidas, setNaoLidas] = React.useState(0);
@@ -133,7 +162,7 @@ const App = (): React.JSX.Element => {
 
   const abrirMensagens = () => {
     setAvisoNovo(false);
-    if (navigationRef.isReady()) navigationRef.navigate('MensagensInternas');
+    abrirCaixaMensagens();
   };
 
   const atualizarRota = () => {
@@ -150,7 +179,13 @@ const App = (): React.JSX.Element => {
           onReady={atualizarRota}
           onStateChange={atualizarRota}
         >
-    <Stack.Navigator initialRouteName="Login">
+    <Stack.Navigator
+      initialRouteName="Login"
+      screenOptions={({ route }) => ({
+        headerRight: route.name === 'Login' || route.name === 'MensagensInternas'
+          ? undefined : CabecalhoMensagens,
+      })}
+    >
       <Stack.Screen
         name="Login"
         component={LoginScreen}
@@ -527,9 +562,16 @@ const App = (): React.JSX.Element => {
           component={MensagensInternasScreen}
           options={{
             headerTitle: CustomHeaderTitle,
-            headerStyle: { backgroundColor: '#ADD8E6' },
+            headerStyle: {
+              backgroundColor: '#22b4b4ff',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.25,
+              shadowRadius: 4.65,
+              elevation: 10,
+            },
             headerTitleAlign: 'center',
-            headerTintColor: '#000000',
+            headerTintColor: '#000',
           }}/>
         <Stack.Screen
           name="OrcamentacaoHome"
