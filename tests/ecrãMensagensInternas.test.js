@@ -176,3 +176,29 @@ test('cartão só apresenta indicações não lidas e folha mantém as lidas at�
   assert.match(hook, /setInterval\(/);
   assert.doesNotMatch(hook, /setItem\(/);
 });
+
+test('menu administrativo permite scroll e rodapé não sobrepõe botões', () => {
+  assert.match(admin, /<ScrollView/);
+  assert.match(admin, /flexGrow: 1/);
+  assert.match(admin, /paddingBottom: Math.max\(insets.bottom, 12\) \+ 16/);
+  assert.doesNotMatch(admin, /position: ['"]absolute['"]/);
+  assert.match(admin, /footer: \{\s*marginTop: 'auto',\s*paddingTop: 24/);
+  assert.match(admin, /navigation.navigate\('ReceberNotificacoes'\)/);
+});
+
+test('menus das equipas começam junto ao topo e permitem scroll sem sobreposição', () => {
+  for (const menu of [equipas, tecnicas]) {
+    assert.match(menu, /<ScrollView/);
+    assert.match(menu, /useSafeAreaInsets\(\)/);
+    assert.match(menu, /justifyContent: 'flex-start'/);
+    assert.match(menu, /paddingBottom: Math.max\(insets.bottom, 12\) \+ 16/);
+    assert.doesNotMatch(menu, /position: ['"]absolute['"]|marginTop: 140/);
+  }
+});
+
+test('conversa reserva margem inferior segura para os botões Foto e Responder', () => {
+  assert.match(ecrã, /useSafeAreaInsets\(\)/);
+  assert.match(ecrã, /<View style=\{\[styles.pagina, \{ paddingBottom: Math.max\(insets.bottom, 12\) \+ 8 \}\]\}>\s*\{aberta \? \(/);
+  assert.match(ecrã, /onPress=\{enviarResposta\}/);
+  assert.match(ecrã, /onPress=\{\(\) => void anexarFotografia\(\)\}/);
+});
