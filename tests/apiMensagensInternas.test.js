@@ -440,7 +440,6 @@ test('cliente inválido, de outra equipa ou comunicado geral não cria indicaç�
     [{ tecnico_id: 21, cliente_id: 999, mensagem: 'Verificar' }, 404],
     [{ tecnico_id: 21, cliente_id: 0, mensagem: 'Verificar' }, 400],
     [{ todos: true, cliente_id: 45, mensagem: 'Verificar' }, 400],
-    [{ tecnico_id: 21, cliente_id: 45, anexos: ['data:image/jpeg;base64,/9j/2Q=='] }, 400],
   ]) {
     const a = mockApi(admin);
     await comServidor(a.app, async base => {
@@ -467,5 +466,19 @@ test('indicações são isoladas por equipa e leitura individual; conclusão é 
   const a = mockApi(admin);
   await comServidor(a.app, async base => {
     assert.equal((await pedir(base, '/indicacoes-manutencao', admin)).status, 403);
+  });
+});
+
+test('indicação para cliente aceita assunto e fotografia sem texto adicional', async () => {
+  const a = mockApi(admin);
+  const foto = 'data:image/jpeg;base64,/9j/2Q==';
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/conversas', admin, 'POST', {
+      tecnico_id: 21, cliente_id: 45, assunto: 'Posição da válvula', anexos: [foto],
+    });
+    assert.equal(r.status, 201);
+    const m = a.chamadas.find(c => c.sql.includes('INSERT INTO mensagens_internas'));
+    assert.equal(m.valores[4], null);
+    assert.equal(m.valores[5], JSON.stringify([foto]));
   });
 });
