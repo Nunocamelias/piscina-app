@@ -132,6 +132,59 @@ function criarRouterMensagensInternas(pool) {
     }
   });
 
+
+  // Clientes associados por equipa: só a Administração pode escolher.
+  router.get('/clientes-associados', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    if (!eAdministrador(u)) return res.status(403).json({ error: 'Apenas a Administração pode consultar os clientes destinatários.' });
+    try {
+      const r = await pool.query([
+        'SELECT DISTINCT a.equipeid, c.id, c.nome FROM associados a',
+        'JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid',
+        'JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid',
+        'WHERE a.empresaid = $1 ORDER BY c.nome, c.id, a.equipeid',
+      ].join(' '), [u.empresaid]);
+      return res.json(r.rows);
+    } catch (error) {
+      return falha(res, error, 'clientes-associados');
+    }
+  });
+
+  // Instruções para a próxima conclusão real da manutenção nesta equipa.
+  // Não transferir anexos em base64 na agenda/folha; só ao abrir a conversa.
+  // Ler ou resolver a conversa não equivale a concluir a visita.
+  router.get('/indicacoes-manutencao', async (req, res) => {
+    const u = req.utilizadorMensagens;
+    const equipa = inteiroPositivo(u.equipeid);
+    if (!eTecnico(u) || !equipa) return res.status(403).json({ error: 'Indicações disponíveis apenas para a equipa autenticada.' });
+    const clienteId = req.query.cliente_id == null ? null : inteiroPositivo(req.query.cliente_id);
+    if (req.query.cliente_id != null && !clienteId) return res.status(400).json({ error: 'Cliente inválido.' });
+    try {
+      const r = await pool.query([
+        'SELECT c.id AS conversa_id, c.cliente_id, c.equipeid, c.assunto,',
+        'primeira.texto AS mensagem, primeira.num_anexos,',
+        'EXISTS (SELECT 1 FROM leituras_mensagens_internas l',
+        ' WHERE l.mensagem_id = primeira.id AND l.usuario_id = $3) AS lida',
+        'FROM conversas_internas c',
+        'JOIN LATERAL (SELECT m.id, m.texto, jsonb_array_length(m.anexos) AS num_anexos',
+        ' FROM mensagens_internas m WHERE m.conversa_id = c.id AND m.empresaid = c.empresaid',
+        ' ORDER BY m.criada_em, m.id LIMIT 1) primeira ON TRUE',
+        'WHERE c.empresaid = $1 AND c.equipeid = $2 AND c.indicacao_manutencao IS TRUE',
+        'AND ($4::integer IS NULL OR c.cliente_id = $4::integer)',
+        'AND EXISTS (SELECT 1 FROM associados a WHERE a.empresaid = c.empresaid',
+        ' AND a.equipeid = c.equipeid AND a.clienteid = c.cliente_id)',
+        'AND NOT EXISTS (SELECT 1 FROM manutencoes v',
+        ' WHERE v.empresaid = c.empresaid AND v.cliente_id = c.cliente_id',
+        " AND v.equipe_id = c.equipeid AND v.status = 'concluida'",
+        " AND v.data_conclusao >= (c.criada_em AT TIME ZONE 'Europe/Lisbon'))",
+        'ORDER BY c.criada_em, c.id',
+      ].join(' '), [u.empresaid, equipa, u.id, clienteId]);
+      return res.json(r.rows);
+    } catch (error) {
+      return falha(res, error, 'indicacoes-manutencao');
+    }
+  });
+
   // Importar uma anomalia ja criada pelo sistema de manutencao.
   // E idempotente e nunca altera a tabela antiga.
   router.post('/conversas/importar-anomalia', async (req, res) => {
@@ -190,6 +243,15 @@ function criarRouterMensagensInternas(pool) {
     if (conteudo.erro) return res.status(400).json({ error: conteudo.erro });
     const todos = admin && req.body.todos === true;
     const destinatarioId = inteiroPositivo(req.body.tecnico_id);
+    // A indicação é criada apenas pela Administração. O campo de um técnico
+    // é ignorado, tal como o empresaid/equipeid fornecidos pelo telemóvel.
+    const clienteId = admin && req.body.cliente_id != null ? inteiroPositivo(req.body.cliente_id) : null;
+    if (admin && req.body.cliente_id != null && (!clienteId || todos)) {
+      return res.status(400).json({ error: 'Escolha um cliente válido e um técnico específico.' });
+    }
+    if (clienteId && !conteudo.texto) {
+      return res.status(400).json({ error: 'Escreva a indicação para a manutenção.' });
+    }
     if (admin && !todos && !destinatarioId) {
       return res.status(400).json({ error: 'Escolha um técnico ou a opção Todos.' });
     }
@@ -233,10 +295,27 @@ function criarRouterMensagensInternas(pool) {
       client = await pool.connect();
       await client.query('BEGIN');
       for (const equipeid of destinos) {
-        const criada = await client.query(
-          "INSERT INTO conversas_internas (empresaid, equipeid, grupo_envio_id, assunto, criada_por) VALUES ($1,$2,$3,$4,$5) RETURNING id",
-          [u.empresaid, equipeid, grupoId, assunto, u.id]
-        );
+        if (clienteId) {
+          const associado = await client.query([
+            'SELECT 1 FROM associados a',
+            'JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid',
+            'JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid',
+            'WHERE a.empresaid = $1 AND a.equipeid = $2 AND a.clienteid = $3 LIMIT 1',
+          ].join(' '), [u.empresaid, equipeid, clienteId]);
+          if (!associado.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'O cliente não está associado à equipa selecionada.' });
+          }
+        }
+        const criada = clienteId
+          ? await client.query(
+              "INSERT INTO conversas_internas (empresaid, equipeid, grupo_envio_id, assunto, criada_por, cliente_id, indicacao_manutencao) VALUES ($1,$2,$3,$4,$5,$6,TRUE) RETURNING id",
+              [u.empresaid, equipeid, grupoId, assunto, u.id, clienteId]
+            )
+          : await client.query(
+              "INSERT INTO conversas_internas (empresaid, equipeid, grupo_envio_id, assunto, criada_por) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+              [u.empresaid, equipeid, grupoId, assunto, u.id]
+            );
         const id = criada.rows[0].id;
         await client.query(
           "INSERT INTO mensagens_internas (conversa_id, empresaid, autor_id, autor_nome, texto, anexos) VALUES ($1,$2,$3,$4,$5,$6::jsonb)",
