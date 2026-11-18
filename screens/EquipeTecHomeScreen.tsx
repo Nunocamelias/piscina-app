@@ -11,6 +11,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../App';
 import IndicadorNaoLidas from '../components/IndicadorNaoLidas';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RouteParams = {
   equipeId?: number;
@@ -26,6 +27,7 @@ type EquipeTecNav = StackNavigationProp<
 const EquipeTecHomeScreen: React.FC = () => {
   const route = useRoute();
   const navigation = useNavigation<EquipeTecNav>();
+  const insets = useSafeAreaInsets();
 
   const { equipeId, equipeNome } = (route.params || {}) as RouteParams;
 
@@ -42,7 +44,10 @@ const EquipeTecHomeScreen: React.FC = () => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) + 16 }]}
+    >
       <View style={styles.card}>
         <Text style={styles.title}>
           Equipa Técnica {equipeNome ? `- ${equipeNome}` : ''}
@@ -84,11 +89,14 @@ const EquipeTecHomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+    backgroundColor: '#ADD8E6',
+  },
   container: {
     flexGrow: 1,
-    backgroundColor: '#ADD8E6',
     padding: 16,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -144,7 +152,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   footer: {
-    marginTop: 16,
+    marginTop: 'auto',
+    paddingTop: 24,
     alignItems: 'center',
   },
   footerText: {
