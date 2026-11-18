@@ -85,8 +85,7 @@ function mockApi(utilizador, opts = {}) {
               sql.includes('SELECT id, empresaid, equipeid, notificacao_origem_id FROM conversas_internas')) {
             return { rows: [opts.conversa || conversa], rowCount: 1 };
           }
-          if (sql.startsWith('DELETE FROM conversas_internas') ||
-              sql.startsWith('DELETE FROM notificacoes')) {
+          if (sql.startsWith('DELETE FROM conversas_internas')) {
             return { rows: [], rowCount: 1 };
           }
           if (sql.includes('UPDATE conversas_internas SET estado = CASE')) {
@@ -237,16 +236,24 @@ test('destinatarios so sao listados pela administracao autenticada da empresa', 
   });
 });
 
-test('so a administracao elimina a conversa e o relatorio original associado', async () => {
+test('so a administracao elimina conversas operacionais; relatorios ficam protegidos', async () => {
   const associada = { ...conversa, notificacao_origem_id: 900 };
   const a = mockApi(admin, { conversa: associada });
   await comServidor(a.app, async base => {
+    const r = await pedir(base, '/conversas/100', admin, 'DELETE');
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /Relatório de anomalia protegido/);
+    assert.ok(!a.chamadas.some(c => c.sql.startsWith('DELETE FROM')));
+    assert.ok(a.chamadas.some(c => c.sql === 'ROLLBACK'));
+  });
+  const operacional = mockApi(admin);
+  await comServidor(operacional.app, async base => {
     assert.equal((await pedir(base, '/conversas/100', admin, 'DELETE')).status, 200);
-    const deletes = a.chamadas.filter(c => c.sql.startsWith('DELETE FROM'));
-    assert.equal(deletes.length, 2);
+    const deletes = operacional.chamadas.filter(c => c.sql.startsWith('DELETE FROM'));
+    assert.equal(deletes.length, 1);
+    assert.match(deletes[0].sql, /DELETE FROM conversas_internas/);
     assert.deepEqual(deletes[0].valores, [100, 7]);
-    assert.deepEqual(deletes[1].valores, [900, 7]);
-    assert.ok(a.chamadas.some(c => c.sql === 'COMMIT'));
+    assert.ok(operacional.chamadas.some(c => c.sql === 'COMMIT'));
   });
   const t = mockApi(tecnico, { conversa: associada });
   await comServidor(t.app, async base => {
