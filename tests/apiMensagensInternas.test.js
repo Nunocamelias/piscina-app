@@ -25,7 +25,7 @@ function mockApi(utilizador, opts = {}) {
   const db = {
     async query(sql, valores = []) {
       chamadas.push({ sql, valores });
-      if (sql.includes('FROM usuarios WHERE id = $1 AND empresaid = $2')) {
+      if (sql.startsWith('SELECT id, nome, empresaid, equipeid, tipo_usuario FROM usuarios WHERE id = $1 AND empresaid = $2')) {
         return { rows: [utilizador], rowCount: 1 };
       }
       if (sql.includes('FROM conversas_internas WHERE id = $1 AND empresaid = $2')) {
@@ -68,8 +68,10 @@ function mockApi(utilizador, opts = {}) {
       if (sql.includes('SELECT DISTINCT equipeid FROM usuarios')) {
         return { rows: [{ equipeid: 6 }, { equipeid: 8 }], rowCount: 2 };
       }
-      if (sql.includes('SELECT equipeid FROM usuarios WHERE id = $1')) {
-        return { rows: [{ equipeid: 6 }], rowCount: 1 };
+      if (sql.startsWith('SELECT equipeid FROM usuarios WHERE id = $1')) {
+        const destinatario = [tecnico, outroTecnico].find(t =>
+          t.id === valores[0] && t.empresaid === valores[1]);
+        return { rows: destinatario ? [{ equipeid: destinatario.equipeid }] : [], rowCount: destinatario ? 1 : 0 };
       }
       throw new Error('SQL nao prevista no teste: ' + sql.slice(0, 120));
     },
@@ -438,6 +440,7 @@ test('admin associa indicação a cliente da equipa, mantendo o mesmo envio de m
 test('cliente inválido, de outra equipa ou comunicado geral não cria indicação', async () => {
   for (const [body, status] of [
     [{ tecnico_id: 21, cliente_id: 999, mensagem: 'Verificar' }, 404],
+    [{ tecnico_id: 23, cliente_id: 45, mensagem: 'Verificar' }, 404],
     [{ tecnico_id: 21, cliente_id: 0, mensagem: 'Verificar' }, 400],
     [{ todos: true, cliente_id: 45, mensagem: 'Verificar' }, 400],
   ]) {
@@ -480,5 +483,20 @@ test('indicação para cliente aceita assunto e fotografia sem texto adicional',
     const m = a.chamadas.find(c => c.sql.includes('INSERT INTO mensagens_internas'));
     assert.equal(m.valores[4], null);
     assert.equal(m.valores[5], JSON.stringify([foto]));
+  });
+});
+
+test('admin envia mensagem normal para um tecnico específico, sem indicar cliente', async () => {
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/conversas', admin, 'POST', {
+      tecnico_id: 23, assunto: 'Material', mensagem: 'Levar cloro',
+    });
+    assert.equal(r.status, 201);
+    const destino = a.chamadas.find(c => c.sql.startsWith('SELECT equipeid FROM usuarios WHERE id = $1'));
+    assert.deepEqual(destino.valores, [23, 7]);
+    const criada = a.chamadas.find(c => c.sql.includes('INSERT INTO conversas_internas'));
+    assert.deepEqual(criada.valores, [7, 8, null, 'Material', 1]);
+    assert.doesNotMatch(criada.sql, /indicacao_manutencao|cliente_id/);
   });
 });
