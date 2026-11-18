@@ -3,7 +3,8 @@ import {
   ActivityIndicator, Alert, FlatList, Image, Modal, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
+import type { RootStackParamList } from '../App';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
@@ -37,6 +38,7 @@ type Mensagem = {
   leituras?: Leitura[];
 };
 type Tecnico = { id: number; nome: string; equipeid: number };
+type ClienteAssociado = { id: number; nome: string; equipeid: number };
 type Metodo = 'get' | 'post' | 'patch' | 'delete';
 
 const CORES = {
@@ -72,6 +74,9 @@ const corEstado = (estado: string) => {
  * notificações push/sonoras serão implementadas separadamente.
  */
 const MensagensInternasScreen: React.FC = () => {
+  const route = useRoute<RouteProp<RootStackParamList, 'MensagensInternas'>>();
+  const alvoInicial = route.params?.conversaId;
+  const alvoTratadoRef = useRef(false);
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [aIniciar, setAIniciar] = useState(true);
   const [lista, setLista] = useState<Conversa[]>([]);
@@ -85,6 +90,10 @@ const MensagensInternasScreen: React.FC = () => {
   const [novaAberta, setNovaAberta] = useState(false);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [destinatario, setDestinatario] = useState('');
+  const [clientesAssociados, setClientesAssociados] = useState<ClienteAssociado[]>([]);
+  const [clienteSelecionado, setClienteSelecionado] = useState('');
+  const [filtroCliente, setFiltroCliente] = useState('');
+  const [clientesIndisponiveis, setClientesIndisponiveis] = useState(false);
   const [assunto, setAssunto] = useState('');
   const [textoNovo, setTextoNovo] = useState('');
   const [imagensNova, setImagensNova] = useState<string[]>([]);
@@ -200,14 +209,25 @@ const MensagensInternasScreen: React.FC = () => {
     return () => clearInterval(intervalo);
   }, [sessao, carregarLista, carregarMensagens]));
 
-  const abrirConversa = (conversa: Conversa) => {
+  const abrirConversa = useCallback((conversa: Conversa) => {
     conversaRef.current = String(conversa.id);
     setAberta(conversa);
     setMensagens([]);
     setResposta('');
     setImagensResposta([]);
     void carregarMensagens(conversa.id, true);
-  };
+  }, [carregarMensagens]);
+
+  // A lista autenticada fornece a conversa; nunca confiar no cartão de origem
+  // para permissões nem marcar como lida antes de a abrir com sucesso.
+  useEffect(() => {
+    if (!alvoInicial || alvoTratadoRef.current || !sessao) return;
+    const alvo = lista.find(c => String(c.id) === String(alvoInicial));
+    if (alvo) {
+      alvoTratadoRef.current = true;
+      abrirConversa(alvo);
+    }
+  }, [alvoInicial, lista, sessao, abrirConversa]);
 
   const voltar = () => {
     conversaRef.current = null;
@@ -376,6 +396,10 @@ const MensagensInternasScreen: React.FC = () => {
     setTextoNovo('');
     setImagensNova([]);
     setDestinatario('');
+    setClienteSelecionado('');
+    setFiltroCliente('');
+    setClientesAssociados([]);
+    setClientesIndisponiveis(false);
     if (!sessao.admin) {
       setNovaAberta(true);
       return;
@@ -383,11 +407,25 @@ const MensagensInternasScreen: React.FC = () => {
     try {
       const dados = await pedir('get', '/tecnicos');
       setTecnicos(Array.isArray(dados) ? dados : []);
+      try {
+        const clientes = await pedir('get', '/clientes-associados');
+        setClientesAssociados(Array.isArray(clientes) ? clientes : []);
+      } catch {
+        // O envio operacional continua disponível mesmo se esta lista falhar.
+        setClientesIndisponiveis(true);
+      }
       setNovaAberta(true);
     } catch (erro) {
       tratarErro(erro);
     }
   };
+
+  const equipeEscolhida = tecnicos.find(t => String(t.id) === destinatario)?.equipeid;
+  const clientesDaEquipa = clientesAssociados.filter(c => Number(c.equipeid) === Number(equipeEscolhida));
+  const clienteEscolhido = clientesDaEquipa.find(c => String(c.id) === clienteSelecionado);
+  const clientesFiltrados = clientesDaEquipa.filter(c =>
+    String(c.id) === clienteSelecionado || c.nome.toLocaleLowerCase().includes(filtroCliente.trim().toLocaleLowerCase())
+  );
 
   const criarNova = () => {
     if (!sessao || aEnviar || aEscolherImagem) return;
@@ -401,6 +439,10 @@ const MensagensInternasScreen: React.FC = () => {
       Alert.alert('Atenção', 'Escolhe um técnico válido ou Todos.');
       return;
     }
+    if (sessao.admin && clienteSelecionado && (!clienteEscolhido || todos || !textoNovo.trim())) {
+      Alert.alert('Atenção', 'Escolhe um cliente associado e escreve a indicação para a manutenção.');
+      return;
+    }
     const destinoTexto = !sessao.admin
       ? 'a Administração'
       : todos
@@ -410,9 +452,11 @@ const MensagensInternasScreen: React.FC = () => {
       assunto: assunto.trim(),
       mensagem: textoNovo.trim(),
       anexos: [...imagensNova],
-      ...(sessao.admin ? { todos, tecnico_id: todos ? undefined : Number(destinatario) } : {}),
+      ...(sessao.admin ? { todos, tecnico_id: todos ? undefined : Number(destinatario),
+        cliente_id: clienteEscolhido && !todos ? clienteEscolhido.id : undefined } : {}),
     };
-    Alert.alert('Confirmar envio', 'Enviar a mensagem para ' + destinoTexto + '?', [
+    Alert.alert('Confirmar envio', 'Enviar a mensagem para ' + destinoTexto +
+      (clienteEscolhido ? ' e apresentar na próxima manutenção de ' + clienteEscolhido.nome : '') + '?', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Enviar',
@@ -609,7 +653,11 @@ const MensagensInternasScreen: React.FC = () => {
               {sessao.admin ? (
                 <>
                   <View style={styles.campoPicker}>
-                    <Picker selectedValue={destinatario} onValueChange={valor => setDestinatario(String(valor))}>
+                    <Picker selectedValue={destinatario} onValueChange={valor => {
+                      setDestinatario(String(valor));
+                      setClienteSelecionado('');
+                      setFiltroCliente('');
+                    }}>
                       <Picker.Item label="Escolher técnico..." value="" />
                       <Picker.Item label="Todos os técnicos" value="todos" />
                       {tecnicos.map(t => (
@@ -622,6 +670,30 @@ const MensagensInternasScreen: React.FC = () => {
                     </Picker>
                   </View>
                   <Text style={styles.metadados}>Os colegas da mesma equipa podem ler e responder.</Text>
+                  {!!equipeEscolhida && destinatario !== 'todos' && (
+                    <>
+                      <Text style={styles.etiqueta}>Cliente associado (opcional)</Text>
+                      {clientesIndisponiveis ? (
+                        <Text style={styles.metadados}>Não foi possível carregar os clientes. Podes enviar uma mensagem normal ou reabrir este formulário.</Text>
+                      ) : (
+                        <>
+                          <TextInput style={styles.campo} placeholder="Pesquisar cliente..." placeholderTextColor="#666666"
+                            value={filtroCliente} onChangeText={setFiltroCliente} />
+                          <View style={[styles.campoPicker, { marginTop: 6 }]}>
+                            <Picker selectedValue={clienteSelecionado} onValueChange={valor => setClienteSelecionado(String(valor))}>
+                              <Picker.Item label="Sem cliente (mensagem normal)" value="" />
+                              {clientesFiltrados.map(c => (
+                                <Picker.Item key={c.id} label={c.nome} value={String(c.id)} />
+                              ))}
+                            </Picker>
+                          </View>
+                          <Text style={styles.metadados}>{clienteEscolhido
+                            ? 'Indicação apresentada na próxima manutenção desta piscina, mesmo depois de lida.'
+                            : 'Seleciona um cliente apenas quando a mensagem for uma indicação de manutenção.'}</Text>
+                        </>
+                      )}
+                    </>
+                  )}
                 </>
               ) : (
                 <View style={styles.campo}>
