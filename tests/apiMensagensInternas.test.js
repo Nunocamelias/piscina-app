@@ -31,6 +31,12 @@ function mockApi(utilizador, opts = {}) {
       if (sql.includes('FROM conversas_internas WHERE id = $1 AND empresaid = $2')) {
         return { rows: [opts.conversa || conversa], rowCount: 1 };
       }
+      if (sql.includes('SELECT DISTINCT a.equipeid, c.id, c.nome FROM associados a')) {
+        return { rows: [{ id: 45, nome: 'Piscina A', equipeid: 6 }], rowCount: 1 };
+      }
+      if (sql.includes('c.indicacao_manutencao IS TRUE')) {
+        return { rows: [{ conversa_id: '100', cliente_id: 45, equipeid: 6, assunto: 'Verificar bomba', mensagem: 'Confirmar', num_anexos: 0, lida: false }], rowCount: 1 };
+      }
       if (sql.includes('FROM conversas_internas c')) {
         return { rows: [{ ...conversa, nao_lidas: 1 }], rowCount: 1 };
       }
@@ -73,6 +79,10 @@ function mockApi(utilizador, opts = {}) {
           chamadas.push({ sql, valores });
           if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
             return { rows: [], rowCount: 0 };
+          }
+          if (sql.includes('SELECT 1 FROM associados a')) {
+            const valida = valores[0] === 7 && valores[1] === 6 && valores[2] === 45;
+            return { rows: valida ? [{ '?column?': 1 }] : [], rowCount: valida ? 1 : 0 };
           }
           if (sql.includes('INSERT INTO conversas_internas')) {
             sequencia += 1;
@@ -390,4 +400,72 @@ test('administracao envia fotografia inicial e ambos os perfis rejeitam anexos i
     });
     assert.ok(!t.chamadas.some(c => c.sql.includes('INSERT INTO conversas_internas')));
   }
+});
+
+test('só a administração lista clientes associados da sua empresa', async () => {
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/clientes-associados?empresaid=999', admin);
+    assert.equal(r.status, 200);
+    assert.equal(r.body[0].id, 45);
+    const q = a.chamadas.find(c => c.sql.includes('SELECT DISTINCT a.equipeid, c.id, c.nome'));
+    assert.deepEqual(q.valores, [7]);
+    assert.match(q.sql, /c.empresaid = a.empresaid/);
+    assert.match(q.sql, /e.empresaid = a.empresaid/);
+  });
+  const t = mockApi(tecnico);
+  await comServidor(t.app, async base => {
+    assert.equal((await pedir(base, '/clientes-associados', tecnico)).status, 403);
+  });
+});
+
+test('admin associa indicação a cliente da equipa, mantendo o mesmo envio de mensagens', async () => {
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    const r = await pedir(base, '/conversas', admin, 'POST', {
+      tecnico_id: 21, cliente_id: 45, assunto: 'Bomba', mensagem: 'Verificar', empresaid: 999, equipeid: 99,
+    });
+    assert.equal(r.status, 201);
+    const q = a.chamadas.find(c => c.sql.includes('SELECT 1 FROM associados a'));
+    assert.deepEqual(q.valores, [7, 6, 45]);
+    const ins = a.chamadas.find(c => c.sql.includes('INSERT INTO conversas_internas'));
+    assert.match(ins.sql, /cliente_id, indicacao_manutencao/);
+    assert.deepEqual(ins.valores, [7, 6, null, 'Bomba', 1, 45]);
+    assert.equal(a.chamadas.filter(c => c.sql.includes('INSERT INTO mensagens_internas')).length, 1);
+  });
+});
+
+test('cliente inválido, de outra equipa ou comunicado geral não cria indicação', async () => {
+  for (const [body, status] of [
+    [{ tecnico_id: 21, cliente_id: 999, mensagem: 'Verificar' }, 404],
+    [{ tecnico_id: 21, cliente_id: 0, mensagem: 'Verificar' }, 400],
+    [{ todos: true, cliente_id: 45, mensagem: 'Verificar' }, 400],
+    [{ tecnico_id: 21, cliente_id: 45, anexos: ['data:image/jpeg;base64,/9j/2Q=='] }, 400],
+  ]) {
+    const a = mockApi(admin);
+    await comServidor(a.app, async base => {
+      assert.equal((await pedir(base, '/conversas', admin, 'POST', { assunto: 'Bomba', ...body })).status, status);
+    });
+    assert.ok(!a.chamadas.some(c => c.sql.includes('INSERT INTO conversas_internas')));
+  }
+});
+
+test('indicações são isoladas por equipa e leitura individual; conclusão é posterior ao envio', async () => {
+  const t = mockApi(tecnico);
+  await comServidor(t.app, async base => {
+    assert.equal((await pedir(base, '/indicacoes-manutencao?cliente_id=45&empresaid=999&equipeid=8', tecnico)).status, 200);
+    assert.equal((await pedir(base, '/indicacoes-manutencao?cliente_id=0', tecnico)).status, 400);
+    const q = t.chamadas.find(c => c.sql.includes('c.indicacao_manutencao IS TRUE'));
+    assert.deepEqual(q.valores, [7, 6, 21, 45]);
+    assert.match(q.sql, /l.mensagem_id = primeira.id AND l.usuario_id = \$3/);
+    assert.match(q.sql, /v.empresaid = c.empresaid AND v.cliente_id = c.cliente_id/);
+    assert.match(q.sql, /v.equipe_id = c.equipeid AND v.status = 'concluida'/);
+    assert.match(q.sql, /v.data_conclusao >= \(c.criada_em AT TIME ZONE 'Europe\/Lisbon'\)/);
+    assert.match(q.sql, /NOT EXISTS \(SELECT 1 FROM manutencoes v/);
+    assert.doesNotMatch(q.sql, /c.estado = 'resolvido'/);
+  });
+  const a = mockApi(admin);
+  await comServidor(a.app, async base => {
+    assert.equal((await pedir(base, '/indicacoes-manutencao', admin)).status, 403);
+  });
 });
