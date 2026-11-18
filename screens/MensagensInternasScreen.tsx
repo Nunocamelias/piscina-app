@@ -424,7 +424,7 @@ const MensagensInternasScreen: React.FC = () => {
   const clientesDaEquipa = clientesAssociados.filter(c => Number(c.equipeid) === Number(equipeEscolhida));
   const clienteEscolhido = clientesDaEquipa.find(c => String(c.id) === clienteSelecionado);
   const clientesFiltrados = clientesDaEquipa.filter(c =>
-    String(c.id) === clienteSelecionado || c.nome.toLocaleLowerCase().includes(filtroCliente.trim().toLocaleLowerCase())
+    String(c.id) === clienteSelecionado || String(c.nome || '').toLocaleLowerCase().includes(filtroCliente.trim().toLocaleLowerCase())
   );
 
   const criarNova = () => {
@@ -439,8 +439,8 @@ const MensagensInternasScreen: React.FC = () => {
       Alert.alert('Atenção', 'Escolhe um técnico válido ou Todos.');
       return;
     }
-    if (sessao.admin && clienteSelecionado && (!clienteEscolhido || todos || !textoNovo.trim())) {
-      Alert.alert('Atenção', 'Escolhe um cliente associado e escreve a indicação para a manutenção.');
+    if (sessao.admin && clienteSelecionado && (!clienteEscolhido || todos)) {
+      Alert.alert('Atenção', 'Escolhe um cliente associado à equipa selecionada.');
       return;
     }
     const destinoTexto = !sessao.admin
