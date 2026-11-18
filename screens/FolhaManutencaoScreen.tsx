@@ -226,6 +226,9 @@ function validarCloro(cl: number, isPiscinaSal: boolean): Alerta | null {
   const [anomaliaDescricao, setAnomaliaDescricao] = useState('');
   const [valorServicoExtra, setValorServicoExtra] = useState('');
   const [imagensAnexadas, setImagensAnexadas] = useState<string[]>([]);
+  const [aAnexarRelatorio, setAAnexarRelatorio] = useState(false);
+  const [aEnviarRelatorio, setAEnviarRelatorio] = useState(false);
+  const envioRelatorioRef = useRef(false);
   const [islExpanded, setIslExpanded] = useState(false);
   const [expandCloroTotal, setExpandCloroTotal] = React.useState(false);
   const [islPH, setIslPH] = useState('');
@@ -2198,6 +2201,8 @@ const confirmarManutencaoPeriodica = async (item: ItemManutencao) => {
 };
 
 const handleAnexarFoto = async () => {
+  if (aAnexarRelatorio || aEnviarRelatorio) return;
+  setAAnexarRelatorio(true);
   try {
     console.log('📎 A abrir DocumentPicker...');
     const res = await DocumentPicker.pick({
@@ -2247,6 +2252,8 @@ const handleAnexarFoto = async () => {
       console.error('❌ Erro ao selecionar ficheiro:', err);
       Alert.alert('Erro', err?.message || 'Erro ao selecionar o ficheiro.');
     }
+  } finally {
+    setAAnexarRelatorio(false);
   }
 };
 
@@ -2364,6 +2371,42 @@ const handleEnviarRelatorio = async () => {
       Alert.alert('Erro', 'Erro desconhecido ao enviar relatório.');
     }
   }
+};
+
+// Confirmação antes de enviar, sem alterar o circuito já validado.
+const confirmarEnvioRelatorio = () => {
+  if (aAnexarRelatorio || envioRelatorioRef.current) return;
+  if (!anomaliaDescricao.trim()) {
+    Alert.alert('Atenção', 'Descreve a anomalia antes de enviar.');
+    return;
+  }
+  Alert.alert('Confirmar envio do relatório', 'Enviar esta anomalia à Administração?', [
+    { text: 'Cancelar', style: 'cancel' },
+    { text: 'Enviar', onPress: async () => {
+      if (envioRelatorioRef.current) return;
+      envioRelatorioRef.current = true;
+      setAEnviarRelatorio(true);
+      try {
+        await handleEnviarRelatorio();
+      } finally {
+        envioRelatorioRef.current = false;
+        setAEnviarRelatorio(false);
+      }
+    } },
+  ]);
+};
+
+const removerAnexoRelatorio = (indice: number) => {
+  if (aEnviarRelatorio || aAnexarRelatorio) return;
+  Alert.alert('Remover anexo', 'Retirar este anexo do relatório?', [
+    { text: 'Cancelar', style: 'cancel' },
+    { text: 'Remover', style: 'destructive', onPress: () =>
+      setImagensAnexadas(anteriores => anteriores.filter((_, i) => i !== indice)) },
+  ]);
+};
+
+const fecharRelatorio = () => {
+  if (!aEnviarRelatorio && !aAnexarRelatorio) setIsReportExpanded(false);
 };
 
 // Lógica para alterar cor baseado na data
@@ -4304,50 +4347,11 @@ const corParametro = (() => {
 
 {/* Reportar Anomalias */}
 <View style={styles.section}>
-  <TouchableOpacity onPress={() => setIsReportExpanded(!isReportExpanded)}>
+  <TouchableOpacity onPress={() => setIsReportExpanded(true)}>
     <Text style={styles.sectionTitle}>Reportar Anomalias</Text>
+    <Text style={styles.label}>Comunicar uma anomalia à Administração</Text>
   </TouchableOpacity>
-
-  {isReportExpanded && (
-    <View style={styles.expandedContent}>
-      {/* Campo de Descrição da Anomalia */}
-      <Text style={styles.label}>Descrição da Anomalia:</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Descreva a anomalia encontrada..."
-        placeholderTextColor="#888"
-        value={anomaliaDescricao}
-        onChangeText={setAnomaliaDescricao}
-        multiline
-      />
-
-      {/* Botão para Anexar Foto */}
-      <TouchableOpacity style={styles.attachButton} onPress={handleAnexarFoto}>
-        <Text style={styles.attachButtonText}>📷 Anexar Foto</Text>
-      </TouchableOpacity>
-
-      {/* Exibir número de imagens anexadas */}
-      {imagensAnexadas.length > 0 && (
-        <Text style={styles.anexosInfo}>
-          {imagensAnexadas.length} {imagensAnexadas.length === 1 ? 'imagem anexada' : 'imagens anexadas'}
-        </Text>
-      )}
-
-      {/* Exibir miniaturas das imagens anexadas */}
-      <View style={styles.anexosContainer}>
-        {imagensAnexadas.map((uri, index) => (
-          <Image key={index} source={{ uri }} style={styles.anexoImagem} />
-        ))}
-      </View>
-
-      {/* Botão Enviar Relatório */}
-      <TouchableOpacity style={styles.submitButton} onPress={handleEnviarRelatorio}>
-        <Text style={styles.submitButtonText}>Enviar Relatório</Text>
-      </TouchableOpacity>
-    </View>
-  )}
 </View>
-
 
           {/* Itens com Manutenção Periódica */}
           <View style={styles.section}>
@@ -4450,6 +4454,81 @@ const corParametro = (() => {
   )}
   </View>
   <Modal
+    visible={isReportExpanded}
+    transparent
+    animationType="slide"
+    onRequestClose={fecharRelatorio}
+  >
+    <View style={styles.relatorioOverlay}>
+      <View style={styles.relatorioModal}>
+        <ScrollView keyboardShouldPersistTaps="handled">
+          <Text style={styles.relatorioTitulo}>Reportar anomalia</Text>
+          <Text style={styles.relatorioEtiqueta}>Destinatário</Text>
+          <View style={styles.relatorioCampo}>
+            <Text style={styles.relatorioFixo}>Administração</Text>
+          </View>
+          <Text style={styles.relatorioEtiqueta}>Cliente / Piscina</Text>
+          <View style={styles.relatorioCampo}>
+            <Text style={styles.relatorioFixo}>{cliente?.nome || 'Cliente'}</Text>
+          </View>
+          <Text style={styles.relatorioEtiqueta}>Descrição da anomalia</Text>
+          <TextInput
+            style={[styles.relatorioCampo, styles.relatorioDescricao]}
+            placeholder="Descreve a anomalia encontrada..."
+            placeholderTextColor="#666666"
+            value={anomaliaDescricao}
+            onChangeText={setAnomaliaDescricao}
+            editable={!aEnviarRelatorio}
+            multiline
+          />
+          {imagensAnexadas.length > 0 && (
+            <View style={styles.relatorioAnexos}>
+              {imagensAnexadas.map((uri, index) => (
+                <TouchableOpacity
+                  key={index}
+                  disabled={aEnviarRelatorio || aAnexarRelatorio}
+                  accessibilityLabel={'Remover anexo ' + (index + 1)}
+                  onPress={() => removerAnexoRelatorio(index)}
+                >
+                  {uri.startsWith('data:image/') ? (
+                    <Image source={{ uri }} style={styles.relatorioMiniatura} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.relatorioMiniatura, styles.relatorioFicheiro]}>
+                      <Text style={styles.relatorioTextoBotao}>{uri.startsWith('data:application/pdf') ? 'PDF' : uri.startsWith('data:video/') ? 'Vídeo' : 'Anexo'}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.relatorioRemover}>Remover</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.relatorioSecundario}
+            disabled={aEnviarRelatorio || aAnexarRelatorio}
+            onPress={handleAnexarFoto}
+          >
+            <Text style={styles.relatorioTextoBotao}>{aAnexarRelatorio ? 'A preparar...' : '📷 Anexar fotografia ou ficheiro (' + imagensAnexadas.length + ')'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.relatorioEnviar, (aEnviarRelatorio || aAnexarRelatorio) && { opacity: 0.5 }]}
+            disabled={aEnviarRelatorio || aAnexarRelatorio}
+            onPress={confirmarEnvioRelatorio}
+          >
+            <Text style={styles.relatorioTextoBotao}>{aEnviarRelatorio ? 'A enviar...' : 'Enviar relatório'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.relatorioSecundario}
+            disabled={aEnviarRelatorio || aAnexarRelatorio}
+            onPress={fecharRelatorio}
+          >
+            <Text style={styles.relatorioTextoBotao}>Fechar</Text>
+          </TouchableOpacity>
+          <Text style={styles.relatorioNota}>Ao fechar, o rascunho fica nesta folha até ser enviado ou sair do ecrã.</Text>
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+  <Modal
     visible={!!itemDecisaoTecnica}
     transparent
     animationType="fade"
@@ -4512,6 +4591,22 @@ const corParametro = (() => {
 };
 
 const styles = StyleSheet.create({
+  // Apenas para Reportar Anomalias — não altera estilos partilhados da folha.
+  relatorioOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
+  relatorioModal: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, maxHeight: '85%' },
+  relatorioTitulo: { color: '#000000', fontSize: 20, fontWeight: '700' },
+  relatorioEtiqueta: { color: '#000000', fontWeight: '700', marginTop: 14, marginBottom: 4 },
+  relatorioCampo: { borderWidth: 1, borderColor: '#999999', borderRadius: 8, padding: 10, color: '#000000' },
+  relatorioFixo: { color: '#000000', fontWeight: '600' },
+  relatorioDescricao: { minHeight: 110, textAlignVertical: 'top' },
+  relatorioAnexos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  relatorioMiniatura: { width: 70, height: 60, borderRadius: 8 },
+  relatorioFicheiro: { backgroundColor: '#D3D3D3', alignItems: 'center', justifyContent: 'center' },
+  relatorioRemover: { color: '#000000', fontSize: 11, textAlign: 'center' },
+  relatorioSecundario: { borderColor: '#555555', borderWidth: 1, borderRadius: 25, padding: 10, alignItems: 'center', marginTop: 8 },
+  relatorioEnviar: { backgroundColor: '#22b4b4ff', borderRadius: 25, paddingHorizontal: 18, paddingVertical: 13, alignItems: 'center', marginTop: 10 },
+  relatorioTextoBotao: { color: '#000000', fontWeight: '700', textAlign: 'center' },
+  relatorioNota: { color: '#555555', fontSize: 12, marginTop: 8 },
   areaInfo: { flex: 1 },
   botaoInfoFlutuante: {
     position: 'absolute',
