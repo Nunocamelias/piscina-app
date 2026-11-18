@@ -2,6 +2,8 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { View, Text, FlatList, Alert, StyleSheet, TouchableOpacity, Appearance } from 'react-native';
 import axios from 'axios';
 import Config from 'react-native-config';
+import { useIndicacoesManutencao } from '../services/useIndicacoesManutencao';
+import IndicacaoManutencaoCard from '../components/IndicacaoManutencaoCard';
 import { initOffline } from '../services/offline/db';
 import { getClientesPorDiaCache, setClientesPorDiaCache, setManutencaoAtualCache } from '../services/offline/cache';
 
@@ -73,6 +75,7 @@ const EquipesPiscinasPorDiaScreen: React.FC<Props> = ({ route, navigation }) => 
   const [loading, setLoading] = useState(false);
   const [agendaEmCache, setAgendaEmCache] = useState(false);
   const [confirmacaoEmCurso, setConfirmacaoEmCurso] = useState<number | null>(null);
+  const { indicacoes, indisponiveis } = useIndicacoesManutencao(equipeId, undefined, empresaid);
 
 
 
@@ -302,6 +305,7 @@ const fetchClientes = useCallback(async () => {
         </Text>
       )}
 
+      {indisponiveis && <Text style={styles.avisoCache}>Indicações da Administração por sincronizar.</Text>}
       {clientes.length > 0 ? (
         <FlatList
           data={clientes}
@@ -336,6 +340,13 @@ const fetchClientes = useCallback(async () => {
                         : 'Quinzenal · Visita programada nesta semana'}
                 </Text>
               )}
+              {indicacoes.filter(i => Number(i.cliente_id) === Number(item.id) && !i.lida).map(i => (
+                <IndicacaoManutencaoCard
+                  key={String(i.conversa_id)}
+                  indicacao={i}
+                  onAbrir={() => navigation.push('MensagensInternas', { conversaId: i.conversa_id })}
+                />
+              ))}
               {item.mensagens_produtos?.pendentes?.map((mensagem, index) => (
                 <TouchableOpacity
                   key={`pendente-${mensagem.registo_id || mensagem.parametro}-${index}`}
