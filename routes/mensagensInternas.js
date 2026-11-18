@@ -249,9 +249,6 @@ function criarRouterMensagensInternas(pool) {
     if (admin && req.body.cliente_id != null && (!clienteId || todos)) {
       return res.status(400).json({ error: 'Escolha um cliente válido e um técnico específico.' });
     }
-    if (clienteId && !conteudo.texto) {
-      return res.status(400).json({ error: 'Escreva a indicação para a manutenção.' });
-    }
     if (admin && !todos && !destinatarioId) {
       return res.status(400).json({ error: 'Escolha um técnico ou a opção Todos.' });
     }
