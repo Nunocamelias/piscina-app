@@ -70,7 +70,7 @@ const EquipeTecHomeScreen: React.FC = () => {
         </TouchableOpacity>
         <TouchableOpacity style={[styles.buttonSecondary, { marginTop: 12 }]} onPress={() => navigation.navigate('MensagensInternas')}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.buttonSecondaryText}>Mensagens internas (teste)</Text>
+            <Text style={styles.buttonSecondaryText}>Mensagens internas</Text>
             <IndicadorNaoLidas />
           </View>
         </TouchableOpacity>
