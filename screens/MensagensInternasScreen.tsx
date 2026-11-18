@@ -13,6 +13,7 @@ import ImageViewing from 'react-native-image-viewing';
 import * as DocumentPicker from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import ImageResizer from 'react-native-image-resizer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Sessao = { token: string; usuarioId: number; admin: boolean };
 type Conversa = {
@@ -74,6 +75,7 @@ const corEstado = (estado: string) => {
  * notificações push/sonoras serão implementadas separadamente.
  */
 const MensagensInternasScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<RootStackParamList, 'MensagensInternas'>>();
   const alvoInicial = route.params?.conversaId;
   const alvoTratadoRef = useRef(false);
@@ -537,7 +539,7 @@ const MensagensInternasScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.pagina}>
+    <View style={[styles.pagina, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
       {aberta ? (
         <View style={styles.pagina}>
           <TouchableOpacity style={styles.voltar} onPress={voltar}>
