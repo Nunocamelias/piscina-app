@@ -65,7 +65,7 @@ const AdministracaoScreen: React.FC<Props> = ({ navigation }) => {
           {/* Nova caixa em paralelo com o circuito antigo. */}
           <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MensagensInternas')}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.buttonText}>Mensagens internas (teste)</Text>
+              <Text style={styles.buttonText}>Mensagens internas</Text>
               <IndicadorNaoLidas />
             </View>
           </TouchableOpacity>
