@@ -18,7 +18,7 @@ test('avisos de mensagens novas sao globais e nao obrigam a ficar na caixa de en
   assert.match(app, /<NavigationContainer[\s\S]*<Stack.Navigator/);
   assert.match(app, /<VigiarMensagensEmPrimeiroPlano/);
   assert.match(app, /<FornecedorNaoLidas value=\{naoLidas\}>/);
-  assert.match(app, /navigationRef\.navigate\('MensagensInternas'\)/);
+  assert.match(app, /navigationRef\.dispatch\(StackActions\.push\('MensagensInternas'\)\)/);
   assert.match(app, /Nova mensagem interna/);
 });
 
@@ -51,4 +51,13 @@ test('nao introduz dependencia Firebase nem servico Android em background', () =
   assert.match(vigia, /const anterior = resumoRef\.current/);
   assert.match(vigia, /chegaramMensagensNovas\(anterior, seguinte\)/);
   assert.match(app, /rotaAtual !== 'Login' && rotaAtual !== 'MensagensInternas'/);
+});
+
+test('indicador persistente no cabecalho usa o contador global e abre a caixa sem perder o ecra anterior', () => {
+  assert.match(app, /const CabecalhoMensagens = \(\) => \{/);
+  assert.match(app, /const total = useNaoLidasMensagens\(\)/);
+  assert.match(app, /if \(total <= 0\) return null/);
+  assert.match(app, /onPress=\{abrirCaixaMensagens\}/);
+  assert.match(app, /headerRight: route\.name === 'Login' \|\| route\.name === 'MensagensInternas'\s*\? undefined : CabecalhoMensagens/);
+  assert.match(app, /StackActions\.push\('MensagensInternas'\)/);
 });
