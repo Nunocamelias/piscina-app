@@ -655,7 +655,7 @@ const MensagensInternasScreen: React.FC = () => {
               {sessao.admin ? (
                 <>
                   <View style={styles.campoPicker}>
-                    <Picker selectedValue={destinatario} onValueChange={valor => {
+                    <Picker style={styles.seletor} dropdownIconColor={CORES.preto} selectedValue={destinatario} onValueChange={valor => {
                       setDestinatario(String(valor));
                       setClienteSelecionado('');
                       setFiltroCliente('');
@@ -682,7 +682,7 @@ const MensagensInternasScreen: React.FC = () => {
                           <TextInput style={styles.campo} placeholder="Pesquisar cliente..." placeholderTextColor="#666666"
                             value={filtroCliente} onChangeText={setFiltroCliente} />
                           <View style={[styles.campoPicker, { marginTop: 6 }]}>
-                            <Picker selectedValue={clienteSelecionado} onValueChange={valor => setClienteSelecionado(String(valor))}>
+                            <Picker style={styles.seletor} dropdownIconColor={CORES.preto} selectedValue={clienteSelecionado} onValueChange={valor => setClienteSelecionado(String(valor))}>
                               <Picker.Item label="Sem cliente (mensagem normal)" value="" />
                               {clientesFiltrados.map(c => (
                                 <Picker.Item key={c.id} label={c.nome} value={String(c.id)} />
@@ -793,7 +793,9 @@ const styles = StyleSheet.create({
   fundoModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
   modal: { backgroundColor: CORES.branco, borderRadius: 16, padding: 18, maxHeight: '85%' },
   etiqueta: { color: CORES.preto, fontWeight: '700', marginTop: 14, marginBottom: 4 },
-  campoPicker: { borderWidth: 1, borderColor: '#999999', borderRadius: 8 },
+  campoPicker: { borderWidth: 1, borderColor: '#999999', borderRadius: 8, backgroundColor: CORES.branco },
+  // O campo fechado é claro em ambos os temas; a lista aberta mantém as cores nativas.
+  seletor: { color: CORES.preto, backgroundColor: CORES.branco },
   campo: { borderWidth: 1, borderColor: '#999999', borderRadius: 8, padding: 10, color: CORES.preto },
   campoGrande: { minHeight: 110, textAlignVertical: 'top' },
 });
