@@ -1,6 +1,8 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Linking, Alert, Appearance, Image, Platform, Modal, ScrollView, Animated } from 'react-native';
 import Config from 'react-native-config';
+import { useIndicacoesManutencao } from '../services/useIndicacoesManutencao';
+import IndicacaoManutencaoCard from '../components/IndicacaoManutencaoCard';
 import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../App'; // ajusta o path se o App.tsx estiver noutro sítio
@@ -291,6 +293,7 @@ const collapseAllParams = useCallback(() => {
 
 
   const isSomenteLeitura = manutencaoAtual?.status === 'concluida';
+  const { indicacoes, indisponiveis: indicacoesIndisponiveis } = useIndicacoesManutencao(equipeId, clienteId, empresaid, !isSomenteLeitura);
 
   // ✅ Bloquear Teste Rápido se já houver pelo menos 1 parâmetro validado/bloqueado
   // Só estes status contam como “validação real” que bloqueia ações automáticas
@@ -3060,6 +3063,26 @@ return (
       </View>
     )}
   </View>
+
+  {/* Indicações da Administração — manter até à conclusão real da visita. */}
+  {!isSomenteLeitura && (indicacoes.length > 0 || indicacoesIndisponiveis) && (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Indicações da Administração</Text>
+      {indicacoesIndisponiveis && <Text style={styles.label}>Indicações por sincronizar.</Text>}
+      {indicacoes.map(i => (
+        <IndicacaoManutencaoCard
+          key={String(i.conversa_id)}
+          indicacao={i}
+          naFolha
+          onAbrir={() => {
+            // Preserva os valores ainda em edição ao regressar da conversa.
+            skipNextFocusReloadRef.current = true;
+            navigation.push('MensagensInternas', { conversaId: i.conversa_id });
+          }}
+        />
+      ))}
+    </View>
+  )}
 
          {/* Índice de Saturação (Langelier) */} 
 <View style={styles.section}>
