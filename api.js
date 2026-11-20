@@ -2688,9 +2688,25 @@ app.get('/clientes-por-dia', async (req, res) => {
         ) AS ultima_conclusao,
         m.status AS status_semana,
         COALESCE(m.status, 'pendente') AS status,
-        m.motivo
+        m.motivo,
+        anterior.status AS status_semana_anterior
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
+
+      // A última visita do ciclo anterior determina se há recuperação quinzenal.
+      LEFT JOIN LATERAL (
+        SELECT ant.status
+        FROM manutencoes ant
+        WHERE ant.cliente_id = c.id
+          AND ant.equipe_id = $1
+          AND ant.dia_semana = $2
+          AND ant.empresaid = $3
+          AND ant.data_manutencao::date BETWEEN
+            date_trunc('week', $4::date)::date - 8
+            AND date_trunc('week', $4::date)::date - 2
+        ORDER BY ant.data_manutencao DESC, ant.id DESC
+        LIMIT 1
+      ) anterior ON TRUE
       LEFT JOIN LATERAL (
         SELECT mm.status, mm.motivo
         FROM manutencoes mm
@@ -2701,11 +2717,8 @@ app.get('/clientes-por-dia', async (req, res) => {
           AND (
             mm.data_manutencao::date BETWEEN
               date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
-            OR mm.data_conclusao::date BETWEEN
-              date_trunc('week', $4::date)::date AND date_trunc('week', $4::date)::date + 6
             -- O cron gera a visita no domingo para a semana seguinte.
-            OR (mm.status IN ('pendente', 'nao_concluida')
-              AND mm.data_manutencao::date = date_trunc('week', $4::date)::date - 1)
+            OR mm.data_manutencao::date = date_trunc('week', $4::date)::date - 1
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
       ) m ON TRUE
@@ -2732,7 +2745,8 @@ app.get('/clientes-por-dia', async (req, res) => {
 
     const clientesComAgenda = result.rows.map((cliente) => {
       const agenda = avaliarAgendaManutencao(
-        cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa
+        cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa,
+        cliente.status_semana_anterior === 'nao_concluida'
       );
       const emCurso = agenda.agenda_estado === 'sem_visita'
         && (cliente.status_semana === 'pendente' || cliente.status_semana === 'nao_concluida');
@@ -2981,10 +2995,26 @@ app.get('/contador-clientes', async (req, res) => {
           WHERE mc.cliente_id = c.id AND mc.empresaid = c.empresaid
             AND mc.status = 'concluida'
         ) AS ultima_conclusao,
-        m.status AS status_semana
+        m.status AS status_semana,
+        anterior.status AS status_semana_anterior
       FROM associados a
       JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
       JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+
+      // A última visita do ciclo anterior determina se há recuperação quinzenal.
+      LEFT JOIN LATERAL (
+        SELECT ant.status
+        FROM manutencoes ant
+        WHERE ant.cliente_id = a.clienteid
+          AND ant.equipe_id = a.equipeid
+          AND ant.dia_semana = a.diasemana
+          AND ant.empresaid = $2
+          AND ant.data_manutencao::date BETWEEN
+            date_trunc('week', $3::date)::date - 8
+            AND date_trunc('week', $3::date)::date - 2
+        ORDER BY ant.data_manutencao DESC, ant.id DESC
+        LIMIT 1
+      ) anterior ON TRUE
       LEFT JOIN LATERAL (
         SELECT mm.status
         FROM manutencoes mm
@@ -2993,10 +3023,7 @@ app.get('/contador-clientes', async (req, res) => {
           AND (
             mm.data_manutencao::date BETWEEN
               date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
-            OR mm.data_conclusao::date BETWEEN
-              date_trunc('week', $3::date)::date AND date_trunc('week', $3::date)::date + 6
-            OR (mm.status IN ('pendente', 'nao_concluida')
-              AND mm.data_manutencao::date = date_trunc('week', $3::date)::date - 1)
+            OR mm.data_manutencao::date = date_trunc('week', $3::date)::date - 1
           )
         ORDER BY mm.data_manutencao DESC, mm.id DESC LIMIT 1
       ) m ON TRUE
@@ -3006,7 +3033,8 @@ app.get('/contador-clientes', async (req, res) => {
     const result = await pool.query(query, [equipeId, empresaid, hojeLisboa]);
     const porDia = new Map();
     for (const row of result.rows) {
-      const agenda = avaliarAgendaManutencao(row, row.diasemana, row.ultima_conclusao, hojeLisboa);
+      const agenda = avaliarAgendaManutencao(row, row.diasemana, row.ultima_conclusao, hojeLisboa,
+        row.status_semana_anterior === 'nao_concluida');
       const feita = row.status_semana === 'concluida';
       const trabalhoAberto = row.status_semana === 'pendente' || row.status_semana === 'nao_concluida';
       const incluir = agenda.frequencia !== 'quinzenal'
@@ -3556,8 +3584,7 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
         AND m.dia_semana = $3 AND m.empresaid = $4
         AND (
           m.data_manutencao::date BETWEEN $5::date AND $5::date + 6
-          OR m.data_conclusao::date BETWEEN $5::date AND $5::date + 6
-          OR (m.status IN ('pendente', 'nao_concluida') AND m.data_manutencao::date = $5::date - 1)
+            OR m.data_manutencao::date = $5::date - 1
         )
       ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
     `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
@@ -3633,11 +3660,22 @@ app.get('/manutencao-atual', async (req, res) => {
     });
   }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+    // Bloquear o cliente impede que duas aberturas simultâneas criem a mesma visita.
+    const clienteBloqueado = await client.query(
+      'SELECT id FROM clientes WHERE id = $1 AND empresaid = $2 FOR UPDATE',
+      [clienteId, empresaid]
+    );
+    if (!clienteBloqueado.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Cliente não encontrado nesta empresa.' });
+    }
     // Usar apenas a visita da semana atual. O cron abre a visita no
     // domingo anterior; não reutilizar registos de semanas antigas.
-    // Não usamos data_conclusao aqui: concluir hoje um registo antigo
-    // não o transforma na visita efetivamente aberta para esta semana.
+    // A data de conclusão não altera a semana a que pertence o registo.
+    // O domingo anterior é sempre válido, seja qual for o estado da visita.
     const manutencaoQuery = `
       SELECT *
       FROM manutencoes
@@ -3648,15 +3686,12 @@ app.get('/manutencao-atual', async (req, res) => {
           data_manutencao::date BETWEEN
             date_trunc('week', $4::date)::date
             AND date_trunc('week', $4::date)::date + 6
-          OR (
-            status IN ('pendente', 'nao_concluida')
-            AND data_manutencao::date = date_trunc('week', $4::date)::date - 1
-          )
+            OR data_manutencao::date = date_trunc('week', $4::date)::date - 1
         )
       ORDER BY data_manutencao DESC, id DESC
       LIMIT 1;
     `;
-    const manutencaoResult = await pool.query(manutencaoQuery, [
+    const manutencaoResult = await client.query(manutencaoQuery, [
       clienteId,
       diaSemana,
       empresaid,
@@ -3677,13 +3712,14 @@ app.get('/manutencao-atual', async (req, res) => {
           AND e.empresaid = $3
         LIMIT 1;
       `;
-      const equipeResult = await pool.query(equipeQuery, [
+      const equipeResult = await client.query(equipeQuery, [
         clienteId,
         diaSemana,
         empresaid,
       ]);
 
       if (equipeResult.rows.length === 0) {
+        await client.query('ROLLBACK');
         return res.status(400).json({
           error:
             'Nenhuma equipe associada encontrada para este cliente e dia da semana.',
@@ -3701,7 +3737,7 @@ app.get('/manutencao-atual', async (req, res) => {
         ORDER BY data_manutencao DESC
         LIMIT 1;
       `;
-      const ultimoMetodoRes = await pool.query(ultimoMetodoQuery, [
+      const ultimoMetodoRes = await client.query(ultimoMetodoQuery, [
         clienteId,
         empresaid,
       ]);
@@ -3726,7 +3762,7 @@ app.get('/manutencao-atual', async (req, res) => {
         VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
         RETURNING *;
       `;
-      const novaManutencaoResult = await pool.query(novaManutencaoQuery, [
+      const novaManutencaoResult = await client.query(novaManutencaoQuery, [
         clienteId,
         equipeId,
         diaSemana,
@@ -3751,18 +3787,31 @@ app.get('/manutencao-atual', async (req, res) => {
         )
         SELECT
           $1,
-          parametro,
-          NULL,
+          pq.parametro,
+          anterior.valor_atual,
           NULL,
           NULL,
           0,
           'pendente',
           $2
-        FROM parametros_quimicos
-        WHERE empresaid = $2
-          AND ativo = TRUE;
+        FROM parametros_quimicos pq
+        LEFT JOIN LATERAL (
+          SELECT mp.valor_atual
+          FROM manutencoes_parametros mp
+          JOIN manutencoes historico ON historico.id = mp.manutencao_id
+          WHERE historico.cliente_id = $3
+            AND historico.empresaid = $2
+            AND historico.status = 'concluida'
+            AND mp.parametro = pq.parametro
+            AND mp.valor_atual IS NOT NULL
+          ORDER BY historico.data_conclusao DESC NULLS LAST,
+                   historico.data_manutencao DESC, historico.id DESC
+          LIMIT 1
+        ) anterior ON TRUE
+        WHERE pq.empresaid = $2
+          AND pq.ativo = TRUE;
       `;
-      await pool.query(criarParametrosQuery, [manutencao.id, empresaid]);
+      await client.query(criarParametrosQuery, [manutencao.id, empresaid, clienteId]);
 
     } else {
   manutencao = manutencaoResult.rows[0];
@@ -3804,7 +3853,7 @@ app.get('/manutencao-atual', async (req, res) => {
       );
   `;
 
-  await pool.query(ensureParametrosQuery, [manutencao.id, empresaid]);
+  await client.query(ensureParametrosQuery, [manutencao.id, empresaid]);
 }
 
     // ✅ 6) Buscar parâmetros (igual ao teu, só mantive)
@@ -3844,7 +3893,7 @@ app.get('/manutencao-atual', async (req, res) => {
       mp.parametro;
     `;
 
-    const parametrosResult = await pool.query(parametrosQuery, [
+    const parametrosResult = await client.query(parametrosQuery, [
       manutencao.id,
       empresaid,
     ]);
@@ -3868,13 +3917,17 @@ app.get('/manutencao-atual', async (req, res) => {
             },
     }));
 
+    await client.query('COMMIT');
     return res.status(200).json({
       manutencao,
       parametros: parametrosTransformados,
     });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao buscar manutenção e parâmetros:', error);
     return res.status(500).json({ error: 'Erro ao buscar manutenção e parâmetros.' });
+  } finally {
+    client.release();
   }
 });
 
