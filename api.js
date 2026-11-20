@@ -2693,7 +2693,7 @@ app.get('/clientes-por-dia', async (req, res) => {
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
 
-      // A última visita do ciclo anterior determina se há recuperação quinzenal.
+      -- A última visita do ciclo anterior determina se há recuperação quinzenal.
       LEFT JOIN LATERAL (
         SELECT ant.status
         FROM manutencoes ant
@@ -3001,7 +3001,7 @@ app.get('/contador-clientes', async (req, res) => {
       JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
       JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
 
-      // A última visita do ciclo anterior determina se há recuperação quinzenal.
+      -- A última visita do ciclo anterior determina se há recuperação quinzenal.
       LEFT JOIN LATERAL (
         SELECT ant.status
         FROM manutencoes ant
@@ -4491,19 +4491,24 @@ app.put('/manutencoes/:id/parametros', async (req, res) => {
 
 // Função reutilizável para reset semanal das manutenções
 async function resetStatusEmpresa(empresaid) {
-
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    // ✅ Agora traz também metodo_analise e modo_tratamento da última manutenção concluída
+    // O domingo às 23h55 prepara a semana seguinte, sem apagar o histórico.
+    const semanaAlvo = moment(dataLisboaISO(), 'YYYY-MM-DD')
+      .startOf('isoWeek')
+      .add(1, 'week')
+      .format('YYYY-MM-DD');
+
+    // Todas as associações entram no ciclo: incluindo as que ficaram
+    // nao_concluida e as que ainda não têm nenhuma visita concluída.
     const clientesAtivosQuery = `
       SELECT DISTINCT ON (a.clienteid, a.diasemana)
         a.clienteid,
         a.equipeid,
         a.diasemana,
-        m.id AS manutencao_id,
         m.metodo_analise,
         m.modo_tratamento,
         c.periodicidade,
@@ -4517,134 +4522,111 @@ async function resetStatusEmpresa(empresaid) {
           WHERE mc.cliente_id = c.id
             AND mc.empresaid = c.empresaid
             AND mc.status = 'concluida'
-        ) AS ultima_conclusao
+        ) AS ultima_conclusao,
+        anterior.status AS status_semana_anterior
       FROM associados a
-      JOIN clientes c ON a.clienteid = c.id
-      JOIN equipes e ON a.equipeid = e.id
-      JOIN manutencoes m 
-        ON m.cliente_id = a.clienteid 
-        AND m.dia_semana = a.diasemana
-        AND m.empresaid = $1
-      WHERE m.status = 'concluida'
-        AND c.empresaid = $1
-        AND e.empresaid = $1
-        AND NOT EXISTS (
-          SELECT 1
-          FROM manutencoes m2
-          WHERE m2.cliente_id = a.clienteid
-            AND m2.dia_semana = a.diasemana
-            AND m2.empresaid = $1
-            AND m2.status = 'pendente'
-            AND m2.data_manutencao > m.data_manutencao
-        )
-      ORDER BY a.clienteid, a.diasemana, m.data_manutencao DESC;
+      JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
+      JOIN equipes e ON e.id = a.equipeid AND e.empresaid = a.empresaid
+      LEFT JOIN LATERAL (
+        SELECT mm.metodo_analise, mm.modo_tratamento
+        FROM manutencoes mm
+        WHERE mm.cliente_id = a.clienteid
+          AND mm.dia_semana = a.diasemana
+          AND mm.empresaid = $1
+        ORDER BY mm.data_manutencao DESC, mm.id DESC
+        LIMIT 1
+      ) m ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT ant.status
+        FROM manutencoes ant
+        WHERE ant.cliente_id = a.clienteid
+          AND ant.equipe_id = a.equipeid
+          AND ant.dia_semana = a.diasemana
+          AND ant.empresaid = $1
+          -- Semana anterior: domingo de preparação até sábado da visita.
+          AND ant.data_manutencao::date BETWEEN $2::date - 8 AND $2::date - 2
+        ORDER BY ant.data_manutencao DESC, ant.id DESC
+        LIMIT 1
+      ) anterior ON TRUE
+      WHERE a.empresaid = $1 AND c.empresaid = $1 AND e.empresaid = $1
+      ORDER BY a.clienteid, a.diasemana, a.id;
     `;
-
-    const clientesAtivosResult = await client.query(clientesAtivosQuery, [empresaid]);
-
-    if (clientesAtivosResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return {
-        detalhes: [],
-        message: 'Nenhuma manutenção encontrada para resetar.',
-      };
-    }
-
+    const clientesAtivosResult = await client.query(clientesAtivosQuery, [empresaid, semanaAlvo]);
     const mensagensDeSucesso = [];
-
-    // O cron corre ao domingo às 23h55: prepara as visitas da semana seguinte.
-    // Para um reset manual, também prepara a semana seguinte nos quinzenais.
-    const semanaAlvo = moment(dataLisboaISO(), 'YYYY-MM-DD')
-      .startOf('isoWeek')
-      .add(1, 'week')
-      .format('YYYY-MM-DD');
 
     for (const cliente of clientesAtivosResult.rows) {
       const agenda = avaliarAgendaManutencao(
-        cliente, cliente.diasemana, cliente.ultima_conclusao, semanaAlvo
+        cliente, cliente.diasemana, cliente.ultima_conclusao, semanaAlvo,
+        cliente.status_semana_anterior === 'nao_concluida'
       );
-      if (agenda.frequencia === 'quinzenal' && !agenda.visita_programada) {
-        continue; // Semana de descanso: não abrir uma manutenção pendente.
-      }
+      // Na semana de descanso das quinzenais não é aberta nova visita,
+      // salvo se a semana anterior ficou por concluir.
+      if (agenda.frequencia === 'quinzenal' && !agenda.visita_programada) continue;
 
-      // ✅ defaults de segurança, caso a manutenção antiga tenha NULL
+      // A mesma linha do cliente também é bloqueada na rota manutencao-atual
+      // e no início de visitas antecipadas, evitando inserções concorrentes.
+      await client.query(
+        'SELECT id FROM clientes WHERE id = $1 AND empresaid = $2 FOR UPDATE',
+        [cliente.clienteid, empresaid]
+      );
+
+      // Idempotência: se a visita já existe para a semana-alvo, não a recriar.
+      // O domingo anterior pertence à semana seguinte, com qualquer estado.
+      const existente = await client.query(`
+        SELECT id
+        FROM manutencoes
+        WHERE cliente_id = $1 AND equipe_id = $2
+          AND dia_semana = $3 AND empresaid = $4
+          AND (
+            data_manutencao::date BETWEEN $5::date AND $5::date + 6
+            OR data_manutencao::date = $5::date - 1
+          )
+        ORDER BY data_manutencao DESC, id DESC
+        LIMIT 1
+      `, [cliente.clienteid, cliente.equipeid, cliente.diasemana, empresaid, semanaAlvo]);
+
+      if (existente.rowCount) continue;
+
       const metodo = cliente.metodo_analise ?? 'fitas';
       const modo = cliente.modo_tratamento ?? 'cloro';
 
-      // ✅ Inserir nova manutenção já com metodo_analise e modo_tratamento copiados
-      const novaManutencaoQuery = `
+      const novaManutencaoResult = await client.query(`
         INSERT INTO manutencoes (
-          cliente_id,
-          equipe_id,
-          dia_semana,
-          status,
-          data_manutencao,
-          empresaid,
-          metodo_analise,
-          modo_tratamento
+          cliente_id, equipe_id, dia_semana, status, data_manutencao,
+          empresaid, metodo_analise, modo_tratamento
         )
         VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
         RETURNING id;
-      `;
-
-      const novaManutencaoResult = await client.query(novaManutencaoQuery, [
-        cliente.clienteid,
-        cliente.equipeid,
-        cliente.diasemana,
-        empresaid,
-        metodo,
-        modo,
-      ]);
+      `, [cliente.clienteid, cliente.equipeid, cliente.diasemana, empresaid, metodo, modo]);
 
       const novaManutencaoId = novaManutencaoResult.rows[0].id;
 
-      // ✅ Copiar parâmetros (mantém igual)
-      const copiarParametrosQuery = `
+      // Recuperar a última medição real de cada parâmetro, mesmo quando
+      // a visita anterior ficou vermelha e não produziu novos valores.
+      await client.query(`
         INSERT INTO manutencoes_parametros (
-          manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid
+          manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado,
+          quantidade_usada, status, empresaid
         )
-        SELECT 
-          $1, 
-          mp.parametro,
-          mp.valor_atual AS valor_ultimo,
-          NULL AS valor_atual,
-          NULL AS produto_usado,
-          NULL AS quantidade_usada,
-          'pendente',
-          $3
-        FROM manutencoes_parametros mp
-        JOIN parametros_quimicos pq ON mp.parametro = pq.parametro
-        WHERE mp.manutencao_id = $2
-          AND pq.ativo = TRUE
-          AND pq.empresaid = $3;
-      `;
-      await client.query(copiarParametrosQuery, [novaManutencaoId, cliente.manutencao_id, empresaid]);
-
-      // ✅ Adicionar parâmetros ativos que não existam (mantém igual)
-      const adicionarParametrosAtivosQuery = `
-        INSERT INTO manutencoes_parametros (
-          manutencao_id, parametro, valor_ultimo, valor_atual, produto_usado, quantidade_usada, status, empresaid
-        )
-        SELECT 
-          $1,
-          pq.parametro,
-          NULL AS valor_ultimo,
-          NULL AS valor_atual,
-          NULL AS produto_usado,
-          0 AS quantidade_usada,
-          'pendente',
-          $2
+        SELECT
+          $1, pq.parametro, anterior.valor_atual, NULL, NULL, 0, 'pendente', $2
         FROM parametros_quimicos pq
-        WHERE pq.ativo = TRUE
-          AND pq.empresaid = $2
-          AND NOT EXISTS (
-            SELECT 1
-            FROM manutencoes_parametros mp
-            WHERE mp.manutencao_id = $1
-              AND mp.parametro = pq.parametro
-          );
-      `;
-      await client.query(adicionarParametrosAtivosQuery, [novaManutencaoId, empresaid]);
+        LEFT JOIN LATERAL (
+          SELECT mp.valor_atual
+          FROM manutencoes_parametros mp
+          JOIN manutencoes historico ON historico.id = mp.manutencao_id
+          WHERE historico.cliente_id = $3
+            AND historico.empresaid = $2
+            AND historico.status = 'concluida'
+            AND mp.parametro = pq.parametro
+            AND mp.valor_atual IS NOT NULL
+          ORDER BY historico.data_conclusao DESC NULLS LAST,
+                   historico.data_manutencao DESC, historico.id DESC
+          LIMIT 1
+        ) anterior ON TRUE
+        WHERE pq.empresaid = $2 AND pq.ativo = TRUE
+        ON CONFLICT (manutencao_id, parametro) DO NOTHING;
+      `, [novaManutencaoId, empresaid, cliente.clienteid]);
 
       mensagensDeSucesso.push(
         `Nova manutenção criada para cliente ${cliente.clienteid}, dia ${cliente.diasemana} (metodo=${metodo}, modo=${modo}).`
@@ -4652,18 +4634,19 @@ async function resetStatusEmpresa(empresaid) {
     }
 
     await client.query('COMMIT');
-
-      return {
-        message: 'Manutenções resetadas com sucesso!',
-        detalhes: mensagensDeSucesso,
-      };
-      } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Erro ao resetar status:', error);
-      throw error;
-      } finally {
-      client.release();
-      }
+    return {
+      message: mensagensDeSucesso.length
+        ? 'Manutenções da semana seguinte preparadas com sucesso!'
+        : 'Sem novas manutenções a preparar.',
+      detalhes: mensagensDeSucesso,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao resetar status:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 app.post('/reset-status', async (req, res) => {
