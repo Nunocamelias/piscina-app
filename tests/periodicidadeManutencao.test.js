@@ -72,3 +72,25 @@ test('conclusão no domingo mantém a visita quinzenal de sexta-feira', () => {
   assert.equal(resultado.agenda_estado, 'concluida');
   assert.equal(resultado.proxima_visita, '2026-11-20');
 });
+test('visita quinzenal falhada na semana anterior é reprogramada mesmo durante semana de descanso', () => {
+  const semFalha = avaliarAgendaManutencao(contrato, 'Quinta-feira', '2026-11-12', '2026-11-19');
+  assert.equal(semFalha.visita_programada, false);
+  const comFalha = avaliarAgendaManutencao(contrato, 'Quinta-feira', '2026-11-12', '2026-11-19', true);
+  assert.equal(comFalha.agenda_estado, 'programada');
+  assert.equal(comFalha.visita_programada, true);
+  assert.equal(comFalha.proxima_visita, '2026-11-19');
+});
+
+test('recuperação na semana seguinte não altera a próxima data após concluir', () => {
+  const recuperada = avaliarAgendaManutencao(contrato, 'Quinta-feira', '2026-11-19', '2026-11-26');
+  assert.equal(recuperada.agenda_estado, 'sem_visita');
+  assert.equal(recuperada.proxima_visita, '2026-12-03');
+  const seguinte = avaliarAgendaManutencao(contrato, 'Quinta-feira', '2026-11-19', '2026-12-03');
+  assert.equal(seguinte.visita_programada, true);
+});
+
+test('falha anterior não substitui conclusão registada na semana atual', () => {
+  const estado = avaliarAgendaManutencao(contrato, 'Quinta-feira', '2026-11-19', '2026-11-19', true);
+  assert.equal(estado.agenda_estado, 'concluida');
+  assert.equal(estado.visita_programada, false);
+});
