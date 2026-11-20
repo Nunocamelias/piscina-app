@@ -96,3 +96,34 @@ test('reset antecipado cria data da próxima semana e domingo mantém a hora rea
   assert.match(reset, /COALESCE\(\$7::timestamp, NOW\(\)\)/);
   assert.match(reset, /metodo, modo, dataCriacaoAntecipada\]/);
 });
+
+test('reset identifica a origem das visitas pendentes automaticamente preparadas', () => {
+  assert.match(reset, /origem_registo/);
+  assert.match(reset, /'reset'\)/);
+  assert.match(reset, /if \(existente\.rowCount\) continue/);
+});
+
+test('sem visita quinzenal, pendente do reset não se apresenta como antecipação', () => {
+  assert.match(lista, /m\.origem_registo/);
+  assert.match(lista, /SELECT mm\.status, mm\.motivo, mm\.origem_registo/);
+  assert.match(lista, /cliente\.status_semana === 'pendente' && cliente\.origem_registo !== 'reset'/);
+  assert.match(contador, /row\.status_semana === 'pendente' && row\.origem_registo !== 'reset'/);
+});
+
+test('antecipação confirmada transforma a pendente automática em visita iniciada', () => {
+  assert.match(iniciarVisita, /SELECT m\.id, m\.status, m\.origem_registo/);
+  assert.match(iniciarVisita, /existente\.rows\[0\]\.origem_registo === 'reset'/);
+  assert.match(iniciarVisita, /UPDATE manutencoes\s+SET origem_registo = 'iniciada'/);
+  assert.match(iniciarVisita, /WHERE id = \$1 AND empresaid = \$2 AND status = 'pendente'/);
+});
+
+test('visita iniciada explicitamente não é confundida com registo criado pelo reset', () => {
+  assert.match(iniciarVisita, /origem_registo\s*\) VALUES \(\$1, \$2, \$3, 'pendente', NOW\(\), \$4, \$5, \$6, 'iniciada'\)/);
+  assert.match(folha, /origem_registo\s*\)\s*VALUES \(\$1, \$2, \$3, 'pendente', NOW\(\), \$4, \$5, \$6, 'iniciada'\)/);
+});
+
+test('migração acrescenta coluna sem modificar visitas existentes', () => {
+  const migracao = fs.readFileSync(path.join(__dirname, '..', 'migrations', '20261120_origem_registo_manutencao.sql'), 'utf8');
+  assert.match(migracao, /ALTER TABLE manutencoes\s+ADD COLUMN IF NOT EXISTS origem_registo varchar\(20\)/);
+  assert.doesNotMatch(migracao, /\bDELETE\b|\bTRUNCATE\b|\bUPDATE\b/i);
+});
