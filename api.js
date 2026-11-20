@@ -2689,6 +2689,7 @@ app.get('/clientes-por-dia', async (req, res) => {
         m.status AS status_semana,
         COALESCE(m.status, 'pendente') AS status,
         m.motivo,
+        m.origem_registo,
         anterior.status AS status_semana_anterior
       FROM associados a
       JOIN clientes c ON a.clienteId = c.id
@@ -2708,7 +2709,7 @@ app.get('/clientes-por-dia', async (req, res) => {
         LIMIT 1
       ) anterior ON TRUE
       LEFT JOIN LATERAL (
-        SELECT mm.status, mm.motivo
+        SELECT mm.status, mm.motivo, mm.origem_registo
         FROM manutencoes mm
         WHERE mm.cliente_id = c.id
           AND mm.equipe_id = $1
@@ -2748,8 +2749,11 @@ app.get('/clientes-por-dia', async (req, res) => {
         cliente, diaSemana, cliente.ultima_conclusao, hojeLisboa,
         cliente.status_semana_anterior === 'nao_concluida'
       );
+      // Um registo preparado pelo reset não é uma antecipação do técnico.
+      // Só deixa de ser "sem visita" quando o técnico o iniciar explicitamente.
       const emCurso = agenda.agenda_estado === 'sem_visita'
-        && (cliente.status_semana === 'pendente' || cliente.status_semana === 'nao_concluida');
+        && (cliente.status_semana === 'nao_concluida'
+          || (cliente.status_semana === 'pendente' && cliente.origem_registo !== 'reset'));
       const concluida = cliente.status_semana === 'concluida';
       return {
         ...cliente,
@@ -2996,6 +3000,7 @@ app.get('/contador-clientes', async (req, res) => {
             AND mc.status = 'concluida'
         ) AS ultima_conclusao,
         m.status AS status_semana,
+        m.origem_registo,
         anterior.status AS status_semana_anterior
       FROM associados a
       JOIN clientes c ON c.id = a.clienteid AND c.empresaid = a.empresaid
@@ -3016,7 +3021,7 @@ app.get('/contador-clientes', async (req, res) => {
         LIMIT 1
       ) anterior ON TRUE
       LEFT JOIN LATERAL (
-        SELECT mm.status
+        SELECT mm.status, mm.origem_registo
         FROM manutencoes mm
         WHERE mm.cliente_id = a.clienteid AND mm.equipe_id = a.equipeid
           AND mm.dia_semana = a.diasemana AND mm.empresaid = $2
@@ -3036,7 +3041,8 @@ app.get('/contador-clientes', async (req, res) => {
       const agenda = avaliarAgendaManutencao(row, row.diasemana, row.ultima_conclusao, hojeLisboa,
         row.status_semana_anterior === 'nao_concluida');
       const feita = row.status_semana === 'concluida';
-      const trabalhoAberto = row.status_semana === 'pendente' || row.status_semana === 'nao_concluida';
+      const trabalhoAberto = row.status_semana === 'nao_concluida'
+        || (row.status_semana === 'pendente' && row.origem_registo !== 'reset');
       const incluir = agenda.frequencia !== 'quinzenal'
         || agenda.visita_programada || agenda.agenda_estado === 'concluida'
         || feita || trabalhoAberto;
@@ -3578,7 +3584,7 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
     }
 
     const existente = await client.query(`
-      SELECT m.id, m.status
+      SELECT m.id, m.status, m.origem_registo
       FROM manutencoes m
       WHERE m.cliente_id = $1 AND m.equipe_id = $2
         AND m.dia_semana = $3 AND m.empresaid = $4
@@ -3589,10 +3595,20 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
       ORDER BY m.data_manutencao DESC, m.id DESC LIMIT 1
     `, [clienteId, equipeId, diaSemana, empresaid, semanaInicio]);
     if (existente.rowCount) {
-      await client.query('COMMIT');
       if (existente.rows[0].status === 'concluida') {
+        await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Esta manutenção já foi concluída nesta semana.' });
       }
+      // A antecipação foi confirmada pelo técnico. Se o reset preparou
+      // o registo antes da nova conclusão, passa agora a visita iniciada.
+      if (existente.rows[0].origem_registo === 'reset') {
+        await client.query(`
+          UPDATE manutencoes
+          SET origem_registo = 'iniciada'
+          WHERE id = $1 AND empresaid = $2 AND status = 'pendente'
+        `, [existente.rows[0].id, empresaid]);
+      }
+      await client.query('COMMIT');
       return res.status(200).json({
         message: 'A manutenção desta semana já estava aberta.',
         manutencaoId: existente.rows[0].id, criada: false
@@ -3609,8 +3625,8 @@ app.post('/manutencoes/iniciar-visita', async (req, res) => {
     const nova = await client.query(`
       INSERT INTO manutencoes (
         cliente_id, equipe_id, dia_semana, status, data_manutencao,
-        empresaid, metodo_analise, modo_tratamento
-      ) VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+        empresaid, metodo_analise, modo_tratamento, origem_registo
+      ) VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6, 'iniciada')
       RETURNING id
     `, [clienteId, equipeId, diaSemana, empresaid,
       anterior?.metodo_analise || 'fitas', anterior?.modo_tratamento || 'cloro']);
@@ -3757,9 +3773,10 @@ app.get('/manutencao-atual', async (req, res) => {
           data_manutencao,
           empresaid,
           metodo_analise,
-          modo_tratamento
+          modo_tratamento,
+          origem_registo
         )
-        VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+        VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6, 'iniciada')
         RETURNING *;
       `;
       const novaManutencaoResult = await client.query(novaManutencaoQuery, [
@@ -4599,9 +4616,9 @@ async function resetStatusEmpresa(empresaid) {
       const novaManutencaoResult = await client.query(`
         INSERT INTO manutencoes (
           cliente_id, equipe_id, dia_semana, status, data_manutencao,
-          empresaid, metodo_analise, modo_tratamento
+          empresaid, metodo_analise, modo_tratamento, origem_registo
         )
-        VALUES ($1, $2, $3, 'pendente', COALESCE($7::timestamp, NOW()), $4, $5, $6)
+        VALUES ($1, $2, $3, 'pendente', COALESCE($7::timestamp, NOW()), $4, $5, $6, 'reset')
         RETURNING id;
       `, [cliente.clienteid, cliente.equipeid, cliente.diasemana, empresaid, metodo, modo, dataCriacaoAntecipada]);
 
