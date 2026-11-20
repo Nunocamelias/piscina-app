@@ -88,3 +88,11 @@ test('cartão não concluído mantém o fundo vermelho dentro da mesma semana', 
   assert.match(codigoCartao, /item\.status === 'nao_concluida' && styles\.cardNaoConcluida/);
   assert.match(codigoCartao, /backgroundColor: '#FFB3B3'/);
 });
+
+test('reset antecipado cria data da próxima semana e domingo mantém a hora real', () => {
+  assert.match(reset, /const hojeLisboa = dataLisboaISO\(\)/);
+  assert.match(reset, /const dataCriacaoAntecipada = moment\(hojeLisboa, 'YYYY-MM-DD'\)\.isoWeekday\(\) === 7/);
+  assert.match(reset, /\? null\s*: semanaAlvo/);
+  assert.match(reset, /COALESCE\(\$7::timestamp, NOW\(\)\)/);
+  assert.match(reset, /metodo, modo, dataCriacaoAntecipada\]/);
+});
