@@ -4496,11 +4496,17 @@ async function resetStatusEmpresa(empresaid) {
   try {
     await client.query('BEGIN');
 
-    // O domingo às 23h55 prepara a semana seguinte, sem apagar o histórico.
-    const semanaAlvo = moment(dataLisboaISO(), 'YYYY-MM-DD')
+    // Domingo: o cron cria a visita às 23h55, como anteriormente.
+    // Reset manual noutro dia: datar a visita na segunda-feira seguinte,
+    // impedindo que uma preparação antecipada seja contada na semana atual.
+    const hojeLisboa = dataLisboaISO();
+    const semanaAlvo = moment(hojeLisboa, 'YYYY-MM-DD')
       .startOf('isoWeek')
       .add(1, 'week')
       .format('YYYY-MM-DD');
+    const dataCriacaoAntecipada = moment(hojeLisboa, 'YYYY-MM-DD').isoWeekday() === 7
+      ? null
+      : semanaAlvo;
 
     // Todas as associações entram no ciclo: incluindo as que ficaram
     // nao_concluida e as que ainda não têm nenhuma visita concluída.
@@ -4595,9 +4601,9 @@ async function resetStatusEmpresa(empresaid) {
           cliente_id, equipe_id, dia_semana, status, data_manutencao,
           empresaid, metodo_analise, modo_tratamento
         )
-        VALUES ($1, $2, $3, 'pendente', NOW(), $4, $5, $6)
+        VALUES ($1, $2, $3, 'pendente', COALESCE($7::timestamp, NOW()), $4, $5, $6)
         RETURNING id;
-      `, [cliente.clienteid, cliente.equipeid, cliente.diasemana, empresaid, metodo, modo]);
+      `, [cliente.clienteid, cliente.equipeid, cliente.diasemana, empresaid, metodo, modo, dataCriacaoAntecipada]);
 
       const novaManutencaoId = novaManutencaoResult.rows[0].id;
 
