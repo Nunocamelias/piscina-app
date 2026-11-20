@@ -82,7 +82,7 @@ function frequenciaNaData(cliente, dataISO) {
   return normalizarFrequencia(sazonal ?? cliente.periodicidade);
 }
 
-function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeISO = dataLisboaISO()) {
+function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeISO = dataLisboaISO(), falhaSemanaAnterior = false) {
   const frequencia = frequenciaNaData(cliente, hojeISO);
   const diaNumero = DIAS_MANUTENCAO[diaHabitual];
   if (frequencia !== 'quinzenal' || !diaNumero) {
@@ -105,11 +105,13 @@ function avaliarAgendaManutencao(cliente, diaHabitual, ultimaConclusaoISO, hojeI
     })()
   : null;
   const diaProgramado = somarDiasISO(segunda, diaNumero - 1);
-  const programada = !concluidaSemana && (!proxima || proxima <= diaProgramado);
+  // Uma visita quinzenal falhada tem de ser repetida na semana seguinte.
+  // A contagem normal de 14 dias só reinicia com uma conclusão efetiva.
+  const programada = !concluidaSemana && (falhaSemanaAnterior || !proxima || proxima <= diaProgramado);
   return {
     frequencia, agenda_estado: concluidaSemana ? 'concluida' : programada ? 'programada' : 'sem_visita',
     visita_programada: programada,
-    proxima_visita: proxima || diaProgramado,
+    proxima_visita: falhaSemanaAnterior && !concluidaSemana ? diaProgramado : (proxima || diaProgramado),
   };
 }
 
